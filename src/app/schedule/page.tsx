@@ -83,8 +83,8 @@ export default async function SchedulePage({
     Date.UTC(year, monthIndex, 1)
   ).getUTCDay();
 
-  // Convert Sunday=0 to a Monday-first calendar.
-  const leadingDays = (firstDay + 6) % 7;
+  const leadingDays =
+    (firstDay + 6) % 7;
 
   const numberOfCells =
     Math.ceil(
@@ -123,7 +123,8 @@ export default async function SchedulePage({
     1
   );
 
-  const todayMonth = londonMonthToday();
+  const todayMonth =
+    londonMonthToday();
 
   const monthTitle =
     new Intl.DateTimeFormat("en-GB", {
@@ -153,7 +154,7 @@ export default async function SchedulePage({
               </h1>
 
               <p className="mt-2 text-slate-500">
-                Surveys, work and appointments.
+                Surveys, jobs and appointments.
               </p>
             </div>
 
@@ -161,7 +162,7 @@ export default async function SchedulePage({
               href={`/schedule/new?date=${monthStart}`}
               className="rounded-lg bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-700"
             >
-              + Add Event
+              + Add Job / Event
             </Link>
           </div>
 
@@ -239,13 +240,10 @@ export default async function SchedulePage({
                         );
 
                       const dayNumber =
-                        Number(
-                          date.slice(-2)
-                        );
+                        Number(date.slice(-2));
 
                       const isToday =
-                        date ===
-                        londonDateToday();
+                        date === londonDateToday();
 
                       return (
                         <div
@@ -266,7 +264,6 @@ export default async function SchedulePage({
                             <Link
                               href={`/schedule/new?date=${date}`}
                               className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-900"
-                              title="Add appointment"
                             >
                               +
                             </Link>
@@ -276,16 +273,12 @@ export default async function SchedulePage({
                             {dayEvents.map(
                               (event) => {
                                 const clientData =
-                                  Array.isArray(
-                                    event.clients
-                                  )
+                                  Array.isArray(event.clients)
                                     ? event.clients[0]
                                     : event.clients;
 
                                 const jobData =
-                                  Array.isArray(
-                                    event.jobs
-                                  )
+                                  Array.isArray(event.jobs)
                                     ? event.jobs[0]
                                     : event.jobs;
 
@@ -319,13 +312,15 @@ export default async function SchedulePage({
                                       </span>
                                     </div>
 
-                                    {jobData?.job_number && (
-                                      <p className="mt-1 opacity-75">
-                                        {
-                                          jobData.job_number
-                                        }
-                                      </p>
-                                    )}
+                                    {jobData?.id &&
+                                      jobData?.job_number && (
+                                        <Link
+                                          href={`/jobs/${jobData.id}`}
+                                          className="mt-1 inline-block font-semibold underline underline-offset-2"
+                                        >
+                                          {jobData.job_number}
+                                        </Link>
+                                      )}
 
                                     {clientName && (
                                       <p className="mt-1 opacity-75">
@@ -362,7 +357,8 @@ function occursOnDate(
   endDate: string | null,
   date: string
 ) {
-  const end = endDate || startDate;
+  const end =
+    endDate || startDate;
 
   return (
     startDate <= date &&

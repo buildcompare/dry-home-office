@@ -7,27 +7,39 @@ import { createClient } from "@/lib/supabase/server";
 export async function addScheduleEvent(formData: FormData) {
   const supabase = await createClient();
 
-  const title = String(formData.get("title") ?? "").trim();
-  const eventType = String(formData.get("event_type") ?? "Other");
-  const status = String(formData.get("status") ?? "Scheduled");
+  const jobId =
+    String(formData.get("job_id") ?? "").trim() || null;
 
-  const startDate = String(formData.get("start_date") ?? "");
+  let clientId =
+    String(formData.get("client_id") ?? "").trim() || null;
+
+  const title =
+    String(formData.get("title") ?? "").trim();
+
+  const eventType =
+    String(formData.get("event_type") ?? "Other");
+
+  const status =
+    String(formData.get("status") ?? "Scheduled");
+
+  const startDate =
+    String(formData.get("start_date") ?? "");
+
   const endDate =
     String(formData.get("end_date") ?? "") || startDate;
 
+  const allDay =
+    formData.get("all_day") === "on";
+
   const startTime =
-    String(formData.get("start_time") ?? "") || null;
+    allDay
+      ? null
+      : String(formData.get("start_time") ?? "") || null;
 
   const endTime =
-    String(formData.get("end_time") ?? "") || null;
-
-  const allDay = formData.get("all_day") === "on";
-
-  let clientId =
-    String(formData.get("client_id") ?? "") || null;
-
-  const jobId =
-    String(formData.get("job_id") ?? "") || null;
+    allDay
+      ? null
+      : String(formData.get("end_time") ?? "") || null;
 
   let location =
     String(formData.get("location") ?? "").trim() || null;
@@ -44,12 +56,21 @@ export async function addScheduleEvent(formData: FormData) {
     );
   }
 
-  // If linked to a job, automatically use that job's client.
+  /*
+   * IMPORTANT:
+   * If an existing job is selected, get its client/address
+   * directly from Supabase.
+   *
+   * We do not trust the separate client selector in this case.
+   */
   if (jobId) {
     const { data: job, error: jobError } = await supabase
       .from("jobs")
       .select(`
+        id,
         client_id,
+        job_number,
+        title,
         address_line_1,
         address_line_2,
         town,
@@ -60,8 +81,10 @@ export async function addScheduleEvent(formData: FormData) {
       .single();
 
     if (jobError || !job) {
+      console.error(jobError);
+
       redirect(
-        `/schedule/new?date=${startDate}&error=Unable%20to%20find%20selected%20job`
+        `/schedule/new?date=${startDate}&error=Could%20not%20find%20the%20selected%20job`
       );
     }
 
@@ -80,29 +103,32 @@ export async function addScheduleEvent(formData: FormData) {
     }
   }
 
-  const { error } = await supabase
+  const { data: newEvent, error } = await supabase
     .from("schedule_events")
     .insert({
-      client_id: clientId,
       job_id: jobId,
+      client_id: clientId,
       title,
       event_type: eventType,
       status,
       start_date: startDate,
       end_date: endDate,
-      start_time: allDay ? null : startTime,
-      end_time: allDay ? null : endTime,
+      start_time: startTime,
+      end_time: endTime,
       all_day: allDay,
       location,
       assigned_to:
         String(formData.get("assigned_to") ?? "").trim() ||
         null,
       notes:
-        String(formData.get("notes") ?? "").trim() || null,
-    });
+        String(formData.get("notes") ?? "").trim() ||
+        null,
+    })
+    .select("id, job_id, client_id")
+    .single();
 
-  if (error) {
-    console.error(error);
+  if (error || !newEvent) {
+    console.error("Schedule save error:", error);
 
     redirect(
       `/schedule/new?date=${startDate}&error=Unable%20to%20save%20appointment`
@@ -110,10 +136,17 @@ export async function addScheduleEvent(formData: FormData) {
   }
 
   revalidatePath("/schedule");
+  revalidatePath("/jobs");
+
+  if (jobId) {
+    revalidatePath(`/jobs/${jobId}`);
+  }
 
   if (clientId) {
     revalidatePath(`/clients/${clientId}`);
   }
 
-  redirect(`/schedule?month=${startDate.slice(0, 7)}`);
+  redirect(
+    `/schedule?month=${startDate.slice(0, 7)}`
+  );
 }
