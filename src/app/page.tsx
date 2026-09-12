@@ -2,30 +2,74 @@ import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
 import { createClient } from "@/lib/supabase/server";
 
-export default async function ClientsPage() {
+export default async function DashboardPage() {
   const supabase = await createClient();
 
-  const { data: clients, error } = await supabase
-    .from("clients")
-    .select(`
-      id,
-      display_name,
-      friendly_name,
-      first_name,
-      last_name,
-      company_name,
-      email,
-      phone,
-      address_line_1,
-      town,
-      postcode,
-      created_at
-    `)
-    .order("display_name", { ascending: true });
+  const [
+    clientsResult,
+    jobsResult,
+    surveysResult,
+    activeJobsResult,
+    recentJobsResult,
+  ] = await Promise.all([
+    supabase
+      .from("clients")
+      .select("*", {
+        count: "exact",
+        head: true,
+      }),
 
-  if (error) {
-    console.error(error);
-  }
+    supabase
+      .from("jobs")
+      .select("*", {
+        count: "exact",
+        head: true,
+      }),
+
+    supabase
+      .from("jobs")
+      .select("*", {
+        count: "exact",
+        head: true,
+      })
+      .eq("status", "Survey Booked"),
+
+    supabase
+      .from("jobs")
+      .select("*", {
+        count: "exact",
+        head: true,
+      })
+      .eq("status", "In Progress"),
+
+    supabase
+      .from("jobs")
+      .select(`
+        id,
+        job_number,
+        title,
+        status,
+        town,
+        postcode,
+        created_at,
+        clients (
+          display_name,
+          first_name,
+          last_name
+        )
+      `)
+      .order("created_at", {
+        ascending: false,
+      })
+      .limit(5),
+  ]);
+
+  const clientCount = clientsResult.count ?? 0;
+  const jobCount = jobsResult.count ?? 0;
+  const surveyCount = surveysResult.count ?? 0;
+  const activeJobCount = activeJobsResult.count ?? 0;
+
+  const recentJobs = recentJobsResult.data ?? [];
 
   return (
     <div className="flex min-h-screen bg-slate-100">
@@ -33,131 +77,172 @@ export default async function ClientsPage() {
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
+          <div className="mb-8">
+            <p className="text-sm font-medium text-slate-500">
+              DryHome Damp Proofing Solutions
+            </p>
 
-          <div className="mb-8 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-500">
-                DryHome Office
-              </p>
+            <h1 className="mt-1 text-3xl font-bold text-slate-900">
+              Dashboard
+            </h1>
 
-              <h1 className="mt-1 text-3xl font-bold text-slate-900">
-                Clients
-              </h1>
-
-              <p className="mt-2 text-slate-500">
-                {clients?.length ?? 0} customer records
-              </p>
-            </div>
-
-            <Link
-              href="/clients/new"
-              className="rounded-lg bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-700"
-            >
-              + Add Client
-            </Link>
+            <p className="mt-2 text-slate-500">
+              Manage your clients, jobs and schedule.
+            </p>
           </div>
 
-          <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
-            {!clients || clients.length === 0 ? (
-              <div className="p-12 text-center">
-                <h2 className="text-lg font-semibold text-slate-900">
-                  No clients yet
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+            <DashboardCard
+              title="Clients"
+              value={clientCount}
+              description="Total clients"
+              href="/clients"
+            />
+
+            <DashboardCard
+              title="Jobs"
+              value={jobCount}
+              description="Total jobs"
+              href="/jobs"
+            />
+
+            <DashboardCard
+              title="Surveys"
+              value={surveyCount}
+              description="Surveys booked"
+              href="/schedule"
+            />
+
+            <DashboardCard
+              title="Active Jobs"
+              value={activeJobCount}
+              description="Currently in progress"
+              href="/jobs"
+            />
+          </div>
+
+          <div className="mt-8 overflow-hidden rounded-2xl bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">
+                  Recent Jobs
                 </h2>
 
-                <p className="mt-2 text-sm text-slate-500">
-                  Add your first DryHome customer to get started.
+                <p className="mt-1 text-sm text-slate-500">
+                  Your latest DryHome jobs.
                 </p>
               </div>
+
+              <Link
+                href="/jobs"
+                className="text-sm font-semibold text-slate-700 hover:underline"
+              >
+                View all jobs →
+              </Link>
+            </div>
+
+            {recentJobs.length === 0 ? (
+              <div className="p-12 text-center">
+                <p className="font-medium text-slate-700">
+                  No jobs yet
+                </p>
+
+                <p className="mt-2 text-sm text-slate-500">
+                  Add your first job to get started.
+                </p>
+
+                <Link
+                  href="/jobs/new"
+                  className="mt-5 inline-flex rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700"
+                >
+                  + Add Job
+                </Link>
+              </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="border-b border-slate-200 bg-slate-50">
-                    <tr>
-                      <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Client
-                      </th>
+              <div className="divide-y divide-slate-100">
+                {recentJobs.map((job) => {
+                  const clientData = Array.isArray(job.clients)
+                    ? job.clients[0]
+                    : job.clients;
 
-                      <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Contact
-                      </th>
+                  const clientName =
+                    clientData?.display_name ||
+                    [
+                      clientData?.first_name,
+                      clientData?.last_name,
+                    ]
+                      .filter(Boolean)
+                      .join(" ") ||
+                    "Unknown client";
 
-                      <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Address
-                      </th>
+                  return (
+                    <Link
+                      key={job.id}
+                      href={`/jobs/${job.id}`}
+                      className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 transition hover:bg-slate-50"
+                    >
+                      <div>
+                        <p className="font-semibold text-slate-900">
+                          {job.job_number}
+                        </p>
 
-                      <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        View
-                      </th>
-                    </tr>
-                  </thead>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {job.title || "Untitled job"}
+                        </p>
 
-                  <tbody className="divide-y divide-slate-100">
-                    {clients.map((client) => {
-                      const name =
-                        client.display_name ||
-                        [client.first_name, client.last_name]
-                          .filter(Boolean)
-                          .join(" ") ||
-                        client.company_name ||
-                        "Unnamed client";
+                        <p className="mt-1 text-sm text-slate-400">
+                          {clientName}
+                        </p>
+                      </div>
 
-                      return (
-                        <tr
-                          key={client.id}
-                          className="transition hover:bg-slate-50"
-                        >
-                          <td className="px-6 py-5">
-                            <p className="font-semibold text-slate-900">
-                              {name}
-                            </p>
+                      <div className="text-right">
+                        <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                          {job.status}
+                        </span>
 
-                            {client.friendly_name && (
-                              <p className="mt-1 text-sm text-slate-500">
-                                Contact: {client.friendly_name}
-                              </p>
-                            )}
-                          </td>
-
-                          <td className="px-6 py-5 text-sm text-slate-600">
-                            <p>{client.phone || "—"}</p>
-                            <p className="mt-1">
-                              {client.email || "—"}
-                            </p>
-                          </td>
-
-                          <td className="px-6 py-5 text-sm text-slate-600">
-                            <p>
-                              {client.address_line_1 ||
-                                client.town ||
-                                "—"}
-                            </p>
-
-                            {client.postcode && (
-                              <p className="mt-1">
-                                {client.postcode}
-                              </p>
-                            )}
-                          </td>
-
-                          <td className="px-6 py-5 text-right">
-                            <Link
-                              href={`/clients/${client.id}`}
-                              className="font-medium text-slate-900 hover:underline"
-                            >
-                              View
-                            </Link>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                        <p className="mt-2 text-sm text-slate-500">
+                          {job.town || job.postcode || "No location"}
+                        </p>
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </div>
-
         </div>
       </main>
     </div>
+  );
+}
+
+function DashboardCard({
+  title,
+  value,
+  description,
+  href,
+}: {
+  title: string;
+  value: number;
+  description: string;
+  href: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="rounded-2xl bg-white p-6 shadow-sm transition hover:shadow-md"
+    >
+      <p className="text-sm font-medium text-slate-500">
+        {title}
+      </p>
+
+      <p className="mt-3 text-4xl font-bold text-slate-900">
+        {value}
+      </p>
+
+      <p className="mt-2 text-sm text-slate-400">
+        {description}
+      </p>
+    </Link>
   );
 }
