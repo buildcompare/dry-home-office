@@ -1,38 +1,31 @@
+import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
 import { createClient } from "@/lib/supabase/server";
 
-export default async function Dashboard() {
+export default async function ClientsPage() {
   const supabase = await createClient();
 
-  const [
-    clientsResult,
-    jobsResult,
-    surveysResult,
-    activeJobsResult,
-  ] = await Promise.all([
-    supabase
-      .from("clients")
-      .select("*", { count: "exact", head: true }),
+  const { data: clients, error } = await supabase
+    .from("clients")
+    .select(`
+      id,
+      display_name,
+      friendly_name,
+      first_name,
+      last_name,
+      company_name,
+      email,
+      phone,
+      address_line_1,
+      town,
+      postcode,
+      created_at
+    `)
+    .order("display_name", { ascending: true });
 
-    supabase
-      .from("jobs")
-      .select("*", { count: "exact", head: true }),
-
-    supabase
-      .from("jobs")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "Survey Booked"),
-
-    supabase
-      .from("jobs")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "In Progress"),
-  ]);
-
-  const clientCount = clientsResult.count ?? 0;
-  const jobCount = jobsResult.count ?? 0;
-  const surveyCount = surveysResult.count ?? 0;
-  const activeJobCount = activeJobsResult.count ?? 0;
+  if (error) {
+    console.error(error);
+  }
 
   return (
     <div className="flex min-h-screen bg-slate-100">
@@ -40,97 +33,131 @@ export default async function Dashboard() {
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
-          <div className="mb-8">
-            <p className="text-sm font-medium text-slate-500">
-              DryHome Damp Proofing Solutions
-            </p>
 
-            <h1 className="mt-1 text-3xl font-bold text-slate-900">
-              Dashboard
-            </h1>
+          <div className="mb-8 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-500">
+                DryHome Office
+              </p>
 
-            <p className="mt-2 text-slate-500">
-              Manage your clients, surveys and jobs.
-            </p>
+              <h1 className="mt-1 text-3xl font-bold text-slate-900">
+                Clients
+              </h1>
+
+              <p className="mt-2 text-slate-500">
+                {clients?.length ?? 0} customer records
+              </p>
+            </div>
+
+            <Link
+              href="/clients/new"
+              className="rounded-lg bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-700"
+            >
+              + Add Client
+            </Link>
           </div>
 
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-            <DashboardCard
-              title="Clients"
-              value={clientCount}
-              description="Total clients"
-            />
-
-            <DashboardCard
-              title="Jobs"
-              value={jobCount}
-              description="Total jobs"
-            />
-
-            <DashboardCard
-              title="Surveys"
-              value={surveyCount}
-              description="Surveys booked"
-            />
-
-            <DashboardCard
-              title="Active Jobs"
-              value={activeJobCount}
-              description="Currently in progress"
-            />
-          </div>
-
-          <div className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">
-                  Recent Jobs
+          <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
+            {!clients || clients.length === 0 ? (
+              <div className="p-12 text-center">
+                <h2 className="text-lg font-semibold text-slate-900">
+                  No clients yet
                 </h2>
 
-                <p className="mt-1 text-sm text-slate-500">
-                  Your latest DryHome jobs will appear here.
+                <p className="mt-2 text-sm text-slate-500">
+                  Add your first DryHome customer to get started.
                 </p>
               </div>
-            </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="border-b border-slate-200 bg-slate-50">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Client
+                      </th>
 
-            <div className="mt-8 rounded-xl border border-dashed border-slate-300 p-10 text-center">
-              <p className="font-medium text-slate-700">
-                No jobs yet
-              </p>
+                      <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Contact
+                      </th>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Add your first client and job to get started.
-              </p>
-            </div>
+                      <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Address
+                      </th>
+
+                      <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        View
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-100">
+                    {clients.map((client) => {
+                      const name =
+                        client.display_name ||
+                        [client.first_name, client.last_name]
+                          .filter(Boolean)
+                          .join(" ") ||
+                        client.company_name ||
+                        "Unnamed client";
+
+                      return (
+                        <tr
+                          key={client.id}
+                          className="transition hover:bg-slate-50"
+                        >
+                          <td className="px-6 py-5">
+                            <p className="font-semibold text-slate-900">
+                              {name}
+                            </p>
+
+                            {client.friendly_name && (
+                              <p className="mt-1 text-sm text-slate-500">
+                                Contact: {client.friendly_name}
+                              </p>
+                            )}
+                          </td>
+
+                          <td className="px-6 py-5 text-sm text-slate-600">
+                            <p>{client.phone || "—"}</p>
+                            <p className="mt-1">
+                              {client.email || "—"}
+                            </p>
+                          </td>
+
+                          <td className="px-6 py-5 text-sm text-slate-600">
+                            <p>
+                              {client.address_line_1 ||
+                                client.town ||
+                                "—"}
+                            </p>
+
+                            {client.postcode && (
+                              <p className="mt-1">
+                                {client.postcode}
+                              </p>
+                            )}
+                          </td>
+
+                          <td className="px-6 py-5 text-right">
+                            <Link
+                              href={`/clients/${client.id}`}
+                              className="font-medium text-slate-900 hover:underline"
+                            >
+                              View
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
+
         </div>
       </main>
-    </div>
-  );
-}
-
-function DashboardCard({
-  title,
-  value,
-  description,
-}: {
-  title: string;
-  value: number;
-  description: string;
-}) {
-  return (
-    <div className="rounded-2xl bg-white p-6 shadow-sm">
-      <p className="text-sm font-medium text-slate-500">
-        {title}
-      </p>
-
-      <p className="mt-3 text-4xl font-bold text-slate-900">
-        {value}
-      </p>
-
-      <p className="mt-2 text-sm text-slate-400">
-        {description}
-      </p>
     </div>
   );
 }
