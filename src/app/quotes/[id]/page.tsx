@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import { createClient } from "@/lib/supabase/server";
+import build from "next/dist/build";
 
 type QuotePageProps = {
   params: Promise<{
@@ -126,6 +127,7 @@ export default async function QuotePage({
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
+          {/* Header */}
           <div className="mb-8">
             <Link
               href="/quotes"
@@ -149,9 +151,18 @@ export default async function QuotePage({
                 </p>
               </div>
 
-              <StatusBadge
-                status={quote.status}
-              />
+              <div className="flex flex-wrap items-center gap-3">
+                <a
+                  href={`/quotes/${quote.id}/pdf`}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Download PDF
+                </a>
+
+                <StatusBadge
+                  status={quote.status}
+                />
+              </div>
             </div>
           </div>
 
@@ -348,7 +359,7 @@ export default async function QuotePage({
             </div>
           </section>
 
-          {/* Customer Message */}
+          {/* Customer Message / Terms */}
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">
@@ -382,6 +393,11 @@ export default async function QuotePage({
             <p className="mt-5 whitespace-pre-wrap text-sm leading-6 text-slate-700">
               {quote.internal_notes ||
                 "No internal notes recorded."}
+            </p>
+
+            <p className="mt-4 text-xs text-slate-400">
+              Internal notes are not included
+              on the customer PDF.
             </p>
           </section>
 
@@ -678,12 +694,11 @@ function formatVatRate(
     | string
     | null
 ) {
-  return Number(value ?? 20).toLocaleString(
-    "en-GB",
-    {
-      maximumFractionDigits: 2,
-    }
-  );
+  return Number(
+    value ?? 20
+  ).toLocaleString("en-GB", {
+    maximumFractionDigits: 2,
+  });
 }
 
 function formatDate(
