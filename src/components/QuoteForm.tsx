@@ -3,235 +3,298 @@
 import { useMemo, useState } from "react";
 
 type QuoteItem = {
-  id: number;
+  id: string;
   description: string;
-  quantity: string;
+  quantity: number;
   unit: string;
-  unit_price: string;
+  unit_price: number;
+  item_type: "Labour" | "Materials";
 };
 
+function createItem(
+  type: "Labour" | "Materials"
+): QuoteItem {
+  return {
+    id: crypto.randomUUID(),
+    description: "",
+    quantity: 1,
+    unit: type === "Labour" ? "item" : "item",
+    unit_price: 0,
+    item_type: type,
+  };
+}
+
 export default function QuoteFormItems() {
-  const [items, setItems] = useState<QuoteItem[]>([
-    {
-      id: 1,
-      description: "",
-      quantity: "1",
-      unit: "",
-      unit_price: "",
-    },
-  ]);
+  const [labourItems, setLabourItems] = useState<
+    QuoteItem[]
+  >([createItem("Labour")]);
 
-  const total = useMemo(() => {
-    return items.reduce((sum, item) => {
-      const quantity = Number(item.quantity) || 0;
-      const price = Number(item.unit_price) || 0;
+  const [materialItems, setMaterialItems] = useState<
+    QuoteItem[]
+  >([createItem("Materials")]);
 
-      return sum + quantity * price;
-    }, 0);
-  }, [items]);
+  const [vatEnabled, setVatEnabled] =
+    useState(false);
 
-  function updateItem(
-    id: number,
-    field: keyof Omit<QuoteItem, "id">,
-    value: string
-  ) {
-    setItems((current) =>
-      current.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              [field]: value,
-            }
-          : item
-      )
-    );
-  }
-
-  function addItem() {
-    setItems((current) => [
-      ...current,
-      {
-        id: Date.now(),
-        description: "",
-        quantity: "1",
-        unit: "",
-        unit_price: "",
-      },
-    ]);
-  }
-
-  function removeItem(id: number) {
-    setItems((current) => {
-      if (current.length === 1) {
-        return current;
-      }
-
-      return current.filter(
-        (item) => item.id !== id
-      );
-    });
-  }
-
-  const serialisedItems = JSON.stringify(
-    items.map((item) => ({
-      description: item.description,
-      quantity: Number(item.quantity) || 0,
-      unit: item.unit,
-      unit_price: Number(item.unit_price) || 0,
-    }))
+  const allItems = useMemo(
+    () => [...labourItems, ...materialItems],
+    [labourItems, materialItems]
   );
 
+  const subtotal = useMemo(() => {
+    return allItems.reduce((total, item) => {
+      return (
+        total +
+        Number(item.quantity || 0) *
+          Number(item.unit_price || 0)
+      );
+    }, 0);
+  }, [allItems]);
+
+  const vatAmount = vatEnabled
+    ? subtotal * 0.2
+    : 0;
+
+  const total = subtotal + vatAmount;
+
+  function updateItem(
+    type: "Labour" | "Materials",
+    id: string,
+    field:
+      | "description"
+      | "quantity"
+      | "unit"
+      | "unit_price",
+    value: string
+  ) {
+    const update = (items: QuoteItem[]) =>
+      items.map((item) => {
+        if (item.id !== id) {
+          return item;
+        }
+
+        if (
+          field === "quantity" ||
+          field === "unit_price"
+        ) {
+          return {
+            ...item,
+            [field]: Number(value),
+          };
+        }
+
+        return {
+          ...item,
+          [field]: value,
+        };
+      });
+
+    if (type === "Labour") {
+      setLabourItems(update(labourItems));
+    } else {
+      setMaterialItems(update(materialItems));
+    }
+  }
+
+  function addItem(
+    type: "Labour" | "Materials"
+  ) {
+    if (type === "Labour") {
+      setLabourItems([
+        ...labourItems,
+        createItem("Labour"),
+      ]);
+    } else {
+      setMaterialItems([
+        ...materialItems,
+        createItem("Materials"),
+      ]);
+    }
+  }
+
+  function removeItem(
+    type: "Labour" | "Materials",
+    id: string
+  ) {
+    if (type === "Labour") {
+      setLabourItems(
+        labourItems.filter(
+          (item) => item.id !== id
+        )
+      );
+    } else {
+      setMaterialItems(
+        materialItems.filter(
+          (item) => item.id !== id
+        )
+      );
+    }
+  }
+
   return (
-    <div>
+    <>
       <input
         type="hidden"
         name="items"
-        value={serialisedItems}
+        value={JSON.stringify(allItems)}
       />
 
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900">
-            Quote Items
-          </h2>
+      <input
+        type="hidden"
+        name="vat_enabled"
+        value={vatEnabled ? "true" : "false"}
+      />
 
-          <p className="mt-1 text-sm text-slate-500">
-            Add the work and materials included in this quote.
-          </p>
+      {/* Labour */}
+      <section className="rounded-2xl bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-6 py-5">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900">
+              Labour
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Add the labour involved in carrying
+              out the work.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => addItem("Labour")}
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            + Add Labour Item
+          </button>
         </div>
 
-        <button
-          type="button"
-          onClick={addItem}
-          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-        >
-          + Add Item
-        </button>
-      </div>
+        <div className="divide-y divide-slate-100">
+          {labourItems.length === 0 ? (
+            <div className="p-6 text-sm text-slate-500">
+              No labour items added.
+            </div>
+          ) : (
+            labourItems.map((item, index) => (
+              <QuoteItemRow
+                key={item.id}
+                item={item}
+                index={index}
+                onChange={updateItem}
+                onRemove={removeItem}
+              />
+            ))
+          )}
+        </div>
+      </section>
 
-      <div className="space-y-4">
-        {items.map((item, index) => (
-          <div
-            key={item.id}
-            className="rounded-xl border border-slate-200 p-4"
+      {/* Materials */}
+      <section className="mt-8 rounded-2xl bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-6 py-5">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900">
+              Materials
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Add materials and products required
+              for the work.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              addItem("Materials")
+            }
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
-            <div className="mb-4 flex items-center justify-between">
-              <p className="text-sm font-semibold text-slate-700">
-                Item {index + 1}
+            + Add Material Item
+          </button>
+        </div>
+
+        <div className="divide-y divide-slate-100">
+          {materialItems.length === 0 ? (
+            <div className="p-6 text-sm text-slate-500">
+              No material items added.
+            </div>
+          ) : (
+            materialItems.map(
+              (item, index) => (
+                <QuoteItemRow
+                  key={item.id}
+                  item={item}
+                  index={index}
+                  onChange={updateItem}
+                  onRemove={removeItem}
+                />
+              )
+            )
+          )}
+        </div>
+      </section>
+
+      {/* Totals */}
+      <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+        <div className="ml-auto max-w-md">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+            <span className="text-sm font-medium text-slate-600">
+              Subtotal
+            </span>
+
+            <span className="text-lg font-semibold text-slate-900">
+              {formatCurrency(subtotal)}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between border-b border-slate-200 py-5">
+            <div>
+              <p className="font-semibold text-slate-900">
+                Add 20% VAT
               </p>
 
-              {items.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removeItem(item.id)}
-                  className="text-sm font-medium text-red-600 hover:underline"
-                >
-                  Remove
-                </button>
-              )}
+              <p className="mt-1 text-xs text-slate-500">
+                Turn this on when VAT should be
+                added to the quotation.
+              </p>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-12">
-              <div className="md:col-span-6">
-                <label className="mb-2 block text-sm font-medium text-slate-700">
-                  Description
-                </label>
-
-                <input
-                  type="text"
-                  value={item.description}
-                  onChange={(event) =>
-                    updateItem(
-                      item.id,
-                      "description",
-                      event.target.value
-                    )
-                  }
-                  placeholder="e.g. Remove defective plaster"
-                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="mb-2 block text-sm font-medium text-slate-700">
-                  Qty
-                </label>
-
-                <input
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={item.quantity}
-                  onChange={(event) =>
-                    updateItem(
-                      item.id,
-                      "quantity",
-                      event.target.value
-                    )
-                  }
-                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="mb-2 block text-sm font-medium text-slate-700">
-                  Unit
-                </label>
-
-                <input
-                  type="text"
-                  value={item.unit}
-                  onChange={(event) =>
-                    updateItem(
-                      item.id,
-                      "unit",
-                      event.target.value
-                    )
-                  }
-                  placeholder="m²"
-                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="mb-2 block text-sm font-medium text-slate-700">
-                  Unit Price
-                </label>
-
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={item.unit_price}
-                  onChange={(event) =>
-                    updateItem(
-                      item.id,
-                      "unit_price",
-                      event.target.value
-                    )
-                  }
-                  placeholder="0.00"
-                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900"
-                />
-              </div>
-            </div>
-
-            <div className="mt-3 text-right text-sm font-medium text-slate-600">
-              Line total:{" "}
-              {formatCurrency(
-                (Number(item.quantity) || 0) *
-                  (Number(item.unit_price) || 0)
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setVatEnabled(!vatEnabled)
+              }
+              className={`relative h-7 w-12 rounded-full transition ${
+                vatEnabled
+                  ? "bg-slate-900"
+                  : "bg-slate-300"
+              }`}
+              aria-pressed={vatEnabled}
+            >
+              <span
+                className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${
+                  vatEnabled
+                    ? "left-6"
+                    : "left-1"
+                }`}
+              />
+            </button>
           </div>
-        ))}
-      </div>
 
-      <div className="mt-6 flex justify-end">
-        <div className="w-full max-w-sm rounded-xl bg-slate-50 p-5">
-          <div className="flex items-center justify-between">
-            <span className="font-medium text-slate-600">
-              Quote Total
+          {vatEnabled && (
+            <div className="flex items-center justify-between border-b border-slate-200 py-4">
+              <span className="text-sm font-medium text-slate-600">
+                VAT (20%)
+              </span>
+
+              <span className="font-semibold text-slate-900">
+                {formatCurrency(vatAmount)}
+              </span>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-5">
+            <span className="text-lg font-bold text-slate-900">
+              Total
             </span>
 
             <span className="text-2xl font-bold text-slate-900">
@@ -239,6 +302,160 @@ export default function QuoteFormItems() {
             </span>
           </div>
         </div>
+      </section>
+    </>
+  );
+}
+
+function QuoteItemRow({
+  item,
+  index,
+  onChange,
+  onRemove,
+}: {
+  item: QuoteItem;
+  index: number;
+  onChange: (
+    type: "Labour" | "Materials",
+    id: string,
+    field:
+      | "description"
+      | "quantity"
+      | "unit"
+      | "unit_price",
+    value: string
+  ) => void;
+  onRemove: (
+    type: "Labour" | "Materials",
+    id: string
+  ) => void;
+}) {
+  const lineTotal =
+    Number(item.quantity || 0) *
+    Number(item.unit_price || 0);
+
+  return (
+    <div className="p-6">
+      <div className="grid gap-4 xl:grid-cols-[1fr_110px_120px_150px_120px_50px] xl:items-end">
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-700">
+            Item
+          </label>
+
+          <input
+            type="text"
+            value={item.description}
+            onChange={(event) =>
+              onChange(
+                item.item_type,
+                item.id,
+                "description",
+                event.target.value
+              )
+            }
+            placeholder={
+              item.item_type === "Labour"
+                ? `Labour item ${index + 1}`
+                : `Material item ${index + 1}`
+            }
+            className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-700">
+            Qty
+          </label>
+
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={item.quantity}
+            onChange={(event) =>
+              onChange(
+                item.item_type,
+                item.id,
+                "quantity",
+                event.target.value
+              )
+            }
+            className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-700">
+            Unit
+          </label>
+
+          <input
+            type="text"
+            value={item.unit}
+            onChange={(event) =>
+              onChange(
+                item.item_type,
+                item.id,
+                "unit",
+                event.target.value
+              )
+            }
+            placeholder="item"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-700">
+            Unit Price
+          </label>
+
+          <div className="relative">
+            <span className="absolute left-3 top-2.5 text-slate-500">
+              £
+            </span>
+
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={item.unit_price}
+              onChange={(event) =>
+                onChange(
+                  item.item_type,
+                  item.id,
+                  "unit_price",
+                  event.target.value
+                )
+              }
+              className="w-full rounded-lg border border-slate-300 py-2.5 pl-7 pr-3 text-slate-900 outline-none focus:border-slate-500"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-700">
+            Total
+          </label>
+
+          <div className="py-2.5 font-semibold text-slate-900">
+            {formatCurrency(lineTotal)}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() =>
+            onRemove(
+              item.item_type,
+              item.id
+            )
+          }
+          className="mb-1 flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 text-lg text-slate-500 hover:bg-red-50 hover:text-red-600"
+          title="Remove item"
+        >
+          ×
+        </button>
       </div>
     </div>
   );

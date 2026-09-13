@@ -4,64 +4,79 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
-type QuoteItemInput = {
-  description: string;
-  quantity: number;
-  unit: string;
-  unit_price: number;
+type RawQuoteItem = {
+  description?: string;
+  quantity?: number | string;
+  unit?: string;
+  unit_price?: number | string;
+  item_type?: string;
 };
 
-export async function addQuote(formData: FormData) {
+export async function addQuote(
+  formData: FormData
+) {
   const supabase = await createClient();
 
+  let clientId = String(
+    formData.get("client_id") || ""
+  ).trim();
+
   const jobId =
-    String(formData.get("job_id") ?? "").trim() || null;
+    String(
+      formData.get("job_id") || ""
+    ).trim() || null;
 
-  let clientId =
-    String(formData.get("client_id") ?? "").trim() || null;
+  const title = String(
+    formData.get("title") || ""
+  ).trim();
 
-  const title =
-    String(formData.get("title") ?? "").trim();
+  const description = String(
+    formData.get("description") || ""
+  ).trim();
 
-  const quoteDate =
-    String(formData.get("quote_date") ?? "").trim();
+  const quoteDate = String(
+    formData.get("quote_date") || ""
+  ).trim();
 
   const validUntil =
-    String(formData.get("valid_until") ?? "").trim() || null;
+    String(
+      formData.get("valid_until") || ""
+    ).trim() || null;
 
   const customerMessage =
-    String(formData.get("customer_message") ?? "").trim() || null;
+    String(
+      formData.get("customer_message") ||
+        ""
+    ).trim() || null;
 
   const terms =
-    String(formData.get("terms") ?? "").trim() || null;
+    String(
+      formData.get("terms") || ""
+    ).trim() || null;
 
   const internalNotes =
-    String(formData.get("internal_notes") ?? "").trim() || null;
+    String(
+      formData.get("internal_notes") ||
+        ""
+    ).trim() || null;
 
-  const rawItems =
-    String(formData.get("items") ?? "[]");
-
-  if (!title || !quoteDate) {
-    redirect(
-      `/quotes/new?job=${jobId ?? ""}&error=Quote%20title%20and%20date%20are%20required`
-    );
-  }
+  const vatEnabled =
+    String(
+      formData.get("vat_enabled") ||
+        "false"
+    ) === "true";
 
   if (jobId) {
-    const { data: job, error: jobError } = await supabase
-      .from("jobs")
-      .select(`
-        id,
-        client_id
-      `)
-      .eq("id", jobId)
-      .single();
+    const { data: job, error: jobError } =
+      await supabase
+        .from("jobs")
+        .select("id, client_id")
+        .eq("id", jobId)
+        .single();
 
     if (jobError || !job) {
-      console.error(jobError);
-
       redirect(
-        `/quotes/new?error=Unable%20to%20find%20the%20selected%20job`
+        "/quotes/new?error=Unable%20to%20find%20the%20selected%20job"
       );
     }
 
@@ -70,106 +85,148 @@ export async function addQuote(formData: FormData) {
 
   if (!clientId) {
     redirect(
-      `/quotes/new?job=${jobId ?? ""}&error=A%20client%20is%20required`
+      "/quotes/new?error=Please%20select%20a%20client"
     );
   }
 
-  let parsedItems: QuoteItemInput[] = [];
-
-  try {
-    const incoming = JSON.parse(rawItems);
-
-    if (!Array.isArray(incoming)) {
-      throw new Error("Quote items must be an array.");
-    }
-
-    parsedItems = incoming
-      .map((item) => ({
-        description: String(item.description ?? "").trim(),
-        quantity: Number(item.quantity ?? 0),
-        unit: String(item.unit ?? "").trim(),
-        unit_price: Number(item.unit_price ?? 0),
-      }))
-      .filter((item) => item.description);
-  } catch (error) {
-    console.error(error);
-
+  if (!title) {
     redirect(
-      `/quotes/new?job=${jobId ?? ""}&error=Unable%20to%20read%20quote%20items`
+      "/quotes/new?error=Please%20enter%20a%20quote%20title"
     );
   }
 
-  if (parsedItems.length === 0) {
-    redirect(
-      `/quotes/new?job=${jobId ?? ""}&error=Please%20add%20at%20least%20one%20quote%20item`
-    );
-  }
-
-  const invalidItem = parsedItems.some(
-    (item) =>
-      !Number.isFinite(item.quantity) ||
-      item.quantity <= 0 ||
-      !Number.isFinite(item.unit_price) ||
-      item.unit_price < 0
+  const rawItems = String(
+    formData.get("items") || "[]"
   );
 
-  if (invalidItem) {
+  let parsedItems: RawQuoteItem[] = [];
+
+  try {
+    parsedItems = JSON.parse(rawItems);
+  } catch {
     redirect(
-      `/quotes/new?job=${jobId ?? ""}&error=Quote%20items%20contain%20invalid%20values`
+      "/quotes/new?error=Unable%20to%20read%20quote%20items"
     );
   }
 
-  const amount = parsedItems.reduce(
+  const items = parsedItems
+    .map((item, index) => {
+      const quantity = Number(
+        item.quantity ?? 0
+      );
+
+      const unitPrice = Number(
+        item.unit_price ?? 0
+      );
+
+      const itemType =
+        item.item_type === "Materials"
+          ? "Materials"
+          : "Labour";
+
+      return {
+        description: String(
+          item.description || ""
+        ).trim(),
+        quantity:
+          Number.isFinite(quantity) &&
+          quantity > 0
+            ? quantity
+            : 1,
+        unit:
+          String(item.unit || "").trim() ||
+          "item",
+        unit_price:
+          Number.isFinite(unitPrice) &&
+          unitPrice >= 0
+            ? unitPrice
+            : 0,
+        item_type: itemType,
+        sort_order: index,
+      };
+    })
+    .filter(
+      (item) =>
+        item.description.length > 0
+    );
+
+  if (items.length === 0) {
+    redirect(
+      "/quotes/new?error=Please%20add%20at%20least%20one%20labour%20or%20material%20item"
+    );
+  }
+
+  const subtotal = items.reduce(
     (total, item) =>
-      total + item.quantity * item.unit_price,
+      total +
+      item.quantity * item.unit_price,
     0
   );
 
-  const { data: quote, error: quoteError } = await supabase
-    .from("quotes")
-    .insert({
-      client_id: clientId,
-      job_id: jobId,
-      title,
-      status: "Draft",
-      quote_date: quoteDate,
-      valid_until: validUntil,
-      amount,
-      customer_message: customerMessage,
-      terms,
-      internal_notes: internalNotes,
-    })
-    .select(`
-      id,
-      quote_number
-    `)
-    .single();
+  const vatRate = 20;
+
+  const vatAmount = vatEnabled
+    ? subtotal * (vatRate / 100)
+    : 0;
+
+  const total = subtotal + vatAmount;
+
+  const { data: quote, error: quoteError } =
+    await supabase
+      .from("quotes")
+      .insert({
+        client_id: clientId,
+        job_id: jobId,
+        title,
+        description: description || null,
+        status: "Draft",
+        quote_date: quoteDate,
+        valid_until: validUntil,
+        subtotal,
+        vat_enabled: vatEnabled,
+        vat_rate: vatRate,
+        vat_amount: vatAmount,
+        amount: total,
+        customer_message: customerMessage,
+        terms,
+        internal_notes: internalNotes,
+      })
+      .select("id")
+      .single();
 
   if (quoteError || !quote) {
-    console.error("Quote insert error:", quoteError);
+    console.error(
+      "Quote creation error:",
+      quoteError
+    );
 
     redirect(
-      `/quotes/new?job=${jobId ?? ""}&error=Unable%20to%20save%20quote`
+      "/quotes/new?error=Unable%20to%20create%20quote"
     );
   }
 
-  const quoteItems = parsedItems.map(
-    (item, index) => ({
+  const quoteItems = items.map(
+    (item) => ({
       quote_id: quote.id,
       description: item.description,
       quantity: item.quantity,
-      unit: item.unit || null,
+      unit: item.unit,
       unit_price: item.unit_price,
-      sort_order: index,
+      item_type: item.item_type,
+      sort_order: item.sort_order,
     })
   );
 
-  const { error: itemError } = await supabase
-    .from("quote_items")
-    .insert(quoteItems);
+  const { error: itemsError } =
+    await supabase
+      .from("quote_items")
+      .insert(quoteItems);
 
-  if (itemError) {
-    console.error("Quote item insert error:", itemError);
+  if (itemsError) {
+    console.error(
+      "Quote item creation error:",
+      itemsError
+    );
 
     await supabase
       .from("quotes")
@@ -177,18 +234,23 @@ export async function addQuote(formData: FormData) {
       .eq("id", quote.id);
 
     redirect(
-      `/quotes/new?job=${jobId ?? ""}&error=Unable%20to%20save%20quote%20items`
+      "/quotes/new?error=Unable%20to%20save%20quote%20items"
     );
   }
 
-  revalidatePath("/quotes");
   revalidatePath("/");
+  revalidatePath("/quotes");
+  revalidatePath(
+    `/quotes/${quote.id}`
+  );
 
   if (jobId) {
     revalidatePath(`/jobs/${jobId}`);
   }
 
-  revalidatePath(`/clients/${clientId}`);
+  revalidatePath(
+    `/clients/${clientId}`
+  );
 
   redirect(`/quotes/${quote.id}`);
 }

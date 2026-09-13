@@ -16,56 +16,62 @@ export default async function QuotePage({
 
   const supabase = await createClient();
 
-  const { data: quote, error } = await supabase
-    .from("quotes")
-    .select(`
-      id,
-      quote_number,
-      client_id,
-      job_id,
-      title,
-      status,
-      quote_date,
-      valid_until,
-      amount,
-      customer_message,
-      terms,
-      internal_notes,
-      sent_to,
-      sent_at,
-      viewed_at,
-      accepted_at,
-      declined_at,
-      created_at,
-      clients (
+  const { data: quote, error } =
+    await supabase
+      .from("quotes")
+      .select(`
         id,
-        display_name,
-        first_name,
-        last_name,
-        email,
-        phone,
-        address_line_1,
-        address_line_2,
-        town,
-        county,
-        postcode
-      ),
-      jobs (
-        id,
-        job_number,
+        quote_number,
+        client_id,
+        job_id,
         title,
-        job_type,
-        status
-      )
-    `)
-    .eq("id", id)
-    .single();
+        description,
+        status,
+        quote_date,
+        valid_until,
+        subtotal,
+        vat_enabled,
+        vat_rate,
+        vat_amount,
+        amount,
+        customer_message,
+        terms,
+        internal_notes,
+        sent_to,
+        sent_at,
+        viewed_at,
+        accepted_at,
+        declined_at,
+        created_at,
+        clients (
+          id,
+          display_name,
+          first_name,
+          last_name,
+          email,
+          phone,
+          address_line_1,
+          address_line_2,
+          town,
+          county,
+          postcode
+        ),
+        jobs (
+          id,
+          job_number,
+          title,
+          job_type,
+          status
+        )
+      `)
+      .eq("id", id)
+      .single();
 
   if (error || !quote) {
     notFound();
   }
 
-  const { data: items, error: itemsError } =
+  const { data: items } =
     await supabase
       .from("quote_items")
       .select(`
@@ -74,6 +80,7 @@ export default async function QuotePage({
         quantity,
         unit,
         unit_price,
+        item_type,
         sort_order
       `)
       .eq("quote_id", id)
@@ -81,17 +88,15 @@ export default async function QuotePage({
         ascending: true,
       });
 
-  if (itemsError) {
-    console.error(itemsError);
-  }
+  const clientData =
+    Array.isArray(quote.clients)
+      ? quote.clients[0]
+      : quote.clients;
 
-  const clientData = Array.isArray(quote.clients)
-    ? quote.clients[0]
-    : quote.clients;
-
-  const jobData = Array.isArray(quote.jobs)
-    ? quote.jobs[0]
-    : quote.jobs;
+  const jobData =
+    Array.isArray(quote.jobs)
+      ? quote.jobs[0]
+      : quote.jobs;
 
   const clientName =
     clientData?.display_name ||
@@ -103,13 +108,24 @@ export default async function QuotePage({
       .join(" ") ||
     "Unknown client";
 
+  const labourItems =
+    items?.filter(
+      (item) =>
+        item.item_type !== "Materials"
+    ) ?? [];
+
+  const materialItems =
+    items?.filter(
+      (item) =>
+        item.item_type === "Materials"
+    ) ?? [];
+
   return (
     <div className="flex min-h-screen bg-slate-100">
       <Sidebar />
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
-          {/* Header */}
           <div className="mb-8">
             <Link
               href="/quotes"
@@ -125,7 +141,7 @@ export default async function QuotePage({
                 </p>
 
                 <h1 className="mt-1 text-3xl font-bold text-slate-900">
-                  {quote.title || "Untitled Quote"}
+                  {quote.title}
                 </h1>
 
                 <p className="mt-2 text-slate-500">
@@ -133,25 +149,33 @@ export default async function QuotePage({
                 </p>
               </div>
 
-              <StatusBadge status={quote.status} />
+              <StatusBadge
+                status={quote.status}
+              />
             </div>
           </div>
 
-          {/* Summary cards */}
-          <div className="mb-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+          {/* Overview */}
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             <SummaryCard
-              title="Quote Total"
-              value={formatCurrency(quote.amount)}
+              title="Total"
+              value={formatCurrency(
+                quote.amount
+              )}
             />
 
             <SummaryCard
               title="Quote Date"
-              value={formatDate(quote.quote_date)}
+              value={formatDate(
+                quote.quote_date
+              )}
             />
 
             <SummaryCard
               title="Valid Until"
-              value={formatDate(quote.valid_until)}
+              value={formatDate(
+                quote.valid_until
+              )}
             />
 
             <SummaryCard
@@ -160,8 +184,30 @@ export default async function QuotePage({
             />
           </div>
 
-          {/* Client and job */}
-          <div className="grid gap-6 lg:grid-cols-2">
+          {/* Title / Description */}
+          <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Title
+            </p>
+
+            <h2 className="mt-2 text-2xl font-bold text-slate-900">
+              {quote.title}
+            </h2>
+
+            <div className="mt-6 border-t border-slate-200 pt-6">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Description / Scope of Works
+              </p>
+
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                {quote.description ||
+                  "No description recorded."}
+              </p>
+            </div>
+          </section>
+
+          {/* Client & Job */}
+          <div className="mt-8 grid gap-6 lg:grid-cols-2">
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-slate-900">
@@ -193,46 +239,6 @@ export default async function QuotePage({
                   label="Phone"
                   value={clientData?.phone}
                 />
-
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    Address
-                  </p>
-
-                  <div className="mt-1 text-sm leading-6 text-slate-700">
-                    {clientData?.address_line_1 ? (
-                      <>
-                        <p>
-                          {clientData.address_line_1}
-                        </p>
-
-                        {clientData.address_line_2 && (
-                          <p>
-                            {clientData.address_line_2}
-                          </p>
-                        )}
-
-                        {clientData.town && (
-                          <p>{clientData.town}</p>
-                        )}
-
-                        {clientData.county && (
-                          <p>{clientData.county}</p>
-                        )}
-
-                        {clientData.postcode && (
-                          <p className="font-medium">
-                            {clientData.postcode}
-                          </p>
-                        )}
-                      </>
-                    ) : (
-                      <p className="text-slate-400">
-                        No address recorded
-                      </p>
-                    )}
-                  </div>
-                </div>
               </div>
             </section>
 
@@ -256,7 +262,9 @@ export default async function QuotePage({
                 <div className="mt-5 space-y-4">
                   <DetailRow
                     label="Job Number"
-                    value={jobData.job_number}
+                    value={
+                      jobData.job_number
+                    }
                   />
 
                   <DetailRow
@@ -266,7 +274,9 @@ export default async function QuotePage({
 
                   <DetailRow
                     label="Job Type"
-                    value={jobData.job_type}
+                    value={
+                      jobData.job_type
+                    }
                   />
 
                   <DetailRow
@@ -275,107 +285,70 @@ export default async function QuotePage({
                   />
                 </div>
               ) : (
-                <p className="mt-5 text-sm text-slate-400">
-                  This quote is not linked to a job.
+                <p className="mt-5 text-sm text-slate-500">
+                  This quote is not linked
+                  to a job.
                 </p>
               )}
             </section>
           </div>
 
-          {/* Quote items */}
-          <section className="mt-8 overflow-hidden rounded-2xl bg-white shadow-sm">
-            <div className="border-b border-slate-200 px-6 py-5">
-              <h2 className="text-xl font-semibold text-slate-900">
-                Quote Items
-              </h2>
+          {/* Labour */}
+          <QuoteSection
+            title="Labour"
+            description="Labour included within this quotation."
+            items={labourItems}
+          />
 
-              <p className="mt-1 text-sm text-slate-500">
-                Work and materials included in this quotation.
-              </p>
+          {/* Materials */}
+          <QuoteSection
+            title="Materials"
+            description="Materials included within this quotation."
+            items={materialItems}
+          />
+
+          {/* Totals */}
+          <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+            <div className="ml-auto max-w-md">
+              <TotalRow
+                label="Subtotal"
+                value={formatCurrency(
+                  quote.subtotal
+                )}
+              />
+
+              {quote.vat_enabled && (
+                <TotalRow
+                  label={`VAT (${formatVatRate(
+                    quote.vat_rate
+                  )}%)`}
+                  value={formatCurrency(
+                    quote.vat_amount
+                  )}
+                />
+              )}
+
+              <div className="mt-4 flex items-center justify-between border-t-2 border-slate-900 pt-5">
+                <span className="text-xl font-bold text-slate-900">
+                  Total
+                </span>
+
+                <span className="text-2xl font-bold text-slate-900">
+                  {formatCurrency(
+                    quote.amount
+                  )}
+                </span>
+              </div>
+
+              {!quote.vat_enabled && (
+                <p className="mt-3 text-right text-xs text-slate-500">
+                  VAT not added
+                </p>
+              )}
             </div>
-
-            {!items || items.length === 0 ? (
-              <div className="p-10 text-center text-sm text-slate-500">
-                No quote items recorded.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <Heading>Description</Heading>
-                      <Heading right>
-                        Quantity
-                      </Heading>
-                      <Heading>Unit</Heading>
-                      <Heading right>
-                        Unit Price
-                      </Heading>
-                      <Heading right>
-                        Total
-                      </Heading>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-slate-100">
-                    {items.map((item) => {
-                      const quantity =
-                        Number(item.quantity) || 0;
-
-                      const unitPrice =
-                        Number(item.unit_price) || 0;
-
-                      const lineTotal =
-                        quantity * unitPrice;
-
-                      return (
-                        <tr key={item.id}>
-                          <td className="px-6 py-5 text-sm text-slate-700">
-                            {item.description}
-                          </td>
-
-                          <td className="px-6 py-5 text-right text-sm text-slate-600">
-                            {formatQuantity(quantity)}
-                          </td>
-
-                          <td className="px-6 py-5 text-sm text-slate-600">
-                            {item.unit || "—"}
-                          </td>
-
-                          <td className="px-6 py-5 text-right text-sm text-slate-600">
-                            {formatCurrency(unitPrice)}
-                          </td>
-
-                          <td className="px-6 py-5 text-right text-sm font-semibold text-slate-900">
-                            {formatCurrency(lineTotal)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-
-                  <tfoot className="border-t-2 border-slate-200 bg-slate-50">
-                    <tr>
-                      <td
-                        colSpan={4}
-                        className="px-6 py-5 text-right font-semibold text-slate-700"
-                      >
-                        Quote Total
-                      </td>
-
-                      <td className="px-6 py-5 text-right text-xl font-bold text-slate-900">
-                        {formatCurrency(
-                          quote.amount
-                        )}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
           </section>
 
-          {/* Customer message and terms */}
+          {/* Customer Message */}
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">
@@ -412,52 +385,178 @@ export default async function QuotePage({
             </p>
           </section>
 
-          {/* Email status */}
+          {/* Activity */}
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">
               Quote Activity
             </h2>
 
             <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-              <ActivityItem
+              <DetailRow
                 label="Sent To"
-                value={quote.sent_to || "Not sent"}
+                value={
+                  quote.sent_to ||
+                  "Not sent"
+                }
               />
 
-              <ActivityItem
+              <DetailRow
                 label="Sent"
                 value={formatDateTime(
                   quote.sent_at
                 )}
               />
 
-              <ActivityItem
+              <DetailRow
                 label="Viewed"
                 value={formatDateTime(
                   quote.viewed_at
                 )}
               />
 
-              <ActivityItem
-                label={
-                  quote.status === "Declined"
-                    ? "Declined"
-                    : "Accepted"
-                }
+              <DetailRow
+                label="Accepted"
                 value={formatDateTime(
-                  quote.status === "Declined"
-                    ? quote.declined_at
-                    : quote.accepted_at
+                  quote.accepted_at
                 )}
               />
             </div>
-
-            <p className="mt-6 text-sm text-slate-500">
-              PDF generation and direct email sending will be added here next.
-            </p>
           </section>
         </div>
       </main>
+    </div>
+  );
+}
+
+function QuoteSection({
+  title,
+  description,
+  items,
+}: {
+  title: string;
+  description: string;
+  items: {
+    id: string;
+    description: string;
+    quantity: number | string;
+    unit: string | null;
+    unit_price: number | string;
+  }[];
+}) {
+  return (
+    <section className="mt-8 overflow-hidden rounded-2xl bg-white shadow-sm">
+      <div className="border-b border-slate-200 px-6 py-5">
+        <h2 className="text-xl font-semibold text-slate-900">
+          {title}
+        </h2>
+
+        <p className="mt-1 text-sm text-slate-500">
+          {description}
+        </p>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="p-8 text-sm text-slate-500">
+          No {title.toLowerCase()} items
+          recorded.
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-slate-50">
+              <tr>
+                <Heading>
+                  Item
+                </Heading>
+
+                <Heading right>
+                  Qty
+                </Heading>
+
+                <Heading>
+                  Unit
+                </Heading>
+
+                <Heading right>
+                  Unit Price
+                </Heading>
+
+                <Heading right>
+                  Total
+                </Heading>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-slate-100">
+              {items.map((item) => {
+                const quantity =
+                  Number(item.quantity);
+
+                const unitPrice =
+                  Number(
+                    item.unit_price
+                  );
+
+                const total =
+                  quantity * unitPrice;
+
+                return (
+                  <tr key={item.id}>
+                    <td className="px-6 py-5 text-sm font-medium text-slate-800">
+                      {
+                        item.description
+                      }
+                    </td>
+
+                    <td className="px-6 py-5 text-right text-sm text-slate-600">
+                      {formatQuantity(
+                        quantity
+                      )}
+                    </td>
+
+                    <td className="px-6 py-5 text-sm text-slate-600">
+                      {item.unit ||
+                        "—"}
+                    </td>
+
+                    <td className="px-6 py-5 text-right text-sm text-slate-600">
+                      {formatCurrency(
+                        unitPrice
+                      )}
+                    </td>
+
+                    <td className="px-6 py-5 text-right text-sm font-semibold text-slate-900">
+                      {formatCurrency(
+                        total
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TotalRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center justify-between border-b border-slate-200 py-4">
+      <span className="font-medium text-slate-600">
+        {label}
+      </span>
+
+      <span className="font-semibold text-slate-900">
+        {value}
+      </span>
     </div>
   );
 }
@@ -502,26 +601,6 @@ function DetailRow({
   );
 }
 
-function ActivityItem({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div>
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-        {label}
-      </p>
-
-      <p className="mt-1 text-sm font-medium text-slate-700">
-        {value}
-      </p>
-    </div>
-  );
-}
-
 function StatusBadge({
   status,
 }: {
@@ -557,7 +636,9 @@ function Heading({
   return (
     <th
       className={`px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500 ${
-        right ? "text-right" : "text-left"
+        right
+          ? "text-right"
+          : "text-left"
       }`}
     >
       {children}
@@ -566,18 +647,43 @@ function Heading({
 }
 
 function formatCurrency(
-  value: number | string | null
+  value:
+    | number
+    | string
+    | null
 ) {
-  return new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "GBP",
-  }).format(Number(value ?? 0));
+  return new Intl.NumberFormat(
+    "en-GB",
+    {
+      style: "currency",
+      currency: "GBP",
+    }
+  ).format(Number(value ?? 0));
 }
 
-function formatQuantity(value: number) {
-  return new Intl.NumberFormat("en-GB", {
-    maximumFractionDigits: 2,
-  }).format(value);
+function formatQuantity(
+  value: number
+) {
+  return new Intl.NumberFormat(
+    "en-GB",
+    {
+      maximumFractionDigits: 2,
+    }
+  ).format(value);
+}
+
+function formatVatRate(
+  value:
+    | number
+    | string
+    | null
+) {
+  return Number(value ?? 20).toLocaleString(
+    "en-GB",
+    {
+      maximumFractionDigits: 2,
+    }
+  );
 }
 
 function formatDate(
@@ -593,13 +699,20 @@ function formatDate(
       .split("-")
       .map(Number);
 
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }
+  ).format(
     new Date(
-      Date.UTC(year, month - 1, day)
+      Date.UTC(
+        year,
+        month - 1,
+        day
+      )
     )
   );
 }
@@ -611,12 +724,15 @@ function formatDateTime(
     return "—";
   }
 
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/London",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      timeZone: "Europe/London",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }
+  ).format(new Date(value));
 }
