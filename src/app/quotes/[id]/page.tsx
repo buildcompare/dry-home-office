@@ -1,21 +1,30 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
+import EmailQuoteButton from "@/components/EmailQuoteButton";
 import { createClient } from "@/lib/supabase/server";
-import build from "next/dist/build";
 
 type QuotePageProps = {
   params: Promise<{
     id: string;
   }>;
+
+  searchParams: Promise<{
+    sent?: string;
+    error?: string;
+    warning?: string;
+  }>;
 };
 
 export default async function QuotePage({
   params,
+  searchParams,
 }: QuotePageProps) {
   const { id } = await params;
+  const query = await searchParams;
 
-  const supabase = await createClient();
+  const supabase =
+    await createClient();
 
   const { data: quote, error } =
     await supabase
@@ -127,6 +136,27 @@ export default async function QuotePage({
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
+          {/* Notifications */}
+          {query.sent === "1" && (
+            <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
+              Quote emailed successfully to{" "}
+              {quote.sent_to ||
+                clientData?.email}.
+            </div>
+          )}
+
+          {query.error && (
+            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm font-medium text-red-700">
+              {query.error}
+            </div>
+          )}
+
+          {query.warning && (
+            <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-medium text-amber-800">
+              {query.warning}
+            </div>
+          )}
+
           {/* Header */}
           <div className="mb-8">
             <Link
@@ -159,11 +189,29 @@ export default async function QuotePage({
                   Download PDF
                 </a>
 
+                <EmailQuoteButton
+                  quoteId={quote.id}
+                  recipient={
+                    clientData?.email ||
+                    null
+                  }
+                  status={quote.status}
+                />
+
                 <StatusBadge
                   status={quote.status}
                 />
               </div>
             </div>
+
+            {!clientData?.email && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                This client does not have an email
+                address saved. Add an email to the
+                client record before emailing the
+                quote.
+              </div>
+            )}
           </div>
 
           {/* Overview */}
@@ -243,12 +291,16 @@ export default async function QuotePage({
 
                 <DetailRow
                   label="Email"
-                  value={clientData?.email}
+                  value={
+                    clientData?.email
+                  }
                 />
 
                 <DetailRow
                   label="Phone"
-                  value={clientData?.phone}
+                  value={
+                    clientData?.phone
+                  }
                 />
               </div>
             </section>
@@ -292,13 +344,15 @@ export default async function QuotePage({
 
                   <DetailRow
                     label="Job Status"
-                    value={jobData.status}
+                    value={
+                      jobData.status
+                    }
                   />
                 </div>
               ) : (
                 <p className="mt-5 text-sm text-slate-500">
-                  This quote is not linked
-                  to a job.
+                  This quote is not linked to a
+                  job.
                 </p>
               )}
             </section>
@@ -384,7 +438,7 @@ export default async function QuotePage({
             </section>
           </div>
 
-          {/* Internal notes */}
+          {/* Internal Notes */}
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">
               Internal Notes
@@ -396,8 +450,8 @@ export default async function QuotePage({
             </p>
 
             <p className="mt-4 text-xs text-slate-400">
-              Internal notes are not included
-              on the customer PDF.
+              Internal notes are not included on
+              the customer PDF or email.
             </p>
           </section>
 
@@ -431,9 +485,17 @@ export default async function QuotePage({
               />
 
               <DetailRow
-                label="Accepted"
+                label={
+                  quote.status ===
+                  "Declined"
+                    ? "Declined"
+                    : "Accepted"
+                }
                 value={formatDateTime(
-                  quote.accepted_at
+                  quote.status ===
+                    "Declined"
+                    ? quote.declined_at
+                    : quote.accepted_at
                 )}
               />
             </div>
@@ -506,7 +568,9 @@ function QuoteSection({
             <tbody className="divide-y divide-slate-100">
               {items.map((item) => {
                 const quantity =
-                  Number(item.quantity);
+                  Number(
+                    item.quantity
+                  );
 
                 const unitPrice =
                   Number(
@@ -514,7 +578,8 @@ function QuoteSection({
                   );
 
                 const total =
-                  quantity * unitPrice;
+                  quantity *
+                  unitPrice;
 
                 return (
                   <tr key={item.id}>
@@ -611,7 +676,8 @@ function DetailRow({
       </p>
 
       <p className="mt-1 text-sm text-slate-700">
-        {value || "Not recorded"}
+        {value ||
+          "Not recorded"}
       </p>
     </div>
   );
@@ -674,7 +740,9 @@ function formatCurrency(
       style: "currency",
       currency: "GBP",
     }
-  ).format(Number(value ?? 0));
+  ).format(
+    Number(value ?? 0)
+  );
 }
 
 function formatQuantity(
@@ -696,9 +764,12 @@ function formatVatRate(
 ) {
   return Number(
     value ?? 20
-  ).toLocaleString("en-GB", {
-    maximumFractionDigits: 2,
-  });
+  ).toLocaleString(
+    "en-GB",
+    {
+      maximumFractionDigits: 2,
+    }
+  );
 }
 
 function formatDate(
@@ -742,12 +813,15 @@ function formatDateTime(
   return new Intl.DateTimeFormat(
     "en-GB",
     {
-      timeZone: "Europe/London",
+      timeZone:
+        "Europe/London",
       day: "2-digit",
       month: "short",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
     }
-  ).format(new Date(value));
+  ).format(
+    new Date(value)
+  );
 }
