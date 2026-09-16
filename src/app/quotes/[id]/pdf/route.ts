@@ -1,5 +1,8 @@
 import React from "react";
+import path from "path";
+import { readFile } from "fs/promises";
 import { renderToBuffer } from "@react-pdf/renderer";
+
 import { createClient } from "@/lib/supabase/server";
 import QuotePdfDocument from "@/components/QuotePdfDocument";
 
@@ -12,7 +15,7 @@ type RouteProps = {
 };
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: RouteProps
 ) {
   const { id } = await params;
@@ -67,22 +70,24 @@ export async function GET(
     );
   }
 
-  const { data: quoteItems, error: itemsError } =
-    await supabase
-      .from("quote_items")
-      .select(`
-        id,
-        description,
-        quantity,
-        unit,
-        unit_price,
-        item_type,
-        sort_order
-      `)
-      .eq("quote_id", id)
-      .order("sort_order", {
-        ascending: true,
-      });
+  const {
+    data: quoteItems,
+    error: itemsError,
+  } = await supabase
+    .from("quote_items")
+    .select(`
+      id,
+      description,
+      quantity,
+      unit,
+      unit_price,
+      item_type,
+      sort_order
+    `)
+    .eq("quote_id", id)
+    .order("sort_order", {
+      ascending: true,
+    });
 
   if (itemsError) {
     console.error(
@@ -162,60 +167,80 @@ export async function GET(
       })) ?? [];
 
   const logoDataUri =
-    await loadLogo(request.url);
+    await loadLogoFromDisk();
 
-  const document = React.createElement(
-    QuotePdfDocument,
-    {
-      logoDataUri,
+  const document =
+    React.createElement(
+      QuotePdfDocument,
+      {
+        logoDataUri,
 
-      quoteNumber: quote.quote_number,
-      title: quote.title,
-      description: quote.description,
-      quoteDate: quote.quote_date,
-      validUntil: quote.valid_until,
+        quoteNumber:
+          quote.quote_number,
 
-      clientName,
-      clientEmail: client?.email || null,
-      clientPhone: client?.phone || null,
-      clientAddressLines,
+        title:
+          quote.title,
 
-      jobNumber:
-        job?.job_number || null,
-      jobTitle: job?.title || null,
+        description:
+          quote.description,
 
-      labourItems,
-      materialItems,
+        quoteDate:
+          quote.quote_date,
 
-      subtotal: Number(
-        quote.subtotal ?? 0
-      ),
+        validUntil:
+          quote.valid_until,
 
-      vatEnabled: Boolean(
-        quote.vat_enabled
-      ),
+        clientName,
 
-      vatRate: Number(
-        quote.vat_rate ?? 20
-      ),
+        clientEmail:
+          client?.email || null,
 
-      vatAmount: Number(
-        quote.vat_amount ?? 0
-      ),
+        clientPhone:
+          client?.phone || null,
 
-      total: Number(
-        quote.amount ?? 0
-      ),
+        clientAddressLines,
 
-      customerMessage:
-        quote.customer_message,
+        jobNumber:
+          job?.job_number || null,
 
-      terms: quote.terms,
-    }
-  );
+        jobTitle:
+          job?.title || null,
+
+        labourItems,
+        materialItems,
+
+        subtotal: Number(
+          quote.subtotal ?? 0
+        ),
+
+        vatEnabled: Boolean(
+          quote.vat_enabled
+        ),
+
+        vatRate: Number(
+          quote.vat_rate ?? 20
+        ),
+
+        vatAmount: Number(
+          quote.vat_amount ?? 0
+        ),
+
+        total: Number(
+          quote.amount ?? 0
+        ),
+
+        customerMessage:
+          quote.customer_message,
+
+        terms:
+          quote.terms,
+      }
+    );
 
   const pdfBuffer =
-    await renderToBuffer(document);
+    await renderToBuffer(
+      document
+    );
 
   const filename =
     `${quote.quote_number}-${quote.title}`
@@ -229,6 +254,7 @@ export async function GET(
     new Uint8Array(pdfBuffer),
     {
       status: 200,
+
       headers: {
         "Content-Type":
           "application/pdf",
@@ -243,32 +269,22 @@ export async function GET(
   );
 }
 
-async function loadLogo(
-  requestUrl: string
-): Promise<string | null> {
+async function loadLogoFromDisk():
+  Promise<string | null> {
   try {
-    const logoUrl = new URL(
-      "/dryhome-logo.png",
-      requestUrl
-    );
+    const logoPath =
+      path.join(
+        process.cwd(),
+        "public",
+        "dryhome-logo-light.png"
+      );
 
-    const response = await fetch(
-      logoUrl
-    );
+    const logoBuffer =
+      await readFile(logoPath);
 
-    if (!response.ok) {
-      return null;
-    }
-
-    const arrayBuffer =
-      await response.arrayBuffer();
-
-    const base64 =
-      Buffer.from(
-        arrayBuffer
-      ).toString("base64");
-
-    return `data:image/png;base64,${base64}`;
+    return `data:image/png;base64,${logoBuffer.toString(
+      "base64"
+    )}`;
   } catch (error) {
     console.error(
       "Unable to load PDF logo:",
