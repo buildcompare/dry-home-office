@@ -16,13 +16,19 @@ type RouteProps = {
 };
 
 export async function POST(
-  request: Request,
+  _request: Request,
   { params }: RouteProps
 ) {
   const { id } = await params;
 
   const apiKey =
     process.env.RESEND_API_KEY;
+
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(
+      /\/$/,
+      ""
+    );
 
   if (!apiKey) {
     console.error(
@@ -36,51 +42,63 @@ export async function POST(
     );
   }
 
+  if (!appUrl) {
+    console.error(
+      "NEXT_PUBLIC_APP_URL is missing"
+    );
+
+    return redirectToQuote(
+      id,
+      "error",
+      "The customer quote link is not configured."
+    );
+  }
+
   const supabase =
     await createClient();
 
-  /*
-   * Load quote, client and job details.
-   */
-  const { data: quote, error: quoteError } =
-    await supabase
-      .from("quotes")
-      .select(`
+  const {
+    data: quote,
+    error: quoteError,
+  } = await supabase
+    .from("quotes")
+    .select(`
+      id,
+      quote_number,
+      public_token,
+      title,
+      description,
+      status,
+      quote_date,
+      valid_until,
+      subtotal,
+      vat_enabled,
+      vat_rate,
+      vat_amount,
+      amount,
+      customer_message,
+      terms,
+      clients (
         id,
-        quote_number,
-        title,
-        description,
-        status,
-        quote_date,
-        valid_until,
-        subtotal,
-        vat_enabled,
-        vat_rate,
-        vat_amount,
-        amount,
-        customer_message,
-        terms,
-        clients (
-          id,
-          display_name,
-          first_name,
-          last_name,
-          email,
-          phone,
-          address_line_1,
-          address_line_2,
-          town,
-          county,
-          postcode
-        ),
-        jobs (
-          id,
-          job_number,
-          title
-        )
-      `)
-      .eq("id", id)
-      .single();
+        display_name,
+        first_name,
+        last_name,
+        email,
+        phone,
+        address_line_1,
+        address_line_2,
+        town,
+        county,
+        postcode
+      ),
+      jobs (
+        id,
+        job_number,
+        title
+      )
+    `)
+    .eq("id", id)
+    .single();
 
   if (quoteError || !quote) {
     console.error(
@@ -95,9 +113,18 @@ export async function POST(
     );
   }
 
-  /*
-   * Load quote items.
-   */
+  if (!quote.public_token) {
+    console.error(
+      "Quote public token missing"
+    );
+
+    return redirectToQuote(
+      id,
+      "error",
+      "This quotation does not have a customer access link."
+    );
+  }
+
   const {
     data: quoteItems,
     error: itemsError,
@@ -130,11 +157,6 @@ export async function POST(
     );
   }
 
-  /*
-   * Supabase relation results can sometimes
-   * arrive as arrays depending on generated
-   * relationship typing, so handle both.
-   */
   const client =
     Array.isArray(quote.clients)
       ? quote.clients[0]
@@ -217,20 +239,9 @@ export async function POST(
         ),
       })) ?? [];
 
-  /*
-   * Load the logo directly from /public.
-   *
-   * This avoids making an HTTP request back
-   * to localhost, which was causing the
-   * Codespaces problem.
-   */
   const logoDataUri =
     await loadLogoFromDisk();
 
-  /*
-   * Generate the exact branded quote PDF
-   * directly in memory.
-   */
   let pdfBuffer: Buffer;
 
   try {
@@ -323,9 +334,6 @@ export async function POST(
     );
   }
 
-  /*
-   * Prepare filename.
-   */
   const filename =
     `${quote.quote_number}-${quote.title}`
       .replace(
@@ -334,12 +342,12 @@ export async function POST(
       )
       .replace(/\s+/g, "-");
 
-  /*
-   * Email settings.
-   */
+  const customerQuoteUrl =
+    `${appUrl}/q/${quote.public_token}`;
+
   const fromAddress =
     process.env.RESEND_FROM_EMAIL?.trim() ||
-    "Dry Home Damp Proofing Solutions <quotes@quotes.dryhomedampproofing.co.uk>";
+    "Dry Home Damp Proofing Solutions <quotes@admin.dryhomedampproofing.co.uk>";
 
   const replyTo =
     process.env.DRYHOME_REPLY_TO_EMAIL?.trim();
@@ -360,6 +368,7 @@ export async function POST(
       total: Number(
         quote.amount ?? 0
       ),
+      customerQuoteUrl,
     });
 
   const text =
@@ -372,11 +381,9 @@ export async function POST(
       total: Number(
         quote.amount ?? 0
       ),
+      customerQuoteUrl,
     });
 
-  /*
-   * Send email.
-   */
   const {
     data: emailData,
     error: sendError,
@@ -424,9 +431,6 @@ export async function POST(
     emailData?.id
   );
 
-  /*
-   * Record successful send.
-   */
   const sentAt =
     new Date().toISOString();
 
@@ -435,7 +439,14 @@ export async function POST(
   } = await supabase
     .from("quotes")
     .update({
-      status: "Sent",
+      status:
+        quote.status ===
+          "Accepted" ||
+        quote.status ===
+          "Declined"
+          ? quote.status
+          : "Sent",
+
       sent_to: recipient,
       sent_at: sentAt,
     })
@@ -461,9 +472,6 @@ export async function POST(
   );
 }
 
-/*
- * Load DryHome logo without using localhost.
- */
 async function loadLogoFromDisk():
   Promise<string | null> {
   try {
@@ -471,11 +479,13 @@ async function loadLogoFromDisk():
       path.join(
         process.cwd(),
         "public",
-        "dryhome-logo.png"
+        "dryhome-logo-light.png"
       );
 
     const logoBuffer =
-      await readFile(logoPath);
+      await readFile(
+        logoPath
+      );
 
     return `data:image/png;base64,${logoBuffer.toString(
       "base64"
@@ -490,19 +500,18 @@ async function loadLogoFromDisk():
   }
 }
 
-/*
- * Email HTML.
- */
 function buildEmailHtml({
   clientName,
   quoteNumber,
   title,
   total,
+  customerQuoteUrl,
 }: {
   clientName: string;
   quoteNumber: string;
   title: string;
   total: number;
+  customerQuoteUrl: string;
 }) {
   return `
 <!DOCTYPE html>
@@ -568,7 +577,7 @@ function buildEmailHtml({
             margin:0 0 22px 0;
             line-height:1.6;
           ">
-            Please find your quotation attached to this email as a PDF.
+            You can view your quotation online using the button below. A PDF copy is also attached for your records.
           </p>
 
           <div style="
@@ -625,11 +634,43 @@ function buildEmailHtml({
             </div>
           </div>
 
+          <div style="
+            text-align:center;
+            margin:30px 0;
+          ">
+            <a
+              href="${escapeHtml(
+                customerQuoteUrl
+              )}"
+              style="
+                display:inline-block;
+                background:#0f172a;
+                color:#ffffff;
+                text-decoration:none;
+                padding:14px 28px;
+                border-radius:8px;
+                font-size:16px;
+                font-weight:700;
+              "
+            >
+              View Quote
+            </a>
+          </div>
+
+          <p style="
+            margin:0 0 18px 0;
+            line-height:1.6;
+            font-size:14px;
+            color:#64748b;
+          ">
+            From the online quotation you can review the works and accept or decline the quotation.
+          </p>
+
           <p style="
             margin:0 0 18px 0;
             line-height:1.6;
           ">
-            If you have any questions regarding the quotation, please get in touch and we will be happy to help.
+            If you have any questions, please get in touch and we will be happy to help.
           </p>
 
           <p style="
@@ -650,26 +691,23 @@ function buildEmailHtml({
 `;
 }
 
-/*
- * Plain-text version.
- */
 function buildEmailText({
   clientName,
   quoteNumber,
   title,
   total,
+  customerQuoteUrl,
 }: {
   clientName: string;
   quoteNumber: string;
   title: string;
   total: number;
+  customerQuoteUrl: string;
 }) {
   return [
     `Dear ${clientName},`,
     "",
     "Thank you for the opportunity to provide a quotation for the proposed works.",
-    "",
-    "Please find your quotation attached to this email as a PDF.",
     "",
     `Quotation: ${quoteNumber}`,
     `Title: ${title}`,
@@ -677,7 +715,14 @@ function buildEmailText({
       total
     )}`,
     "",
-    "If you have any questions regarding the quotation, please get in touch and we will be happy to help.",
+    "View your quotation online:",
+    customerQuoteUrl,
+    "",
+    "You can review and accept or decline the quotation using the secure link above.",
+    "",
+    "A PDF copy is also attached for your records.",
+    "",
+    "If you have any questions, please get in touch and we will be happy to help.",
     "",
     "Kind regards,",
     "Dry Home Damp Proofing Solutions LTD",
@@ -714,14 +759,6 @@ function escapeHtml(
     );
 }
 
-/*
- * IMPORTANT:
- *
- * Return a relative Location header.
- * Safari then remains on the real Codespaces
- * or Vercel hostname instead of being sent
- * to localhost.
- */
 function redirectToQuote(
   id: string,
   key: string,
@@ -730,7 +767,10 @@ function redirectToQuote(
   const params =
     new URLSearchParams();
 
-  params.set(key, value);
+  params.set(
+    key,
+    value
+  );
 
   return new Response(null, {
     status: 303,
