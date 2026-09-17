@@ -198,6 +198,16 @@ export default async function QuotePage({
                   status={quote.status}
                 />
 
+                {quote.status ===
+                  "Accepted" && (
+                  <Link
+                    href={`/contracts/new?quote=${quote.id}`}
+                    className="rounded-lg bg-emerald-700 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-800"
+                  >
+                    Create Contract
+                  </Link>
+                )}
+
                 <StatusBadge
                   status={quote.status}
                 />
