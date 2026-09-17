@@ -1,18 +1,27 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
+import EmailContractButton from "@/components/EmailContractButton";
 import { createClient } from "@/lib/supabase/server";
 
 type ContractPageProps = {
   params: Promise<{
     id: string;
   }>;
+
+  searchParams: Promise<{
+    sent?: string;
+    error?: string;
+    warning?: string;
+  }>;
 };
 
 export default async function ContractPage({
   params,
+  searchParams,
 }: ContractPageProps) {
   const { id } = await params;
+  const query = await searchParams;
 
   const supabase =
     await createClient();
@@ -42,6 +51,8 @@ export default async function ContractPage({
       signed_at,
       signed_name,
       signed_email,
+      signed_ip,
+      public_token,
       created_at,
       clients (
         id,
@@ -115,6 +126,28 @@ export default async function ContractPage({
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
+          {/* Notifications */}
+          {query.sent === "1" && (
+            <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
+              Contract emailed successfully to{" "}
+              {contract.sent_to ||
+                client?.email}.
+            </div>
+          )}
+
+          {query.error && (
+            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm font-medium text-red-700">
+              {query.error}
+            </div>
+          )}
+
+          {query.warning && (
+            <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-medium text-amber-800">
+              {query.warning}
+            </div>
+          )}
+
+          {/* Header */}
           <div className="mb-8">
             <Link
               href="/contracts"
@@ -141,14 +174,39 @@ export default async function ContractPage({
                 </p>
               </div>
 
-              <StatusBadge
-                status={
-                  contract.status
-                }
-              />
+              <div className="flex flex-wrap items-center gap-3">
+                <EmailContractButton
+                  contractId={
+                    contract.id
+                  }
+                  recipient={
+                    client?.email ||
+                    null
+                  }
+                  status={
+                    contract.status
+                  }
+                />
+
+                <StatusBadge
+                  status={
+                    contract.status
+                  }
+                />
+              </div>
             </div>
+
+            {!client?.email && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                This client does not have an email
+                address saved. Add an email to the
+                client record before sending the
+                contract.
+              </div>
+            )}
           </div>
 
+          {/* Summary */}
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             <SummaryCard
               title="Contract Value"
@@ -183,6 +241,7 @@ export default async function ContractPage({
             />
           </div>
 
+          {/* Client / Job / Quote */}
           <div className="mt-8 grid gap-6 lg:grid-cols-3">
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between">
@@ -329,6 +388,7 @@ export default async function ContractPage({
             </section>
           </div>
 
+          {/* Scope */}
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold text-slate-900">
               Scope of Works
@@ -340,6 +400,7 @@ export default async function ContractPage({
             </p>
           </section>
 
+          {/* Terms */}
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold text-slate-900">
               Terms & Conditions
@@ -351,6 +412,7 @@ export default async function ContractPage({
             </p>
           </section>
 
+          {/* Messages */}
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">
@@ -372,9 +434,15 @@ export default async function ContractPage({
                 {contract.internal_notes ||
                   "No internal notes recorded."}
               </p>
+
+              <p className="mt-4 text-xs text-slate-400">
+                Internal notes are not shown to
+                the customer.
+              </p>
             </section>
           </div>
 
+          {/* Activity */}
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">
               Contract Activity
@@ -410,29 +478,82 @@ export default async function ContractPage({
                 )}
               />
             </div>
+          </section>
 
-            {contract.signed_name && (
-              <div className="mt-6 rounded-xl bg-emerald-50 p-5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                  Signed By
-                </p>
+          {/* Signed record */}
+          {contract.status ===
+            "Signed" && (
+            <section className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                    Signed Contract
+                  </p>
 
-                <p className="mt-1 font-semibold text-emerald-900">
-                  {
+                  <h2 className="mt-2 text-xl font-bold text-emerald-950">
+                    Agreement Recorded
+                  </h2>
+                </div>
+
+                <span className="rounded-full bg-emerald-200 px-3 py-1 text-xs font-semibold text-emerald-900">
+                  Signed
+                </span>
+              </div>
+
+              <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+                <DetailRow
+                  label="Signed By"
+                  value={
                     contract.signed_name
                   }
-                </p>
+                />
 
-                {contract.signed_email && (
-                  <p className="mt-1 text-sm text-emerald-700">
-                    {
-                      contract.signed_email
-                    }
-                  </p>
-                )}
+                <DetailRow
+                  label="Email"
+                  value={
+                    contract.signed_email
+                  }
+                />
+
+                <DetailRow
+                  label="Date & Time"
+                  value={formatDateTime(
+                    contract.signed_at
+                  )}
+                />
+
+                <DetailRow
+                  label="IP Address"
+                  value={
+                    contract.signed_ip ||
+                    "Not recorded"
+                  }
+                />
               </div>
-            )}
-          </section>
+            </section>
+          )}
+
+          {/* Secure link */}
+          {contract.public_token && (
+            <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+              <h2 className="text-lg font-semibold text-slate-900">
+                Customer Contract Link
+              </h2>
+
+              <p className="mt-2 text-sm text-slate-500">
+                This is the secure customer-facing
+                contract page.
+              </p>
+
+              <Link
+                href={`/c/${contract.public_token}`}
+                target="_blank"
+                className="mt-5 inline-flex rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Preview Customer Contract →
+              </Link>
+            </section>
+          )}
         </div>
       </main>
     </div>

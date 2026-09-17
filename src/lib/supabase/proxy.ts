@@ -82,10 +82,6 @@ export async function updateSession(
   const pathname =
     request.nextUrl.pathname;
 
-  /*
-   * Routes that do not require
-   * a DryHome Office login.
-   */
   const isPublicRoute =
     pathname.startsWith(
       "/login"
@@ -96,6 +92,10 @@ export async function updateSession(
     pathname === "/q" ||
     pathname.startsWith(
       "/q/"
+    ) ||
+    pathname === "/c" ||
+    pathname.startsWith(
+      "/c/"
     );
 
   if (
