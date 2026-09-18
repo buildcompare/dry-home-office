@@ -6,16 +6,24 @@ export default async function ContractsPage() {
   const supabase =
     await createClient();
 
-  const { data: contracts } =
-    await supabase
+  const [
+    contractsResult,
+    scheduleResult,
+  ] = await Promise.all([
+    supabase
       .from("contracts")
       .select(`
         id,
         contract_number,
+        client_id,
+        job_id,
+        quote_id,
         title,
         status,
         contract_date,
         amount,
+        sent_at,
+        viewed_at,
         signed_at,
         created_at,
         clients (
@@ -28,10 +36,6 @@ export default async function ContractsPage() {
           id,
           job_number,
           title
-        ),
-        quotes (
-          id,
-          quote_number
         )
       `)
       .order(
@@ -39,10 +43,106 @@ export default async function ContractsPage() {
         {
           ascending: false,
         }
-      );
+      ),
+
+    supabase
+      .from(
+        "schedule_events"
+      )
+      .select(`
+        id,
+        contract_id,
+        title,
+        status,
+        start_date,
+        start_time,
+        end_date,
+        end_time
+      `)
+      .eq(
+        "status",
+        "Scheduled"
+      )
+      .not(
+        "contract_id",
+        "is",
+        null
+      )
+      .order(
+        "start_date",
+        {
+          ascending: true,
+        }
+      )
+      .order(
+        "start_time",
+        {
+          ascending: true,
+        }
+      ),
+  ]);
 
   const rows =
-    contracts ?? [];
+    contractsResult.data ??
+    [];
+
+  const scheduleEvents =
+    scheduleResult.data ??
+    [];
+
+  const scheduleByContract =
+    new Map<
+      string,
+      (typeof scheduleEvents)[number]
+    >();
+
+  for (
+    const event of
+    scheduleEvents
+  ) {
+    if (
+      event.contract_id &&
+      !scheduleByContract.has(
+        event.contract_id
+      )
+    ) {
+      scheduleByContract.set(
+        event.contract_id,
+        event
+      );
+    }
+  }
+
+  const draftCount =
+    rows.filter(
+      (contract) =>
+        contract.status ===
+        "Draft"
+    ).length;
+
+  const awaitingCount =
+    rows.filter(
+      (contract) =>
+        contract.status ===
+          "Sent" ||
+        contract.status ===
+          "Viewed"
+    ).length;
+
+  const signedCount =
+    rows.filter(
+      (contract) =>
+        contract.status ===
+        "Signed"
+    ).length;
+
+  const scheduledCount =
+    rows.filter(
+      (contract) =>
+        scheduleByContract.has(
+          contract.id
+        )
+    ).length;
 
   return (
     <div className="flex min-h-screen bg-slate-100">
@@ -57,9 +157,7 @@ export default async function ContractsPage() {
               </h1>
 
               <p className="mt-2 text-slate-500">
-                Manage customer contracts
-                linked to accepted quotes and
-                jobs.
+                Manage customer contracts and scheduled work.
               </p>
             </div>
 
@@ -69,6 +167,36 @@ export default async function ContractsPage() {
             >
               + Create Contract
             </Link>
+          </div>
+
+          <div className="mb-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+            <SummaryCard
+              title="Draft"
+              value={
+                draftCount
+              }
+            />
+
+            <SummaryCard
+              title="Awaiting Signature"
+              value={
+                awaitingCount
+              }
+            />
+
+            <SummaryCard
+              title="Signed"
+              value={
+                signedCount
+              }
+            />
+
+            <SummaryCard
+              title="Scheduled"
+              value={
+                scheduledCount
+              }
+            />
           </div>
 
           <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
@@ -103,15 +231,11 @@ export default async function ContractsPage() {
                       </Heading>
 
                       <Heading>
-                        Quote
+                        Contract Status
                       </Heading>
 
                       <Heading>
-                        Status
-                      </Heading>
-
-                      <Heading>
-                        Date
+                        Schedule
                       </Heading>
 
                       <Heading right>
@@ -119,14 +243,16 @@ export default async function ContractsPage() {
                       </Heading>
 
                       <Heading right>
-                        View
+                        Actions
                       </Heading>
                     </tr>
                   </thead>
 
                   <tbody className="divide-y divide-slate-100">
                     {rows.map(
-                      (contract) => {
+                      (
+                        contract
+                      ) => {
                         const client =
                           Array.isArray(
                             contract.clients
@@ -141,12 +267,10 @@ export default async function ContractsPage() {
                             ? contract.jobs[0]
                             : contract.jobs;
 
-                        const quote =
-                          Array.isArray(
-                            contract.quotes
-                          )
-                            ? contract.quotes[0]
-                            : contract.quotes;
+                        const scheduledEvent =
+                          scheduleByContract.get(
+                            contract.id
+                          );
 
                         const clientName =
                           client?.display_name ||
@@ -154,9 +278,18 @@ export default async function ContractsPage() {
                             client?.first_name,
                             client?.last_name,
                           ]
-                            .filter(Boolean)
-                            .join(" ") ||
+                            .filter(
+                              Boolean
+                            )
+                            .join(
+                              " "
+                            ) ||
                           "Unknown client";
+
+                        const scheduleHref =
+                          contract.job_id
+                            ? `/schedule/new?job=${contract.job_id}&contract=${contract.id}&type=Work`
+                            : `/schedule/new?client=${contract.client_id}&contract=${contract.id}&type=Work`;
 
                         return (
                           <tr
@@ -187,15 +320,8 @@ export default async function ContractsPage() {
                             </td>
 
                             <td className="px-6 py-5 text-sm text-slate-600">
-                              {job
-                                ? job.job_number
-                                : "—"}
-                            </td>
-
-                            <td className="px-6 py-5 text-sm text-slate-600">
-                              {quote
-                                ? quote.quote_number
-                                : "—"}
+                              {job?.job_number ||
+                                "—"}
                             </td>
 
                             <td className="px-6 py-5">
@@ -206,9 +332,24 @@ export default async function ContractsPage() {
                               />
                             </td>
 
-                            <td className="px-6 py-5 text-sm text-slate-600">
-                              {formatDate(
-                                contract.contract_date
+                            <td className="px-6 py-5">
+                              {scheduledEvent ? (
+                                <div>
+                                  <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
+                                    Scheduled
+                                  </span>
+
+                                  <p className="mt-2 text-sm font-medium text-slate-700">
+                                    {formatScheduleDate(
+                                      scheduledEvent.start_date,
+                                      scheduledEvent.start_time
+                                    )}
+                                  </p>
+                                </div>
+                              ) : (
+                                <span className="text-sm text-slate-400">
+                                  Not scheduled
+                                </span>
                               )}
                             </td>
 
@@ -218,13 +359,36 @@ export default async function ContractsPage() {
                               )}
                             </td>
 
-                            <td className="px-6 py-5 text-right">
-                              <Link
-                                href={`/contracts/${contract.id}`}
-                                className="text-sm font-semibold text-slate-900 hover:underline"
-                              >
-                                View
-                              </Link>
+                            <td className="px-6 py-5">
+                              <div className="flex flex-wrap justify-end gap-2">
+                                <Link
+                                  href={`/contracts/${contract.id}`}
+                                  className="inline-flex min-w-[70px] items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                >
+                                  View
+                                </Link>
+
+                                <Link
+                                  href={
+                                    scheduleHref
+                                  }
+                                  className="inline-flex min-w-[90px] items-center justify-center rounded-lg border border-slate-900 bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+                                >
+                                  {scheduledEvent
+                                    ? "Reschedule"
+                                    : "Schedule"}
+                                </Link>
+
+                                {contract.status ===
+                                  "Signed" && (
+                                  <Link
+                                    href={`/invoices/new?contract=${contract.id}`}
+                                    className="inline-flex min-w-[120px] items-center justify-center rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
+                                  >
+                                    Create Invoice
+                                  </Link>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -237,6 +401,26 @@ export default async function ContractsPage() {
           </div>
         </div>
       </main>
+    </div>
+  );
+}
+
+function SummaryCard({
+  title,
+  value,
+}: {
+  title: string;
+  value: number;
+}) {
+  return (
+    <div className="rounded-2xl bg-white p-6 shadow-sm">
+      <p className="text-sm font-medium text-slate-500">
+        {title}
+      </p>
+
+      <p className="mt-2 text-3xl font-bold text-slate-900">
+        {value}
+      </p>
     </div>
   );
 }
@@ -303,33 +487,47 @@ function formatCurrency(
   );
 }
 
-function formatDate(
-  value: string | null
+function formatScheduleDate(
+  date: string | null,
+  time: string | null
 ) {
-  if (!value) {
-    return "Not set";
+  if (!date) {
+    return "Date not set";
   }
 
-  const [year, month, day] =
-    value
-      .slice(0, 10)
-      .split("-")
-      .map(Number);
+  const [
+    year,
+    month,
+    day,
+  ] = date
+    .slice(0, 10)
+    .split("-")
+    .map(Number);
 
-  return new Intl.DateTimeFormat(
-    "en-GB",
-    {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    }
-  ).format(
-    new Date(
-      Date.UTC(
-        year,
-        month - 1,
-        day
+  const dateLabel =
+    new Intl.DateTimeFormat(
+      "en-GB",
+      {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }
+    ).format(
+      new Date(
+        Date.UTC(
+          year,
+          month - 1,
+          day
+        )
       )
-    )
-  );
+    );
+
+  if (!time) {
+    return dateLabel;
+  }
+
+  return `${dateLabel} at ${time.slice(
+    0,
+    5
+  )}`;
 }

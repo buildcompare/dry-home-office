@@ -126,7 +126,6 @@ export default async function ContractPage({
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
-          {/* Notifications */}
           {query.sent === "1" && (
             <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
               Contract emailed successfully to{" "}
@@ -147,7 +146,6 @@ export default async function ContractPage({
             </div>
           )}
 
-          {/* Header */}
           <div className="mb-8">
             <Link
               href="/contracts"
@@ -188,6 +186,16 @@ export default async function ContractPage({
                   }
                 />
 
+                {contract.status ===
+                  "Signed" && (
+                  <Link
+                    href={`/invoices/new?contract=${contract.id}`}
+                    className="rounded-lg bg-emerald-700 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-800"
+                  >
+                    Create Invoice
+                  </Link>
+                )}
+
                 <StatusBadge
                   status={
                     contract.status
@@ -206,7 +214,6 @@ export default async function ContractPage({
             )}
           </div>
 
-          {/* Summary */}
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             <SummaryCard
               title="Contract Value"
@@ -241,7 +248,6 @@ export default async function ContractPage({
             />
           </div>
 
-          {/* Client / Job / Quote */}
           <div className="mt-8 grid gap-6 lg:grid-cols-3">
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between">
@@ -388,7 +394,6 @@ export default async function ContractPage({
             </section>
           </div>
 
-          {/* Scope */}
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold text-slate-900">
               Scope of Works
@@ -400,7 +405,6 @@ export default async function ContractPage({
             </p>
           </section>
 
-          {/* Terms */}
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold text-slate-900">
               Terms & Conditions
@@ -412,7 +416,6 @@ export default async function ContractPage({
             </p>
           </section>
 
-          {/* Messages */}
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">
@@ -442,7 +445,6 @@ export default async function ContractPage({
             </section>
           </div>
 
-          {/* Activity */}
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">
               Contract Activity
@@ -480,7 +482,6 @@ export default async function ContractPage({
             </div>
           </section>
 
-          {/* Signed record */}
           {contract.status ===
             "Signed" && (
             <section className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
@@ -533,7 +534,6 @@ export default async function ContractPage({
             </section>
           )}
 
-          {/* Secure link */}
           {contract.public_token && (
             <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">
