@@ -1,75 +1,470 @@
 import Link from "next/link";
+
 import Sidebar from "@/components/Sidebar";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
+  const supabase =
+    await createClient();
+
+  /*
+   * -------------------------------------------------------
+   * DATE RANGE
+   * -------------------------------------------------------
+   *
+   * Dashboard dates are based on UK time.
+   */
+
+  const today =
+    getLondonDateKey(
+      new Date()
+    );
+
+  const tomorrow =
+    addDays(
+      today,
+      1
+    );
+
+  const {
+    monthStart,
+    nextMonthStart,
+  } = getMonthRange(
+    today
+  );
+
+  /*
+   * -------------------------------------------------------
+   * DASHBOARD DATA
+   * -------------------------------------------------------
+   */
 
   const [
-    clientsResult,
-    jobsResult,
-    surveysResult,
+    scheduleResult,
     activeJobsResult,
-    recentJobsResult,
+    invoicesResult,
+    quotesResult,
   ] = await Promise.all([
+    /*
+     * TODAY + TOMORROW
+     */
     supabase
-      .from("clients")
-      .select("*", {
-        count: "exact",
-        head: true,
-      }),
-
-    supabase
-      .from("jobs")
-      .select("*", {
-        count: "exact",
-        head: true,
-      }),
-
-    supabase
-      .from("jobs")
-      .select("*", {
-        count: "exact",
-        head: true,
-      })
-      .eq("status", "Survey Booked"),
-
-    supabase
-      .from("jobs")
-      .select("*", {
-        count: "exact",
-        head: true,
-      })
-      .eq("status", "In Progress"),
-
-    supabase
-      .from("jobs")
+      .from("schedule_events")
       .select(`
         id,
-        job_number,
+        job_id,
         title,
+        event_type,
         status,
-        town,
-        postcode,
-        created_at,
-        clients (
-          display_name,
-          first_name,
-          last_name
+        start_date,
+        end_date,
+        start_time,
+        end_time,
+        all_day,
+        location,
+        assigned_to,
+
+        jobs (
+          id,
+          job_number,
+          title,
+          town,
+          postcode,
+
+          clients (
+            display_name,
+            first_name,
+            last_name
+          )
         )
       `)
-      .order("created_at", {
-        ascending: false,
-      })
-      .limit(5),
+      .in(
+        "start_date",
+        [
+          today,
+          tomorrow,
+        ]
+      )
+      .neq(
+        "status",
+        "Cancelled"
+      )
+      .order(
+        "start_date",
+        {
+          ascending: true,
+        }
+      )
+      .order(
+        "start_time",
+        {
+          ascending: true,
+        }
+      ),
+
+    /*
+     * ACTIVE JOBS
+     */
+    supabase
+      .from("jobs")
+      .select(
+        `
+          id,
+          job_number,
+          title,
+          job_type,
+          status,
+          town,
+          postcode,
+          start_date,
+          survey_date,
+          estimated_value,
+          created_at,
+
+          clients (
+            display_name,
+            first_name,
+            last_name
+          )
+        `,
+        {
+          count: "exact",
+        }
+      )
+      .not(
+        "status",
+        "in",
+        '("Complete","Completed","Cancelled")'
+      )
+      .order(
+        "created_at",
+        {
+          ascending: false,
+        }
+      )
+      .limit(10),
+
+    /*
+     * INVOICED THIS MONTH
+     */
+    supabase
+      .from("invoices")
+      .select(`
+        id,
+        status,
+        amount,
+        subtotal,
+        vat_amount,
+        invoice_date
+      `)
+      .gte(
+        "invoice_date",
+        monthStart
+      )
+      .lt(
+        "invoice_date",
+        nextMonthStart
+      )
+      .neq(
+        "status",
+        "Cancelled"
+      ),
+
+    /*
+     * QUOTED THIS MONTH
+     */
+    supabase
+      .from("quotes")
+      .select(`
+        id,
+        status,
+        amount,
+        quote_date
+      `)
+      .gte(
+        "quote_date",
+        monthStart
+      )
+      .lt(
+        "quote_date",
+        nextMonthStart
+      )
+      .neq(
+        "status",
+        "Draft"
+      )
+      .neq(
+        "status",
+        "Cancelled"
+      ),
   ]);
 
-  const clientCount = clientsResult.count ?? 0;
-  const jobCount = jobsResult.count ?? 0;
-  const surveyCount = surveysResult.count ?? 0;
-  const activeJobCount = activeJobsResult.count ?? 0;
+  /*
+   * -------------------------------------------------------
+   * NORMALISE DATA
+   * -------------------------------------------------------
+   */
 
-  const recentJobs = recentJobsResult.data ?? [];
+  const scheduleEvents =
+    scheduleResult.data ??
+    [];
+
+  const todayEvents =
+    scheduleEvents.filter(
+      (event) =>
+        event.start_date ===
+        today
+    );
+
+  const tomorrowEvents =
+    scheduleEvents.filter(
+      (event) =>
+        event.start_date ===
+        tomorrow
+    );
+
+  const activeJobs =
+    activeJobsResult.data ??
+    [];
+
+  const activeJobCount =
+    activeJobsResult.count ??
+    activeJobs.length;
+
+  const monthlyInvoices =
+    invoicesResult.data ??
+    [];
+
+  const monthlyQuotes =
+    quotesResult.data ??
+    [];
+
+  /*
+   * -------------------------------------------------------
+   * MONTHLY VALUES
+   * -------------------------------------------------------
+   */
+
+  const invoicedThisMonth =
+    monthlyInvoices.reduce(
+      (
+        total,
+        invoice
+      ) =>
+        total +
+        invoiceRowTotal(
+          invoice
+        ),
+      0
+    );
+
+  const quotedThisMonth =
+    monthlyQuotes.reduce(
+      (
+        total,
+        quote
+      ) =>
+        total +
+        Number(
+          quote.amount ??
+            0
+        ),
+      0
+    );
+
+  const monthLabel =
+    formatMonthLabel(
+      monthStart
+    );
+
+  /*
+   * -------------------------------------------------------
+   * SCHEDULE PANEL RENDERER
+   * -------------------------------------------------------
+   */
+
+  const renderSchedulePanel = (
+    title: string,
+    subtitle: string,
+    events: typeof scheduleEvents,
+    emptyText: string
+  ) => (
+    <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
+        <div>
+          <h2 className="text-xl font-semibold text-slate-900">
+            {title}
+          </h2>
+
+          <p className="mt-1 text-sm text-slate-500">
+            {subtitle}
+          </p>
+        </div>
+
+        <Link
+          href="/schedule"
+          className="text-sm font-semibold text-slate-700 hover:underline"
+        >
+          View schedule →
+        </Link>
+      </div>
+
+      {events.length ===
+      0 ? (
+        <div className="p-10 text-center">
+          <p className="font-medium text-slate-700">
+            {emptyText}
+          </p>
+
+          <p className="mt-2 text-sm text-slate-400">
+            Nothing currently booked.
+          </p>
+        </div>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {events.map(
+            (event) => {
+              const job =
+                Array.isArray(
+                  event.jobs
+                )
+                  ? event.jobs[0]
+                  : event.jobs;
+
+              const clientData =
+                Array.isArray(
+                  job?.clients
+                )
+                  ? job.clients[0]
+                  : job?.clients;
+
+              const clientName =
+                clientData?.display_name ||
+                [
+                  clientData?.first_name,
+                  clientData?.last_name,
+                ]
+                  .filter(Boolean)
+                  .join(" ") ||
+                null;
+
+              const location =
+                event.location ||
+                [
+                  job?.town,
+                  job?.postcode,
+                ]
+                  .filter(Boolean)
+                  .join(", ") ||
+                "No location";
+
+              const content = (
+                <div className="flex flex-wrap items-center justify-between gap-5 px-6 py-5 transition hover:bg-slate-50">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-slate-900">
+                        {event.title ||
+                          job?.title ||
+                          "Appointment"}
+                      </p>
+
+                      <StatusBadge
+                        status={
+                          event.event_type ||
+                          "Appointment"
+                        }
+                      />
+
+                      {event.status && (
+                        <StatusBadge
+                          status={
+                            event.status
+                          }
+                        />
+                      )}
+                    </div>
+
+                    {job?.job_number && (
+                      <p className="mt-2 text-sm font-medium text-slate-600">
+                        {
+                          job.job_number
+                        }
+                        {clientName
+                          ? ` · ${clientName}`
+                          : ""}
+                      </p>
+                    )}
+
+                    {!job?.job_number &&
+                      clientName && (
+                        <p className="mt-2 text-sm font-medium text-slate-600">
+                          {clientName}
+                        </p>
+                      )}
+
+                    <p className="mt-1 text-sm text-slate-400">
+                      {location}
+                    </p>
+
+                    {event.assigned_to && (
+                      <p className="mt-1 text-xs text-slate-400">
+                        Assigned to{" "}
+                        {
+                          event.assigned_to
+                        }
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="text-right">
+                    <p className="text-xl font-bold text-slate-900">
+                      {event.all_day
+                        ? "All day"
+                        : formatEventTime(
+                            event.start_time,
+                            event.end_time
+                          )}
+                    </p>
+
+                    <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-400">
+                      {
+                        formatShortDate(
+                          event.start_date
+                        )
+                      }
+                    </p>
+                  </div>
+                </div>
+              );
+
+              if (job?.id) {
+                return (
+                  <Link
+                    key={
+                      event.id
+                    }
+                    href={`/jobs/${job.id}`}
+                  >
+                    {content}
+                  </Link>
+                );
+              }
+
+              return (
+                <div
+                  key={
+                    event.id
+                  }
+                >
+                  {content}
+                </div>
+              );
+            }
+          )}
+        </div>
+      )}
+    </section>
+  );
 
   return (
     <div className="flex min-h-screen bg-slate-100">
@@ -77,59 +472,127 @@ export default async function DashboardPage() {
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
+
+          {/* HEADER */}
+
           <div className="mb-8">
             <p className="text-sm font-medium text-slate-500">
-              DryHome Damp Proofing Solutions
+              Dry Home Damp Proofing Solutions
             </p>
 
-            <h1 className="mt-1 text-3xl font-bold text-slate-900">
-              Dashboard
-            </h1>
+            <div className="mt-1 flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <h1 className="text-3xl font-bold text-slate-900">
+                  Dashboard
+                </h1>
 
-            <p className="mt-2 text-slate-500">
-              Manage your clients, jobs and schedule.
-            </p>
+                <p className="mt-2 text-slate-500">
+                  {formatLongDate(
+                    today
+                  )}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href="/jobs/new"
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  + New Job
+                </Link>
+
+                <Link
+                  href="/schedule"
+                  className="rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700"
+                >
+                  Open Schedule
+                </Link>
+              </div>
+            </div>
           </div>
+
+          {/* TOP CARDS */}
 
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             <DashboardCard
-              title="Clients"
-              value={clientCount}
-              description="Total clients"
-              href="/clients"
+              title="Invoiced This Month"
+              value={formatCurrency(
+                invoicedThisMonth
+              )}
+              description={
+                monthLabel
+              }
+              href="/invoices"
             />
 
             <DashboardCard
-              title="Jobs"
-              value={jobCount}
-              description="Total jobs"
-              href="/jobs"
-            />
-
-            <DashboardCard
-              title="Surveys"
-              value={surveyCount}
-              description="Surveys booked"
-              href="/schedule"
+              title="Quoted This Month"
+              value={formatCurrency(
+                quotedThisMonth
+              )}
+              description={
+                monthLabel
+              }
+              href="/quotes"
             />
 
             <DashboardCard
               title="Active Jobs"
-              value={activeJobCount}
-              description="Currently in progress"
+              value={String(
+                activeJobCount
+              )}
+              description="Open jobs"
               href="/jobs"
+            />
+
+            <DashboardCard
+              title="Today"
+              value={String(
+                todayEvents.length
+              )}
+              description={
+                todayEvents.length ===
+                1
+                  ? "appointment"
+                  : "appointments"
+              }
+              href="/schedule"
             />
           </div>
 
-          <div className="mt-8 overflow-hidden rounded-2xl bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
+          {/* TODAY / TOMORROW */}
+
+          <div className="mt-8 grid gap-6 xl:grid-cols-2">
+            {renderSchedulePanel(
+              "What's on Today?",
+              formatLongDate(
+                today
+              ),
+              todayEvents,
+              "Nothing booked today"
+            )}
+
+            {renderSchedulePanel(
+              "Tomorrow at a Glance",
+              formatLongDate(
+                tomorrow
+              ),
+              tomorrowEvents,
+              "Nothing booked tomorrow"
+            )}
+          </div>
+
+          {/* ACTIVE JOBS */}
+
+          <section className="mt-8 overflow-hidden rounded-2xl bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-6 py-5">
               <div>
                 <h2 className="text-xl font-semibold text-slate-900">
-                  Recent Jobs
+                  Active Jobs
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  Your latest DryHome jobs.
+                  Jobs currently moving through the DryHome workflow.
                 </p>
               </div>
 
@@ -141,14 +604,15 @@ export default async function DashboardPage() {
               </Link>
             </div>
 
-            {recentJobs.length === 0 ? (
+            {activeJobs.length ===
+            0 ? (
               <div className="p-12 text-center">
                 <p className="font-medium text-slate-700">
-                  No jobs yet
+                  No active jobs
                 </p>
 
                 <p className="mt-2 text-sm text-slate-500">
-                  Add your first job to get started.
+                  Your active work will appear here.
                 </p>
 
                 <Link
@@ -159,62 +623,154 @@ export default async function DashboardPage() {
                 </Link>
               </div>
             ) : (
-              <div className="divide-y divide-slate-100">
-                {recentJobs.map((job) => {
-                  const clientData = Array.isArray(job.clients)
-                    ? job.clients[0]
-                    : job.clients;
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <Heading>
+                        Job
+                      </Heading>
 
-                  const clientName =
-                    clientData?.display_name ||
-                    [
-                      clientData?.first_name,
-                      clientData?.last_name,
-                    ]
-                      .filter(Boolean)
-                      .join(" ") ||
-                    "Unknown client";
+                      <Heading>
+                        Client
+                      </Heading>
 
-                  return (
-                    <Link
-                      key={job.id}
-                      href={`/jobs/${job.id}`}
-                      className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 transition hover:bg-slate-50"
-                    >
-                      <div>
-                        <p className="font-semibold text-slate-900">
-                          {job.job_number}
-                        </p>
+                      <Heading>
+                        Status
+                      </Heading>
 
-                        <p className="mt-1 text-sm text-slate-600">
-                          {job.title || "Untitled job"}
-                        </p>
+                      <Heading>
+                        Location
+                      </Heading>
 
-                        <p className="mt-1 text-sm text-slate-400">
-                          {clientName}
-                        </p>
-                      </div>
+                      <Heading>
+                        Start Date
+                      </Heading>
 
-                      <div className="text-right">
-                        <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                          {job.status}
-                        </span>
+                      <Heading right>
+                        Action
+                      </Heading>
+                    </tr>
+                  </thead>
 
-                        <p className="mt-2 text-sm text-slate-500">
-                          {job.town || job.postcode || "No location"}
-                        </p>
-                      </div>
-                    </Link>
-                  );
-                })}
+                  <tbody className="divide-y divide-slate-100">
+                    {activeJobs.map(
+                      (job) => {
+                        const clientData =
+                          Array.isArray(
+                            job.clients
+                          )
+                            ? job.clients[0]
+                            : job.clients;
+
+                        const clientName =
+                          clientData?.display_name ||
+                          [
+                            clientData?.first_name,
+                            clientData?.last_name,
+                          ]
+                            .filter(Boolean)
+                            .join(" ") ||
+                          "Unknown client";
+
+                        const location =
+                          [
+                            job.town,
+                            job.postcode,
+                          ]
+                            .filter(Boolean)
+                            .join(", ") ||
+                          "No location";
+
+                        return (
+                          <tr
+                            key={
+                              job.id
+                            }
+                            className="hover:bg-slate-50"
+                          >
+                            <TableCell>
+                              <Link
+                                href={`/jobs/${job.id}`}
+                                className="font-semibold text-slate-900 hover:underline"
+                              >
+                                {
+                                  job.job_number
+                                }
+                              </Link>
+
+                              <p className="mt-1 text-sm text-slate-500">
+                                {job.title ||
+                                  "Untitled job"}
+                              </p>
+
+                              {job.job_type && (
+                                <p className="mt-1 text-xs text-slate-400">
+                                  {
+                                    job.job_type
+                                  }
+                                </p>
+                              )}
+                            </TableCell>
+
+                            <TableCell>
+                              {
+                                clientName
+                              }
+                            </TableCell>
+
+                            <TableCell>
+                              <StatusBadge
+                                status={
+                                  job.status
+                                }
+                              />
+                            </TableCell>
+
+                            <TableCell>
+                              {
+                                location
+                              }
+                            </TableCell>
+
+                            <TableCell>
+                              {job.start_date
+                                ? formatShortDate(
+                                    job.start_date
+                                  )
+                                : job.survey_date
+                                  ? `Survey ${formatShortDate(
+                                      job.survey_date
+                                    )}`
+                                  : "Not set"}
+                            </TableCell>
+
+                            <TableCell right>
+                              <Link
+                                href={`/jobs/${job.id}`}
+                                className="inline-flex rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-700"
+                              >
+                                View
+                              </Link>
+                            </TableCell>
+                          </tr>
+                        );
+                      }
+                    )}
+                  </tbody>
+                </table>
               </div>
             )}
-          </div>
+          </section>
         </div>
       </main>
     </div>
   );
 }
+
+/* =========================================================
+   DASHBOARD CARD
+   ========================================================= */
 
 function DashboardCard({
   title,
@@ -223,20 +779,20 @@ function DashboardCard({
   href,
 }: {
   title: string;
-  value: number;
+  value: string;
   description: string;
   href: string;
 }) {
   return (
     <Link
       href={href}
-      className="rounded-2xl bg-white p-6 shadow-sm transition hover:shadow-md"
+      className="rounded-2xl bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
     >
       <p className="text-sm font-medium text-slate-500">
         {title}
       </p>
 
-      <p className="mt-3 text-4xl font-bold text-slate-900">
+      <p className="mt-3 text-3xl font-bold text-slate-900">
         {value}
       </p>
 
@@ -245,4 +801,459 @@ function DashboardCard({
       </p>
     </Link>
   );
+}
+
+/* =========================================================
+   STATUS BADGE
+   ========================================================= */
+
+function StatusBadge({
+  status,
+}: {
+  status: string;
+}) {
+  const classes =
+    status === "Paid" ||
+    status === "Signed" ||
+    status === "Accepted" ||
+    status === "Issued" ||
+    status === "Complete" ||
+    status === "Completed"
+      ? "bg-emerald-100 text-emerald-800"
+
+      : status === "Part Paid" ||
+          status === "Expired"
+        ? "bg-amber-100 text-amber-800"
+
+        : status === "Sent" ||
+            status === "Viewed" ||
+            status === "Scheduled" ||
+            status === "Survey" ||
+            status === "Survey Booked" ||
+            status === "Work" ||
+            status === "In Progress"
+          ? "bg-blue-100 text-blue-800"
+
+          : status === "Cancelled" ||
+              status === "Declined" ||
+              status === "Overdue"
+            ? "bg-red-100 text-red-700"
+
+            : "bg-slate-100 text-slate-700";
+
+  return (
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${classes}`}
+    >
+      {status}
+    </span>
+  );
+}
+
+/* =========================================================
+   TABLE
+   ========================================================= */
+
+function Heading({
+  children,
+  right = false,
+}: {
+  children: React.ReactNode;
+  right?: boolean;
+}) {
+  return (
+    <th
+      className={`px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500 ${
+        right
+          ? "text-right"
+          : "text-left"
+      }`}
+    >
+      {children}
+    </th>
+  );
+}
+
+function TableCell({
+  children,
+  right = false,
+}: {
+  children: React.ReactNode;
+  right?: boolean;
+}) {
+  return (
+    <td
+      className={`px-6 py-5 text-sm text-slate-600 ${
+        right
+          ? "text-right"
+          : ""
+      }`}
+    >
+      {children}
+    </td>
+  );
+}
+
+/* =========================================================
+   INVOICE TOTAL
+   ========================================================= */
+
+function invoiceRowTotal(invoice: {
+  amount?:
+    | number
+    | string
+    | null;
+
+  subtotal?:
+    | number
+    | string
+    | null;
+
+  vat_amount?:
+    | number
+    | string
+    | null;
+}) {
+  const amount =
+    Number(
+      invoice.amount ?? 0
+    );
+
+  if (
+    Number.isFinite(
+      amount
+    ) &&
+    amount > 0
+  ) {
+    return money(
+      amount
+    );
+  }
+
+  const subtotal =
+    Number(
+      invoice.subtotal ??
+        0
+    );
+
+  const vatAmount =
+    Number(
+      invoice.vat_amount ??
+        0
+    );
+
+  return money(
+    (
+      Number.isFinite(
+        subtotal
+      )
+        ? subtotal
+        : 0
+    ) +
+      (
+        Number.isFinite(
+          vatAmount
+        )
+          ? vatAmount
+          : 0
+      )
+  );
+}
+
+/* =========================================================
+   MONEY
+   ========================================================= */
+
+function money(
+  value: number
+) {
+  return Math.round(
+    (
+      value +
+      Number.EPSILON
+    ) *
+      100
+  ) / 100;
+}
+
+/* =========================================================
+   CURRENCY
+   ========================================================= */
+
+function formatCurrency(
+  value: number
+) {
+  return new Intl.NumberFormat(
+    "en-GB",
+    {
+      style: "currency",
+      currency: "GBP",
+    }
+  ).format(
+    money(
+      value
+    )
+  );
+}
+
+/* =========================================================
+   UK DATE HELPERS
+   ========================================================= */
+
+function getLondonDateKey(
+  date: Date
+) {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-GB",
+      {
+        timeZone:
+          "Europe/London",
+
+        year:
+          "numeric",
+
+        month:
+          "2-digit",
+
+        day:
+          "2-digit",
+      }
+    ).formatToParts(
+      date
+    );
+
+  const year =
+    parts.find(
+      (part) =>
+        part.type ===
+        "year"
+    )?.value;
+
+  const month =
+    parts.find(
+      (part) =>
+        part.type ===
+        "month"
+    )?.value;
+
+  const day =
+    parts.find(
+      (part) =>
+        part.type ===
+        "day"
+    )?.value;
+
+  return `${year}-${month}-${day}`;
+}
+
+function addDays(
+  dateKey: string,
+  days: number
+) {
+  const [
+    year,
+    month,
+    day,
+  ] = dateKey
+    .split("-")
+    .map(Number);
+
+  const date =
+    new Date(
+      Date.UTC(
+        year,
+        month - 1,
+        day + days
+      )
+    );
+
+  return date
+    .toISOString()
+    .slice(
+      0,
+      10
+    );
+}
+
+function getMonthRange(
+  dateKey: string
+) {
+  const [
+    year,
+    month,
+  ] = dateKey
+    .split("-")
+    .map(Number);
+
+  const monthStart =
+    `${year}-${String(
+      month
+    ).padStart(
+      2,
+      "0"
+    )}-01`;
+
+  const nextMonth =
+    new Date(
+      Date.UTC(
+        year,
+        month,
+        1
+      )
+    );
+
+  const nextMonthStart =
+    nextMonth
+      .toISOString()
+      .slice(
+        0,
+        10
+      );
+
+  return {
+    monthStart,
+    nextMonthStart,
+  };
+}
+
+/* =========================================================
+   DATE FORMATTING
+   ========================================================= */
+
+function parseDateKey(
+  value: string
+) {
+  const [
+    year,
+    month,
+    day,
+  ] = value
+    .slice(
+      0,
+      10
+    )
+    .split("-")
+    .map(Number);
+
+  return new Date(
+    Date.UTC(
+      year,
+      month - 1,
+      day
+    )
+  );
+}
+
+function formatLongDate(
+  value: string
+) {
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      weekday:
+        "long",
+
+      day:
+        "numeric",
+
+      month:
+        "long",
+
+      year:
+        "numeric",
+
+      timeZone:
+        "UTC",
+    }
+  ).format(
+    parseDateKey(
+      value
+    )
+  );
+}
+
+function formatShortDate(
+  value:
+    | string
+    | null
+) {
+  if (!value) {
+    return "Not set";
+  }
+
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      day:
+        "2-digit",
+
+      month:
+        "short",
+
+      year:
+        "numeric",
+
+      timeZone:
+        "UTC",
+    }
+  ).format(
+    parseDateKey(
+      value
+    )
+  );
+}
+
+function formatMonthLabel(
+  value: string
+) {
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      month:
+        "long",
+
+      year:
+        "numeric",
+
+      timeZone:
+        "UTC",
+    }
+  ).format(
+    parseDateKey(
+      value
+    )
+  );
+}
+
+/* =========================================================
+   EVENT TIME
+   ========================================================= */
+
+function formatEventTime(
+  start:
+    | string
+    | null,
+  end:
+    | string
+    | null
+) {
+  if (!start) {
+    return "Time not set";
+  }
+
+  const startTime =
+    start.slice(
+      0,
+      5
+    );
+
+  if (!end) {
+    return startTime;
+  }
+
+  return `${startTime} – ${end.slice(
+    0,
+    5
+  )}`;
 }
