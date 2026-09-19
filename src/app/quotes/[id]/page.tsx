@@ -277,6 +277,26 @@ export default async function QuotePage({
     remainingToInvoice <=
       0.009;
 
+  const fullyPaidQuote =
+    fullyInvoiced &&
+    paidTotal >=
+      quoteTotal - 0.009;
+
+  /*
+   * Guarantees now belong to the completed quote/job workflow
+   * rather than depending on an invoice having been manually
+   * marked as "Final".
+   *
+   * linkedInvoices are ordered newest first, so once the full
+   * quote has been invoiced and paid we can use the latest
+   * invoice as the source for the existing guarantee creator.
+   */
+  const guaranteeSourceInvoice =
+    fullyPaidQuote &&
+    linkedInvoices.length > 0
+      ? linkedInvoices[0]
+      : null;
+
   const scheduleWorkHref =
     jobData?.id
       ? `/schedule/new?job=${jobData.id}&type=Work`
@@ -492,6 +512,15 @@ export default async function QuotePage({
                     Schedule Work
                   </Link>
 
+                  {guaranteeSourceInvoice && (
+                    <Link
+                      href={`/guarantees/new?invoice=${guaranteeSourceInvoice.id}`}
+                      className="rounded-lg bg-blue-700 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-800"
+                    >
+                      Generate Guarantee
+                    </Link>
+                  )}
+
                   {jobData?.id && (
                     <Link
                       href={`/jobs/${jobData.id}`}
@@ -658,6 +687,34 @@ export default async function QuotePage({
                   </div>
                 )}
               </div>
+
+              {guaranteeSourceInvoice && (
+                <div className="border-t border-emerald-200 bg-emerald-50 p-6">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                        Job Financially Complete
+                      </p>
+
+                      <h3 className="mt-1 text-lg font-bold text-emerald-950">
+                        Guarantee Available
+                      </h3>
+
+                      <p className="mt-1 max-w-2xl text-sm leading-6 text-emerald-800">
+                        The full quote has been invoiced and all invoice balances have been paid.
+                        You can now generate the customer guarantee.
+                      </p>
+                    </div>
+
+                    <Link
+                      href={`/guarantees/new?invoice=${guaranteeSourceInvoice.id}`}
+                      className="rounded-lg bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800"
+                    >
+                      Generate Guarantee
+                    </Link>
+                  </div>
+                </div>
+              )}
 
               <div className="border-t border-slate-200 bg-slate-50 p-6">
                 <div className="flex flex-wrap items-center justify-between gap-4">
