@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import EmailInvoiceButton from "@/components/EmailInvoiceButton";
 import { createClient } from "@/lib/supabase/server";
+import { recordInvoicePayment } from "../actions";
 
 type InvoicePageProps = {
   params: Promise<{
@@ -13,6 +14,7 @@ type InvoicePageProps = {
     sent?: string;
     error?: string;
     warning?: string;
+    payment?: string;
   }>;
 };
 
@@ -95,29 +97,66 @@ export default async function InvoicePage({
     notFound();
   }
 
-  const {
-    data: items,
-  } = await supabase
-    .from("invoice_items")
-    .select(`
-      id,
-      description,
-      quantity,
-      unit,
-      unit_price,
-      item_type,
-      sort_order
-    `)
-    .eq(
-      "invoice_id",
-      id
-    )
-    .order(
-      "sort_order",
-      {
-        ascending: true,
-      }
-    );
+  const [
+    itemsResult,
+    paymentsResult,
+  ] = await Promise.all([
+    supabase
+      .from("invoice_items")
+      .select(`
+        id,
+        description,
+        quantity,
+        unit,
+        unit_price,
+        item_type,
+        sort_order
+      `)
+      .eq(
+        "invoice_id",
+        id
+      )
+      .order(
+        "sort_order",
+        {
+          ascending: true,
+        }
+      ),
+
+    supabase
+      .from("invoice_payments")
+      .select(`
+        id,
+        amount,
+        payment_date,
+        payment_method,
+        payment_reference,
+        notes,
+        created_at
+      `)
+      .eq(
+        "invoice_id",
+        id
+      )
+      .order(
+        "payment_date",
+        {
+          ascending: false,
+        }
+      )
+      .order(
+        "created_at",
+        {
+          ascending: false,
+        }
+      ),
+  ]);
+
+  const items =
+    itemsResult.data ?? [];
+
+  const payments =
+    paymentsResult.data ?? [];
 
   const client =
     Array.isArray(
@@ -158,24 +197,45 @@ export default async function InvoicePage({
     "Unknown client";
 
   const labourItems =
-    items?.filter(
+    items.filter(
       (item) =>
-        item.item_type !== "Materials"
-    ) ?? [];
+        item.item_type !==
+        "Materials"
+    );
 
   const materialItems =
-    items?.filter(
+    items.filter(
       (item) =>
-        item.item_type === "Materials"
-    ) ?? [];
+        item.item_type ===
+        "Materials"
+    );
 
-  const balance =
+  const invoiceTotal =
     Number(
       invoice.amount ?? 0
-    ) -
+    );
+
+  const amountPaid =
     Number(
       invoice.amount_paid ?? 0
     );
+
+  const balance =
+    Math.max(
+      invoiceTotal -
+        amountPaid,
+      0
+    );
+
+  const fullyPaid =
+    invoice.status ===
+      "Paid" ||
+    balance <= 0.009;
+
+  const today =
+    new Date()
+      .toISOString()
+      .slice(0, 10);
 
   return (
     <div className="flex min-h-screen bg-slate-100">
@@ -183,11 +243,19 @@ export default async function InvoicePage({
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
-          {query.sent === "1" && (
+          {query.sent ===
+            "1" && (
             <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
               Invoice emailed successfully to{" "}
               {invoice.sent_to ||
                 client?.email}.
+            </div>
+          )}
+
+          {query.payment ===
+            "success" && (
+            <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
+              Payment recorded successfully.
             </div>
           )}
 
@@ -253,10 +321,7 @@ export default async function InvoicePage({
 
             {!client?.email && (
               <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                This client does not have an email
-                address saved. Add an email to the
-                client record before sending the
-                invoice.
+                This client does not have an email address saved.
               </div>
             )}
           </div>
@@ -265,14 +330,14 @@ export default async function InvoicePage({
             <SummaryCard
               title="Invoice Total"
               value={formatCurrency(
-                invoice.amount
+                invoiceTotal
               )}
             />
 
             <SummaryCard
               title="Amount Paid"
               value={formatCurrency(
-                invoice.amount_paid
+                amountPaid
               )}
             />
 
@@ -404,7 +469,8 @@ export default async function InvoicePage({
               {invoice.vat_enabled && (
                 <TotalRow
                   label={`VAT (${Number(
-                    invoice.vat_rate ?? 20
+                    invoice.vat_rate ??
+                      20
                   )}%)`}
                   value={formatCurrency(
                     invoice.vat_amount
@@ -419,13 +485,12 @@ export default async function InvoicePage({
                 )}
               />
 
-              {Number(
-                invoice.amount_paid ?? 0
-              ) > 0 && (
+              {amountPaid >
+                0 && (
                 <TotalRow
                   label="Amount Paid"
                   value={formatCurrency(
-                    invoice.amount_paid
+                    amountPaid
                   )}
                 />
               )}
@@ -443,6 +508,287 @@ export default async function InvoicePage({
               </div>
             </div>
           </section>
+
+          {/* Payment section */}
+          <div className="mt-8 grid gap-6 xl:grid-cols-[1fr_1.4fr]">
+            <section className="rounded-2xl bg-white p-6 shadow-sm">
+              <h2 className="text-xl font-semibold text-slate-900">
+                Record Payment
+              </h2>
+
+              {fullyPaid ? (
+                <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-5">
+                  <p className="font-semibold text-emerald-900">
+                    Invoice paid in full
+                  </p>
+
+                  <p className="mt-1 text-sm text-emerald-700">
+                    No further payment is required.
+                  </p>
+
+                  {invoice.paid_at && (
+                    <p className="mt-3 text-sm text-emerald-800">
+                      Paid{" "}
+                      {formatDateTime(
+                        invoice.paid_at
+                      )}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <form
+                  action={
+                    recordInvoicePayment
+                  }
+                  className="mt-6"
+                >
+                  <input
+                    type="hidden"
+                    name="invoice_id"
+                    value={
+                      invoice.id
+                    }
+                  />
+
+                  <div>
+                    <label
+                      htmlFor="payment_amount"
+                      className="mb-2 block text-sm font-medium text-slate-700"
+                    >
+                      Amount Received
+                    </label>
+
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-slate-500">
+                        £
+                      </span>
+
+                      <input
+                        id="payment_amount"
+                        name="payment_amount"
+                        type="number"
+                        min="0.01"
+                        max={
+                          balance
+                        }
+                        step="0.01"
+                        defaultValue={
+                          balance.toFixed(
+                            2
+                          )
+                        }
+                        required
+                        className="w-full rounded-lg border border-slate-300 py-2.5 pl-7 pr-3 text-slate-900 outline-none focus:border-slate-500"
+                      />
+                    </div>
+
+                    <p className="mt-2 text-xs text-slate-500">
+                      Outstanding balance:{" "}
+                      {formatCurrency(
+                        balance
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="mt-5">
+                    <label
+                      htmlFor="payment_date"
+                      className="mb-2 block text-sm font-medium text-slate-700"
+                    >
+                      Payment Date
+                    </label>
+
+                    <input
+                      id="payment_date"
+                      name="payment_date"
+                      type="date"
+                      defaultValue={
+                        today
+                      }
+                      required
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
+                    />
+                  </div>
+
+                  <div className="mt-5">
+                    <label
+                      htmlFor="payment_method"
+                      className="mb-2 block text-sm font-medium text-slate-700"
+                    >
+                      Payment Method
+                    </label>
+
+                    <select
+                      id="payment_method"
+                      name="payment_method"
+                      defaultValue="Bank Transfer"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
+                    >
+                      <option>
+                        Bank Transfer
+                      </option>
+
+                      <option>
+                        Card
+                      </option>
+
+                      <option>
+                        Cash
+                      </option>
+
+                      <option>
+                        Cheque
+                      </option>
+
+                      <option>
+                        Other
+                      </option>
+                    </select>
+                  </div>
+
+                  <div className="mt-5">
+                    <label
+                      htmlFor="payment_reference"
+                      className="mb-2 block text-sm font-medium text-slate-700"
+                    >
+                      Payment Reference
+                    </label>
+
+                    <input
+                      id="payment_reference"
+                      name="payment_reference"
+                      type="text"
+                      placeholder="e.g. bank reference"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
+                    />
+                  </div>
+
+                  <div className="mt-5">
+                    <label
+                      htmlFor="payment_notes"
+                      className="mb-2 block text-sm font-medium text-slate-700"
+                    >
+                      Notes
+                    </label>
+
+                    <textarea
+                      id="payment_notes"
+                      name="payment_notes"
+                      rows={3}
+                      placeholder="Optional payment notes..."
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="mt-6 w-full rounded-lg bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800"
+                  >
+                    Record Payment
+                  </button>
+                </form>
+              )}
+            </section>
+
+            <section className="rounded-2xl bg-white p-6 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-semibold text-slate-900">
+                    Payment History
+                  </h2>
+
+                  <p className="mt-1 text-sm text-slate-500">
+                    All payments recorded against this invoice.
+                  </p>
+                </div>
+
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                  {
+                    payments.length
+                  }{" "}
+                  {payments.length ===
+                  1
+                    ? "payment"
+                    : "payments"}
+                </span>
+              </div>
+
+              {payments.length ===
+              0 ? (
+                <div className="mt-6 rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+                  No payments recorded yet.
+                </div>
+              ) : (
+                <div className="mt-6 overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <Heading>
+                          Date
+                        </Heading>
+
+                        <Heading>
+                          Method
+                        </Heading>
+
+                        <Heading>
+                          Reference
+                        </Heading>
+
+                        <Heading right>
+                          Amount
+                        </Heading>
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-slate-100">
+                      {payments.map(
+                        (
+                          payment
+                        ) => (
+                          <tr
+                            key={
+                              payment.id
+                            }
+                          >
+                            <td className="px-4 py-4 text-sm text-slate-700">
+                              {formatDate(
+                                payment.payment_date
+                              )}
+                            </td>
+
+                            <td className="px-4 py-4 text-sm text-slate-700">
+                              {payment.payment_method ||
+                                "Not recorded"}
+                            </td>
+
+                            <td className="px-4 py-4 text-sm text-slate-600">
+                              {payment.payment_reference ||
+                                "—"}
+
+                              {payment.notes && (
+                                <p className="mt-1 text-xs text-slate-400">
+                                  {
+                                    payment.notes
+                                  }
+                                </p>
+                              )}
+                            </td>
+
+                            <td className="px-4 py-4 text-right text-sm font-semibold text-emerald-700">
+                              {formatCurrency(
+                                payment.amount
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          </div>
 
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
             <section className="rounded-2xl bg-white p-6 shadow-sm">
@@ -476,10 +822,6 @@ export default async function InvoicePage({
             <p className="mt-5 whitespace-pre-wrap text-sm leading-6 text-slate-700">
               {invoice.internal_notes ||
                 "No internal notes recorded."}
-            </p>
-
-            <p className="mt-4 text-xs text-slate-400">
-              Internal notes are not shown to the customer.
             </p>
           </section>
 
@@ -539,6 +881,36 @@ export default async function InvoicePage({
               </Link>
             </section>
           )}
+
+          {fullyPaid &&
+            invoice.invoice_type ===
+              "Final" && (
+              <section className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                  Final Payment Received
+                </p>
+
+                <h2 className="mt-2 text-xl font-bold text-emerald-950">
+                  Guarantee Available
+                </h2>
+
+                <p className="mt-2 text-sm leading-6 text-emerald-800">
+                  This final invoice has been paid in full, so a customer guarantee can now be generated.
+                </p>
+
+                <button
+                  type="button"
+                  disabled
+                  className="mt-5 rounded-lg bg-emerald-700 px-5 py-3 text-sm font-semibold text-white opacity-60"
+                >
+                  Generate Guarantee
+                </button>
+
+                <p className="mt-2 text-xs text-emerald-700">
+                  We’ll activate this button when we build the Guarantee section next.
+                </p>
+              </section>
+            )}
         </div>
       </main>
     </div>
@@ -666,7 +1038,7 @@ function Heading({
 }) {
   return (
     <th
-      className={`px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500 ${
+      className={`px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 ${
         right
           ? "text-right"
           : "text-left"
