@@ -509,7 +509,6 @@ export default async function InvoicePage({
             </div>
           </section>
 
-          {/* Payment section */}
           <div className="mt-8 grid gap-6 xl:grid-cols-[1fr_1.4fr]">
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">
@@ -898,17 +897,12 @@ export default async function InvoicePage({
                   This final invoice has been paid in full, so a customer guarantee can now be generated.
                 </p>
 
-                <button
-                  type="button"
-                  disabled
-                  className="mt-5 rounded-lg bg-emerald-700 px-5 py-3 text-sm font-semibold text-white opacity-60"
+                <Link
+                  href={`/guarantees/new?invoice=${invoice.id}`}
+                  className="mt-5 inline-flex rounded-lg bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800"
                 >
                   Generate Guarantee
-                </button>
-
-                <p className="mt-2 text-xs text-emerald-700">
-                  We’ll activate this button when we build the Guarantee section next.
-                </p>
+                </Link>
               </section>
             )}
         </div>
