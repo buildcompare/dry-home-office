@@ -11,8 +11,6 @@ export default async function DashboardPage() {
    * -------------------------------------------------------
    * DATE RANGE
    * -------------------------------------------------------
-   *
-   * Dashboard dates are based on UK time.
    */
 
   const today =
@@ -44,6 +42,7 @@ export default async function DashboardPage() {
     activeJobsResult,
     invoicesResult,
     quotesResult,
+    overdueInvoicesResult,
   ] = await Promise.all([
     /*
      * TODAY + TOMORROW
@@ -197,6 +196,51 @@ export default async function DashboardPage() {
         "status",
         "Cancelled"
       ),
+
+    /*
+     * POSSIBLE OVERDUE INVOICES
+     *
+     * Final outstanding calculation is done
+     * below so fully-paid invoices are ignored
+     * even if their stored status is old.
+     */
+    supabase
+      .from("invoices")
+      .select(`
+        id,
+        invoice_number,
+        invoice_type,
+        title,
+        status,
+        amount,
+        subtotal,
+        vat_amount,
+        amount_paid,
+        invoice_date,
+        due_date,
+        client_id,
+
+        clients (
+          id,
+          display_name,
+          first_name,
+          last_name
+        )
+      `)
+      .lt(
+        "due_date",
+        today
+      )
+      .neq(
+        "status",
+        "Cancelled"
+      )
+      .order(
+        "due_date",
+        {
+          ascending: true,
+        }
+      ),
   ]);
 
   /*
@@ -246,30 +290,34 @@ export default async function DashboardPage() {
    */
 
   const invoicedThisMonth =
-    monthlyInvoices.reduce(
-      (
-        total,
-        invoice
-      ) =>
-        total +
-        invoiceRowTotal(
+    money(
+      monthlyInvoices.reduce(
+        (
+          total,
           invoice
-        ),
-      0
+        ) =>
+          total +
+          invoiceRowTotal(
+            invoice
+          ),
+        0
+      )
     );
 
   const quotedThisMonth =
-    monthlyQuotes.reduce(
-      (
-        total,
-        quote
-      ) =>
-        total +
-        Number(
-          quote.amount ??
-            0
-        ),
-      0
+    money(
+      monthlyQuotes.reduce(
+        (
+          total,
+          quote
+        ) =>
+          total +
+          Number(
+            quote.amount ??
+              0
+          ),
+        0
+      )
     );
 
   const monthLabel =
@@ -279,7 +327,75 @@ export default async function DashboardPage() {
 
   /*
    * -------------------------------------------------------
-   * SCHEDULE PANEL RENDERER
+   * OVERDUE INVOICES
+   * -------------------------------------------------------
+   *
+   * Do not trust invoice.status alone.
+   *
+   * An invoice is overdue when:
+   *
+   * - Due date is before today
+   * - It is not cancelled
+   * - It still has money outstanding
+   */
+
+  const overdueInvoices =
+    (
+      overdueInvoicesResult.data ??
+      []
+    )
+      .map(
+        (invoice) => {
+          const invoiceTotal =
+            invoiceRowTotal(
+              invoice
+            );
+
+          const amountPaid =
+            Number(
+              invoice.amount_paid ??
+                0
+            );
+
+          const outstanding =
+            money(
+              Math.max(
+                invoiceTotal -
+                  amountPaid,
+                0
+              )
+            );
+
+          return {
+            ...invoice,
+            invoiceTotal,
+            amountPaid,
+            outstanding,
+          };
+        }
+      )
+      .filter(
+        (invoice) =>
+          invoice.outstanding >
+          0.009
+      );
+
+  const overdueTotal =
+    money(
+      overdueInvoices.reduce(
+        (
+          total,
+          invoice
+        ) =>
+          total +
+          invoice.outstanding,
+        0
+      )
+    );
+
+  /*
+   * -------------------------------------------------------
+   * SCHEDULE PANEL
    * -------------------------------------------------------
    */
 
@@ -389,6 +505,7 @@ export default async function DashboardPage() {
                         {
                           job.job_number
                         }
+
                         {clientName
                           ? ` · ${clientName}`
                           : ""}
@@ -427,11 +544,9 @@ export default async function DashboardPage() {
                     </p>
 
                     <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-400">
-                      {
-                        formatShortDate(
-                          event.start_date
-                        )
-                      }
+                      {formatShortDate(
+                        event.start_date
+                      )}
                     </p>
                   </div>
                 </div>
@@ -513,7 +628,7 @@ export default async function DashboardPage() {
 
           {/* TOP CARDS */}
 
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
             <DashboardCard
               title="Invoiced This Month"
               value={formatCurrency(
@@ -558,6 +673,24 @@ export default async function DashboardPage() {
               }
               href="/schedule"
             />
+
+            <DashboardCard
+              title="Overdue Invoices"
+              value={formatCurrency(
+                overdueTotal
+              )}
+              description={`${overdueInvoices.length} ${
+                overdueInvoices.length ===
+                1
+                  ? "invoice"
+                  : "invoices"
+              } overdue`}
+              href="/invoices"
+              danger={
+                overdueInvoices.length >
+                0
+              }
+            />
           </div>
 
           {/* TODAY / TOMORROW */}
@@ -581,6 +714,193 @@ export default async function DashboardPage() {
               "Nothing booked tomorrow"
             )}
           </div>
+
+          {/* OVERDUE INVOICES */}
+
+          <section className="mt-8 overflow-hidden rounded-2xl bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-6 py-5">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">
+                  Overdue Invoices
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Invoices past their due date with an outstanding balance.
+                </p>
+              </div>
+
+              <div className="text-right">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Outstanding
+                </p>
+
+                <p
+                  className={`mt-1 text-xl font-bold ${
+                    overdueTotal >
+                    0
+                      ? "text-red-700"
+                      : "text-emerald-700"
+                  }`}
+                >
+                  {formatCurrency(
+                    overdueTotal
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {overdueInvoices.length ===
+            0 ? (
+              <div className="p-10 text-center">
+                <p className="font-semibold text-emerald-700">
+                  No overdue invoices
+                </p>
+
+                <p className="mt-2 text-sm text-slate-500">
+                  Everything currently due has been paid.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-red-50">
+                    <tr>
+                      <Heading>
+                        Invoice
+                      </Heading>
+
+                      <Heading>
+                        Client
+                      </Heading>
+
+                      <Heading>
+                        Due Date
+                      </Heading>
+
+                      <Heading>
+                        Overdue
+                      </Heading>
+
+                      <Heading right>
+                        Invoice Total
+                      </Heading>
+
+                      <Heading right>
+                        Outstanding
+                      </Heading>
+
+                      <Heading right>
+                        Action
+                      </Heading>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-100">
+                    {overdueInvoices.map(
+                      (invoice) => {
+                        const clientData =
+                          Array.isArray(
+                            invoice.clients
+                          )
+                            ? invoice.clients[0]
+                            : invoice.clients;
+
+                        const clientName =
+                          clientData?.display_name ||
+                          [
+                            clientData?.first_name,
+                            clientData?.last_name,
+                          ]
+                            .filter(Boolean)
+                            .join(" ") ||
+                          "Unknown client";
+
+                        const daysOverdue =
+                          invoice.due_date
+                            ? dateDifferenceInDays(
+                                invoice.due_date,
+                                today
+                              )
+                            : 0;
+
+                        return (
+                          <tr
+                            key={
+                              invoice.id
+                            }
+                            className="hover:bg-slate-50"
+                          >
+                            <TableCell>
+                              <Link
+                                href={`/invoices/${invoice.id}`}
+                                className="font-semibold text-slate-900 hover:underline"
+                              >
+                                {
+                                  invoice.invoice_number
+                                }
+                              </Link>
+
+                              <p className="mt-1 text-xs text-slate-400">
+                                {invoice.invoice_type ||
+                                  "Invoice"}
+                              </p>
+                            </TableCell>
+
+                            <TableCell>
+                              {
+                                clientName
+                              }
+                            </TableCell>
+
+                            <TableCell>
+                              <span className="font-medium text-red-700">
+                                {formatShortDate(
+                                  invoice.due_date
+                                )}
+                              </span>
+                            </TableCell>
+
+                            <TableCell>
+                              <span className="inline-flex rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
+                                {daysOverdue}{" "}
+                                {daysOverdue ===
+                                1
+                                  ? "day"
+                                  : "days"}
+                              </span>
+                            </TableCell>
+
+                            <TableCell right>
+                              {formatCurrency(
+                                invoice.invoiceTotal
+                              )}
+                            </TableCell>
+
+                            <TableCell right>
+                              <span className="font-bold text-red-700">
+                                {formatCurrency(
+                                  invoice.outstanding
+                                )}
+                              </span>
+                            </TableCell>
+
+                            <TableCell right>
+                              <Link
+                                href={`/invoices/${invoice.id}`}
+                                className="inline-flex rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-700"
+                              >
+                                View Invoice
+                              </Link>
+                            </TableCell>
+                          </tr>
+                        );
+                      }
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
 
           {/* ACTIVE JOBS */}
 
@@ -777,26 +1097,50 @@ function DashboardCard({
   value,
   description,
   href,
+  danger = false,
 }: {
   title: string;
   value: string;
   description: string;
   href: string;
+  danger?: boolean;
 }) {
   return (
     <Link
       href={href}
-      className="rounded-2xl bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+      className={`rounded-2xl p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+        danger
+          ? "border border-red-200 bg-red-50"
+          : "bg-white"
+      }`}
     >
-      <p className="text-sm font-medium text-slate-500">
+      <p
+        className={`text-sm font-medium ${
+          danger
+            ? "text-red-600"
+            : "text-slate-500"
+        }`}
+      >
         {title}
       </p>
 
-      <p className="mt-3 text-3xl font-bold text-slate-900">
+      <p
+        className={`mt-3 text-3xl font-bold ${
+          danger
+            ? "text-red-800"
+            : "text-slate-900"
+        }`}
+      >
         {value}
       </p>
 
-      <p className="mt-2 text-sm text-slate-400">
+      <p
+        className={`mt-2 text-sm ${
+          danger
+            ? "text-red-500"
+            : "text-slate-400"
+        }`}
+      >
         {description}
       </p>
     </Link>
@@ -1223,6 +1567,33 @@ function formatMonthLabel(
     parseDateKey(
       value
     )
+  );
+}
+
+function dateDifferenceInDays(
+  from: string,
+  to: string
+) {
+  const fromDate =
+    parseDateKey(
+      from
+    );
+
+  const toDate =
+    parseDateKey(
+      to
+    );
+
+  const difference =
+    toDate.getTime() -
+    fromDate.getTime();
+
+  return Math.max(
+    Math.floor(
+      difference /
+        86400000
+    ),
+    0
   );
 }
 
