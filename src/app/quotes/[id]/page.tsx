@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import EmailQuoteButton from "@/components/EmailQuoteButton";
 import { createClient } from "@/lib/supabase/server";
+import { manuallyAcceptQuote } from "../actions";
 
 type QuotePageProps = {
   params: Promise<{
@@ -13,6 +14,7 @@ type QuotePageProps = {
     sent?: string;
     error?: string;
     warning?: string;
+    accepted?: string;
   }>;
 };
 
@@ -101,10 +103,16 @@ export default async function QuotePage({
         item_type,
         sort_order
       `)
-      .eq("quote_id", id)
-      .order("sort_order", {
-        ascending: true,
-      }),
+      .eq(
+        "quote_id",
+        id
+      )
+      .order(
+        "sort_order",
+        {
+          ascending: true,
+        }
+      ),
 
     supabase
       .from("contracts")
@@ -116,14 +124,20 @@ export default async function QuotePage({
         signed_at,
         created_at
       `)
-      .eq("quote_id", id)
+      .eq(
+        "quote_id",
+        id
+      )
       .neq(
         "status",
         "Cancelled"
       )
-      .order("created_at", {
-        ascending: false,
-      })
+      .order(
+        "created_at",
+        {
+          ascending: false,
+        }
+      )
       .limit(1),
   ]);
 
@@ -175,6 +189,12 @@ export default async function QuotePage({
         "Materials"
     );
 
+  const canManuallyAccept =
+    quote.status !==
+      "Accepted" &&
+    quote.status !==
+      "Declined";
+
   return (
     <div className="flex min-h-screen bg-slate-100">
       <Sidebar />
@@ -187,6 +207,15 @@ export default async function QuotePage({
               Quote emailed successfully to{" "}
               {quote.sent_to ||
                 clientData?.email}.
+            </div>
+          )}
+
+          {query.accepted ===
+            "manual" && (
+            <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
+              Quote manually accepted successfully.
+              The quote and linked job have been
+              updated to Accepted.
             </div>
           )}
 
@@ -248,6 +277,30 @@ export default async function QuotePage({
                   }
                 />
 
+                {canManuallyAccept && (
+                  <form
+                    action={
+                      manuallyAcceptQuote
+                    }
+                  >
+                    <input
+                      type="hidden"
+                      name="quote_id"
+                      value={
+                        quote.id
+                      }
+                    />
+
+                    <button
+                      type="submit"
+                      title="Use when approval has been received outside DryHome Office, such as by email, phone or purchase order."
+                      className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"
+                    >
+                      Manual Accept
+                    </button>
+                  </form>
+                )}
+
                 {quote.status ===
                   "Accepted" &&
                   !linkedContract && (
@@ -278,10 +331,28 @@ export default async function QuotePage({
 
             {!clientData?.email && (
               <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                This client does not have an email address saved. Add an email to the client record before emailing the quote.
+                This client does not have an email address
+                saved. Add an email to the client record
+                before emailing the quote.
               </div>
             )}
           </div>
+
+          {canManuallyAccept && (
+            <section className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+              <p className="text-sm font-semibold text-amber-900">
+                External approval
+              </p>
+
+              <p className="mt-1 text-sm leading-6 text-amber-800">
+                If this quote has been approved outside
+                DryHome Office — for example by a council
+                purchase order, email, phone call or other
+                written instruction — use Manual Accept
+                above to record the approval.
+              </p>
+            </section>
+          )}
 
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             <SummaryCard
@@ -554,7 +625,8 @@ export default async function QuotePage({
             </p>
 
             <p className="mt-4 text-xs text-slate-400">
-              Internal notes are not included on the customer PDF or email.
+              Internal notes are not included on the
+              customer PDF or email.
             </p>
           </section>
 
