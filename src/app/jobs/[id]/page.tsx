@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+
 import Sidebar from "@/components/Sidebar";
 import { createClient } from "@/lib/supabase/server";
 
@@ -41,6 +42,7 @@ export default async function JobPage({
       notes,
       estimated_value,
       created_at,
+
       clients (
         id,
         display_name,
@@ -100,13 +102,22 @@ export default async function JobPage({
         assigned_to,
         contract_id
       `)
-      .eq("job_id", id)
-      .order("start_date", {
-        ascending: true,
-      })
-      .order("start_time", {
-        ascending: true,
-      }),
+      .eq(
+        "job_id",
+        id
+      )
+      .order(
+        "start_date",
+        {
+          ascending: true,
+        }
+      )
+      .order(
+        "start_time",
+        {
+          ascending: true,
+        }
+      ),
 
     supabase
       .from("quotes")
@@ -119,10 +130,16 @@ export default async function JobPage({
         quote_date,
         created_at
       `)
-      .eq("job_id", id)
-      .order("created_at", {
-        ascending: false,
-      }),
+      .eq(
+        "job_id",
+        id
+      )
+      .order(
+        "created_at",
+        {
+          ascending: false,
+        }
+      ),
 
     supabase
       .from("contracts")
@@ -136,10 +153,16 @@ export default async function JobPage({
         signed_at,
         created_at
       `)
-      .eq("job_id", id)
-      .order("created_at", {
-        ascending: false,
-      }),
+      .eq(
+        "job_id",
+        id
+      )
+      .order(
+        "created_at",
+        {
+          ascending: false,
+        }
+      ),
 
     supabase
       .from("invoices")
@@ -155,10 +178,16 @@ export default async function JobPage({
         paid_at,
         created_at
       `)
-      .eq("job_id", id)
-      .order("created_at", {
-        ascending: false,
-      }),
+      .eq(
+        "job_id",
+        id
+      )
+      .order(
+        "created_at",
+        {
+          ascending: false,
+        }
+      ),
 
     supabase
       .from("guarantees")
@@ -172,10 +201,16 @@ export default async function JobPage({
         expiry_date,
         created_at
       `)
-      .eq("job_id", id)
-      .order("created_at", {
-        ascending: false,
-      }),
+      .eq(
+        "job_id",
+        id
+      )
+      .order(
+        "created_at",
+        {
+          ascending: false,
+        }
+      ),
   ]);
 
   const scheduleEvents =
@@ -193,12 +228,79 @@ export default async function JobPage({
   const guarantees =
     guaranteesResult.data ?? [];
 
+  /*
+   * -------------------------------------------------------
+   * JOB COMMERCIAL SUMMARY
+   * -------------------------------------------------------
+   *
+   * The Job page is an overview only.
+   * Commercial actions remain on the Quote Hub.
+   */
+
+  const latestQuote =
+    quotes.length > 0
+      ? quotes[0]
+      : null;
+
+  const acceptedQuote =
+    quotes.find(
+      (quote) =>
+        quote.status ===
+        "Accepted"
+    ) ?? null;
+
+  const activeInvoices =
+    invoices.filter(
+      (invoice) =>
+        invoice.status !==
+        "Cancelled"
+    );
+
+  const totalInvoiced =
+    activeInvoices.reduce(
+      (total, invoice) =>
+        total +
+        Number(
+          invoice.amount ?? 0
+        ),
+      0
+    );
+
+  const totalPaid =
+    activeInvoices.reduce(
+      (total, invoice) =>
+        total +
+        Number(
+          invoice.amount_paid ??
+            0
+        ),
+      0
+    );
+
+  const outstanding =
+    Math.max(
+      totalInvoiced -
+        totalPaid,
+      0
+    );
+
+  const acceptedValue =
+    acceptedQuote
+      ? Number(
+          acceptedQuote.amount ??
+            0
+        )
+      : null;
+
   return (
     <div className="flex min-h-screen bg-slate-100">
       <Sidebar />
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
+
+          {/* HEADER */}
+
           <div className="mb-8">
             <Link
               href="/jobs"
@@ -225,7 +327,10 @@ export default async function JobPage({
                 </p>
               </div>
 
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-3">
+
+                {/* Survey remains a Job-level action */}
+
                 <Link
                   href={`/schedule/new?job=${job.id}&type=Survey`}
                   className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
@@ -233,12 +338,7 @@ export default async function JobPage({
                   Schedule Survey
                 </Link>
 
-                <Link
-                  href={`/schedule/new?job=${job.id}&type=Work`}
-                  className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  Schedule Work
-                </Link>
+                {/* Quote creation also starts at Job level */}
 
                 <Link
                   href={`/quotes/new?job=${job.id}`}
@@ -250,10 +350,14 @@ export default async function JobPage({
             </div>
           </div>
 
-          <div className="mb-8 grid gap-5 md:grid-cols-2 xl:grid-cols-5">
+          {/* JOB SUMMARY */}
+
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
             <SummaryCard
               title="Status"
-              value={job.status}
+              value={
+                job.status
+              }
             />
 
             <SummaryCard
@@ -272,9 +376,9 @@ export default async function JobPage({
             />
 
             <SummaryCard
-              title="Invoices"
+              title="Quotes"
               value={String(
-                invoices.length
+                quotes.length
               )}
             />
 
@@ -291,11 +395,103 @@ export default async function JobPage({
             />
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-3">
+          {/* COMMERCIAL OVERVIEW */}
+
+          <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Commercial Overview
+                </p>
+
+                <h2 className="mt-1 text-xl font-semibold text-slate-900">
+                  Job Financial Position
+                </h2>
+
+                <p className="mt-2 text-sm text-slate-500">
+                  A summary of the financial records linked to this job.
+                  Actions such as invoicing, scheduling work and contracts
+                  are managed from the Quote Hub.
+                </p>
+              </div>
+
+              {acceptedQuote ? (
+                <Link
+                  href={`/quotes/${acceptedQuote.id}`}
+                  className="rounded-lg bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800"
+                >
+                  Open Quote Hub
+                </Link>
+              ) : latestQuote ? (
+                <Link
+                  href={`/quotes/${latestQuote.id}`}
+                  className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+                >
+                  View Latest Quote
+                </Link>
+              ) : null}
+            </div>
+
+            <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+              <FinanceCard
+                title="Accepted Value"
+                value={
+                  acceptedValue !==
+                  null
+                    ? formatCurrency(
+                        acceptedValue
+                      )
+                    : "No accepted quote"
+                }
+              />
+
+              <FinanceCard
+                title="Invoiced"
+                value={formatCurrency(
+                  totalInvoiced
+                )}
+              />
+
+              <FinanceCard
+                title="Paid"
+                value={formatCurrency(
+                  totalPaid
+                )}
+              />
+
+              <FinanceCard
+                title="Outstanding"
+                value={formatCurrency(
+                  outstanding
+                )}
+                strong={
+                  outstanding > 0
+                }
+              />
+            </div>
+          </section>
+
+          {/* CLIENT / ADDRESS / DATES */}
+
+          <div className="mt-8 grid gap-6 lg:grid-cols-3">
+
+            {/* CLIENT */}
+
             <section className="rounded-2xl bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-900">
-                Client
-              </h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-slate-900">
+                  Client
+                </h2>
+
+                {clientData?.id && (
+                  <Link
+                    href={`/clients/${clientData.id}`}
+                    className="text-sm font-semibold text-slate-700 hover:underline"
+                  >
+                    View Client →
+                  </Link>
+                )}
+              </div>
 
               <div className="mt-5 space-y-4">
                 <DetailRow
@@ -318,17 +514,10 @@ export default async function JobPage({
                     clientData?.email
                   }
                 />
-
-                {clientData?.id && (
-                  <Link
-                    href={`/clients/${clientData.id}`}
-                    className="inline-flex text-sm font-semibold text-slate-900 hover:underline"
-                  >
-                    View Client Record →
-                  </Link>
-                )}
               </div>
             </section>
+
+            {/* ADDRESS */}
 
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">
@@ -384,6 +573,8 @@ export default async function JobPage({
               </div>
             </section>
 
+            {/* DATES */}
+
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">
                 Dates
@@ -414,6 +605,8 @@ export default async function JobPage({
             </section>
           </div>
 
+          {/* DESCRIPTION / NOTES */}
+
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">
@@ -438,16 +631,27 @@ export default async function JobPage({
             </section>
           </div>
 
+          {/* SCHEDULE — VIEW / SURVEY ONLY */}
+
           <RecordSection
             title="Schedule"
             subtitle={`${scheduleEvents.length} appointments linked to this job`}
             action={
-              <Link
-                href={`/schedule/new?job=${job.id}`}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-              >
-                + Add Appointment
-              </Link>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href={`/schedule/new?job=${job.id}&type=Survey`}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  + Schedule Survey
+                </Link>
+
+                <Link
+                  href="/schedule"
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+                >
+                  View Schedule
+                </Link>
+              </div>
             }
           >
             {scheduleEvents.length ===
@@ -530,6 +734,8 @@ export default async function JobPage({
               </div>
             )}
           </RecordSection>
+
+          {/* QUOTES */}
 
           <RecordSection
             title="Quotes"
@@ -618,9 +824,20 @@ export default async function JobPage({
                           </TableCell>
 
                           <TableCell right>
-                            <RecordLink
+                            <Link
                               href={`/quotes/${quote.id}`}
-                            />
+                              className={
+                                quote.status ===
+                                "Accepted"
+                                  ? "inline-flex rounded-lg bg-emerald-700 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-800"
+                                  : "inline-flex rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                              }
+                            >
+                              {quote.status ===
+                              "Accepted"
+                                ? "Open Hub"
+                                : "View"}
+                            </Link>
                           </TableCell>
                         </tr>
                       )
@@ -630,6 +847,8 @@ export default async function JobPage({
               </div>
             )}
           </RecordSection>
+
+          {/* CONTRACTS — VIEW ONLY */}
 
           <RecordSection
             title="Contracts"
@@ -667,9 +886,7 @@ export default async function JobPage({
 
                   <tbody className="divide-y divide-slate-100">
                     {contracts.map(
-                      (
-                        contract
-                      ) => (
+                      (contract) => (
                         <tr
                           key={
                             contract.id
@@ -721,6 +938,8 @@ export default async function JobPage({
             )}
           </RecordSection>
 
+          {/* INVOICES — VIEW ONLY */}
+
           <RecordSection
             title="Invoices"
             subtitle={`${invoices.length} invoices linked to this job`}
@@ -765,72 +984,94 @@ export default async function JobPage({
 
                   <tbody className="divide-y divide-slate-100">
                     {invoices.map(
-                      (
-                        invoice
-                      ) => (
-                        <tr
-                          key={
-                            invoice.id
-                          }
-                        >
-                          <TableCell>
-                            <Link
-                              href={`/invoices/${invoice.id}`}
-                              className="font-semibold text-slate-900 hover:underline"
-                            >
-                              {
-                                invoice.invoice_number
-                              }
-                            </Link>
-                          </TableCell>
+                      (invoice) => {
+                        const invoiceAmount =
+                          Number(
+                            invoice.amount ??
+                              0
+                          );
 
-                          <TableCell>
-                            {invoice.invoice_type ||
-                              "—"}
-                          </TableCell>
+                        const paid =
+                          Number(
+                            invoice.amount_paid ??
+                              0
+                          );
 
-                          <TableCell>
-                            <StatusBadge
-                              status={
-                                invoice.status
-                              }
-                            />
-                          </TableCell>
+                        const derivedStatus =
+                          invoiceAmount >
+                            0 &&
+                          paid >=
+                            invoiceAmount -
+                              0.009
+                            ? "Paid"
+                            : paid > 0
+                              ? "Part Paid"
+                              : invoice.status;
 
-                          <TableCell>
-                            {formatDate(
-                              invoice.due_date
-                            )}
-                          </TableCell>
+                        return (
+                          <tr
+                            key={
+                              invoice.id
+                            }
+                          >
+                            <TableCell>
+                              <Link
+                                href={`/invoices/${invoice.id}`}
+                                className="font-semibold text-slate-900 hover:underline"
+                              >
+                                {
+                                  invoice.invoice_number
+                                }
+                              </Link>
+                            </TableCell>
 
-                          <TableCell right>
-                            {formatCurrency(
-                              invoice.amount
-                            )}
-                          </TableCell>
+                            <TableCell>
+                              {invoice.invoice_type ||
+                                "—"}
+                            </TableCell>
 
-                          <TableCell right>
-                            {formatCurrency(
-                              Number(
-                                invoice.amount_paid ??
-                                  0
-                              )
-                            )}
-                          </TableCell>
+                            <TableCell>
+                              <StatusBadge
+                                status={
+                                  derivedStatus
+                                }
+                              />
+                            </TableCell>
 
-                          <TableCell right>
-                            <RecordLink
-                              href={`/invoices/${invoice.id}`}
-                            />
-                          </TableCell>
-                        </tr>
-                      )
+                            <TableCell>
+                              {formatDate(
+                                invoice.due_date
+                              )}
+                            </TableCell>
+
+                            <TableCell right>
+                              {formatCurrency(
+                                invoiceAmount
+                              )}
+                            </TableCell>
+
+                            <TableCell right>
+                              {formatCurrency(
+                                paid
+                              )}
+                            </TableCell>
+
+                            <TableCell right>
+                              <RecordLink
+                                href={`/invoices/${invoice.id}`}
+                              />
+                            </TableCell>
+                          </tr>
+                        );
+                      }
                     )}
                   </tbody>
                 </table>
               </div>
             )}
           </RecordSection>
+
+          {/* GUARANTEES — VIEW ONLY */}
 
           <RecordSection
             title="Guarantees"
@@ -872,9 +1113,7 @@ export default async function JobPage({
 
                   <tbody className="divide-y divide-slate-100">
                     {guarantees.map(
-                      (
-                        guarantee
-                      ) => {
+                      (guarantee) => {
                         const expired =
                           guarantee.expiry_date
                             ? new Date(
@@ -958,6 +1197,10 @@ export default async function JobPage({
   );
 }
 
+/* =========================================================
+   SUMMARY CARD
+   ========================================================= */
+
 function SummaryCard({
   title,
   value,
@@ -977,6 +1220,54 @@ function SummaryCard({
     </div>
   );
 }
+
+/* =========================================================
+   FINANCE CARD
+   ========================================================= */
+
+function FinanceCard({
+  title,
+  value,
+  strong = false,
+}: {
+  title: string;
+  value: string;
+  strong?: boolean;
+}) {
+  return (
+    <div
+      className={
+        strong
+          ? "rounded-xl bg-slate-900 p-5"
+          : "rounded-xl bg-slate-50 p-5"
+      }
+    >
+      <p
+        className={
+          strong
+            ? "text-xs font-semibold uppercase tracking-wide text-slate-300"
+            : "text-xs font-semibold uppercase tracking-wide text-slate-500"
+        }
+      >
+        {title}
+      </p>
+
+      <p
+        className={
+          strong
+            ? "mt-2 text-2xl font-bold text-white"
+            : "mt-2 text-2xl font-bold text-slate-900"
+        }
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+/* =========================================================
+   RECORD SECTION
+   ========================================================= */
 
 function RecordSection({
   title,
@@ -1010,6 +1301,10 @@ function RecordSection({
   );
 }
 
+/* =========================================================
+   DETAIL ROW
+   ========================================================= */
+
 function DetailRow({
   label,
   value,
@@ -1031,6 +1326,10 @@ function DetailRow({
   );
 }
 
+/* =========================================================
+   STATUS BADGE
+   ========================================================= */
+
 function StatusBadge({
   status,
 }: {
@@ -1041,21 +1340,26 @@ function StatusBadge({
     status === "Signed" ||
     status === "Accepted" ||
     status === "Issued" ||
-    status === "Completed"
+    status === "Completed" ||
+    status === "Complete"
       ? "bg-emerald-100 text-emerald-800"
+
       : status === "Part Paid" ||
           status === "Expired"
         ? "bg-amber-100 text-amber-800"
+
         : status === "Sent" ||
             status === "Viewed" ||
             status === "Scheduled" ||
             status === "Survey" ||
             status === "Work"
           ? "bg-blue-100 text-blue-800"
+
           : status === "Cancelled" ||
               status === "Declined" ||
               status === "Overdue"
             ? "bg-red-100 text-red-700"
+
             : "bg-slate-100 text-slate-700";
 
   return (
@@ -1066,6 +1370,10 @@ function StatusBadge({
     </span>
   );
 }
+
+/* =========================================================
+   TABLE HEADING
+   ========================================================= */
 
 function Heading({
   children,
@@ -1087,6 +1395,10 @@ function Heading({
   );
 }
 
+/* =========================================================
+   TABLE CELL
+   ========================================================= */
+
 function TableCell({
   children,
   right = false,
@@ -1107,6 +1419,10 @@ function TableCell({
   );
 }
 
+/* =========================================================
+   RECORD LINK
+   ========================================================= */
+
 function RecordLink({
   href,
 }: {
@@ -1122,6 +1438,10 @@ function RecordLink({
   );
 }
 
+/* =========================================================
+   EMPTY STATE
+   ========================================================= */
+
 function EmptyState({
   text,
 }: {
@@ -1135,6 +1455,10 @@ function EmptyState({
     </div>
   );
 }
+
+/* =========================================================
+   CURRENCY
+   ========================================================= */
 
 function formatCurrency(
   value:
@@ -1159,6 +1483,10 @@ function formatCurrency(
     Number(value)
   );
 }
+
+/* =========================================================
+   DATE
+   ========================================================= */
 
 function formatDate(
   value: string | null
@@ -1193,6 +1521,10 @@ function formatDate(
     )
   );
 }
+
+/* =========================================================
+   EVENT TIME
+   ========================================================= */
 
 function formatEventTime(
   start: string | null,
