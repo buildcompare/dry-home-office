@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+
 import Sidebar from "@/components/Sidebar";
 import EmailContractButton from "@/components/EmailContractButton";
 import { createClient } from "@/lib/supabase/server";
@@ -23,8 +24,7 @@ export default async function ContractPage({
   const { id } = await params;
   const query = await searchParams;
 
-  const supabase =
-    await createClient();
+  const supabase = await createClient();
 
   const {
     data: contract,
@@ -54,6 +54,7 @@ export default async function ContractPage({
       signed_ip,
       public_token,
       created_at,
+
       clients (
         id,
         display_name,
@@ -67,6 +68,7 @@ export default async function ContractPage({
         county,
         postcode
       ),
+
       jobs (
         id,
         job_number,
@@ -74,6 +76,7 @@ export default async function ContractPage({
         job_type,
         status
       ),
+
       quotes (
         id,
         quote_number,
@@ -123,6 +126,12 @@ export default async function ContractPage({
       .join(" ") ||
     "Unknown client";
 
+  /*
+   * Related records are view-only here.
+   *
+   * The Quote Hub remains the place where
+   * Schedule / Invoice / Guarantee actions live.
+   */
   const [
     scheduleResult,
     invoicesResult,
@@ -218,25 +227,9 @@ export default async function ContractPage({
   const guarantees =
     guaranteesResult.data ?? [];
 
-  const totalInvoiced =
-    invoices.reduce(
-      (total, invoice) =>
-        total +
-        Number(
-          invoice.amount ?? 0
-        ),
-      0
-    );
-
-  const totalPaid =
-    invoices.reduce(
-      (total, invoice) =>
-        total +
-        Number(
-          invoice.amount_paid ?? 0
-        ),
-      0
-    );
+  const signed =
+    contract.status ===
+    "Signed";
 
   return (
     <div className="flex min-h-screen bg-slate-100">
@@ -244,6 +237,9 @@ export default async function ContractPage({
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
+
+          {/* SUCCESS / ERROR MESSAGES */}
+
           {query.sent ===
             "1" && (
             <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
@@ -265,13 +261,26 @@ export default async function ContractPage({
             </div>
           )}
 
+          {/* HEADER */}
+
           <div className="mb-8">
-            <Link
-              href="/contracts"
-              className="text-sm font-medium text-slate-500 hover:text-slate-900"
-            >
-              ← Back to Contracts
-            </Link>
+            <div className="flex flex-wrap items-center gap-4">
+              <Link
+                href="/contracts"
+                className="text-sm font-medium text-slate-500 hover:text-slate-900"
+              >
+                ← Back to Contracts
+              </Link>
+
+              {quote?.id && (
+                <Link
+                  href={`/quotes/${quote.id}`}
+                  className="text-sm font-semibold text-emerald-700 hover:text-emerald-900"
+                >
+                  ← Back to Quote Hub
+                </Link>
+              )}
+            </div>
 
             <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -305,27 +314,13 @@ export default async function ContractPage({
                   }
                 />
 
-                {contract.status ===
-                  "Signed" && (
-                  <>
-                    <Link
-                      href={
-                        job?.id
-                          ? `/schedule/new?job=${job.id}&contract=${contract.id}&type=Work`
-                          : `/schedule/new?client=${contract.client_id}&contract=${contract.id}&type=Work`
-                      }
-                      className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      Schedule Work
-                    </Link>
-
-                    <Link
-                      href={`/invoices/new?contract=${contract.id}`}
-                      className="rounded-lg bg-emerald-700 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-800"
-                    >
-                      Create Invoice
-                    </Link>
-                  </>
+                {quote?.id && (
+                  <Link
+                    href={`/quotes/${quote.id}`}
+                    className="rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+                  >
+                    View Quote Hub
+                  </Link>
                 )}
 
                 <StatusBadge
@@ -338,16 +333,27 @@ export default async function ContractPage({
 
             {!client?.email && (
               <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                This client does not have an email address saved. Add an email to the client record before sending the contract.
+                This client does not have an email address saved.
+                Add an email to the client record before sending
+                the contract.
               </div>
             )}
           </div>
 
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
+          {/* SUMMARY */}
+
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             <SummaryCard
               title="Contract Value"
               value={formatCurrency(
                 contract.amount
+              )}
+            />
+
+            <SummaryCard
+              title="Contract Date"
+              value={formatDate(
+                contract.contract_date
               )}
             />
 
@@ -359,28 +365,23 @@ export default async function ContractPage({
             />
 
             <SummaryCard
-              title="Appointments"
-              value={String(
-                scheduleEvents.length
-              )}
-            />
-
-            <SummaryCard
-              title="Invoiced"
-              value={formatCurrency(
-                totalInvoiced
-              )}
-            />
-
-            <SummaryCard
-              title="Paid"
-              value={formatCurrency(
-                totalPaid
-              )}
+              title="Signed"
+              value={
+                contract.signed_at
+                  ? formatDate(
+                      contract.signed_at
+                    )
+                  : "Not signed"
+              }
             />
           </div>
 
+          {/* RELATIONSHIPS */}
+
           <div className="mt-8 grid gap-6 lg:grid-cols-3">
+
+            {/* CLIENT */}
+
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-slate-900">
@@ -420,6 +421,8 @@ export default async function ContractPage({
                 />
               </div>
             </section>
+
+            {/* JOB */}
 
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between">
@@ -474,6 +477,8 @@ export default async function ContractPage({
               )}
             </section>
 
+            {/* QUOTE */}
+
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-slate-900">
@@ -483,9 +488,9 @@ export default async function ContractPage({
                 {quote?.id && (
                   <Link
                     href={`/quotes/${quote.id}`}
-                    className="text-sm font-semibold text-slate-700 hover:underline"
+                    className="text-sm font-semibold text-emerald-700 hover:underline"
                   >
-                    View Quote →
+                    Open Hub →
                   </Link>
                 )}
               </div>
@@ -528,6 +533,8 @@ export default async function ContractPage({
             </section>
           </div>
 
+          {/* SCOPE */}
+
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold text-slate-900">
               Scope of Works
@@ -539,6 +546,8 @@ export default async function ContractPage({
             </p>
           </section>
 
+          {/* TERMS */}
+
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold text-slate-900">
               Terms & Conditions
@@ -549,6 +558,8 @@ export default async function ContractPage({
                 "No terms recorded."}
             </p>
           </section>
+
+          {/* CUSTOMER MESSAGE / INTERNAL NOTES */}
 
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
             <section className="rounded-2xl bg-white p-6 shadow-sm">
@@ -578,8 +589,9 @@ export default async function ContractPage({
             </section>
           </div>
 
-          {contract.status ===
-            "Signed" && (
+          {/* SIGNATURE */}
+
+          {signed && (
             <section className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
@@ -590,11 +602,21 @@ export default async function ContractPage({
                   <h2 className="mt-2 text-xl font-bold text-emerald-950">
                     Agreement Recorded
                   </h2>
+
+                  <p className="mt-2 text-sm text-emerald-800">
+                    The customer has signed this agreement.
+                    Continue the workflow from the Quote Hub.
+                  </p>
                 </div>
 
-                <span className="rounded-full bg-emerald-200 px-3 py-1 text-xs font-semibold text-emerald-900">
-                  Signed
-                </span>
+                {quote?.id && (
+                  <Link
+                    href={`/quotes/${quote.id}`}
+                    className="rounded-lg bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800"
+                  >
+                    Return to Quote Hub
+                  </Link>
+                )}
               </div>
 
               <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
@@ -630,125 +652,91 @@ export default async function ContractPage({
             </section>
           )}
 
-          <RecordSection
-            title="Schedule"
-            subtitle={`${scheduleEvents.length} appointments linked to this contract`}
-            action={
-              contract.status ===
-              "Signed" ? (
-                <Link
-                  href={
-                    job?.id
-                      ? `/schedule/new?job=${job.id}&contract=${contract.id}&type=Work`
-                      : `/schedule/new?client=${contract.client_id}&contract=${contract.id}&type=Work`
-                  }
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-                >
-                  + Schedule Work
-                </Link>
-              ) : undefined
-            }
-          >
-            {scheduleEvents.length ===
-            0 ? (
-              <EmptyState text="No appointments linked to this contract yet." />
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {scheduleEvents.map(
-                  (event) => (
-                    <div
-                      key={
-                        event.id
-                      }
-                      className="flex flex-wrap items-center justify-between gap-4 px-6 py-5"
-                    >
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold text-slate-900">
-                            {
-                              event.title
-                            }
-                          </p>
+          {/* RELATED RECORDS */}
 
-                          <StatusBadge
-                            status={
-                              event.event_type
-                            }
-                          />
+          <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Related Records
+              </p>
 
-                          <StatusBadge
-                            status={
-                              event.status
-                            }
-                          />
-                        </div>
+              <h2 className="mt-1 text-xl font-semibold text-slate-900">
+                Contract Activity
+              </h2>
 
-                        <p className="mt-2 text-sm text-slate-500">
-                          {formatDate(
-                            event.start_date
-                          )}
+              <p className="mt-2 text-sm text-slate-500">
+                These records are shown for reference. New workflow
+                actions are managed from the Quote Hub.
+              </p>
+            </div>
 
-                          {event.end_date &&
-                            event.end_date !==
-                              event.start_date &&
-                            ` – ${formatDate(
-                              event.end_date
-                            )}`}
-                        </p>
+            <div className="mt-6 grid gap-5 md:grid-cols-3">
+              <RelatedCard
+                title="Schedule"
+                count={
+                  scheduleEvents.length
+                }
+                label={
+                  scheduleEvents.length ===
+                  1
+                    ? "appointment"
+                    : "appointments"
+                }
+                href={
+                  job?.id
+                    ? `/jobs/${job.id}`
+                    : undefined
+                }
+                actionLabel="View Job"
+              />
 
-                        {event.location && (
-                          <p className="mt-1 text-sm text-slate-500">
-                            {
-                              event.location
-                            }
-                          </p>
-                        )}
-                      </div>
+              <RelatedCard
+                title="Invoices"
+                count={
+                  invoices.length
+                }
+                label={
+                  invoices.length ===
+                  1
+                    ? "invoice"
+                    : "invoices"
+                }
+                href={
+                  quote?.id
+                    ? `/quotes/${quote.id}`
+                    : "/invoices"
+                }
+                actionLabel={
+                  quote?.id
+                    ? "View Quote Hub"
+                    : "View Invoices"
+                }
+              />
 
-                      <div className="text-right">
-                        <p className="text-sm font-medium text-slate-700">
-                          {event.all_day
-                            ? "All day"
-                            : formatEventTime(
-                                event.start_time,
-                                event.end_time
-                              )}
-                        </p>
+              <RelatedCard
+                title="Guarantees"
+                count={
+                  guarantees.length
+                }
+                label={
+                  guarantees.length ===
+                  1
+                    ? "guarantee"
+                    : "guarantees"
+                }
+                href="/guarantees"
+                actionLabel="View Guarantees"
+              />
+            </div>
+          </section>
 
-                        {event.assigned_to && (
-                          <p className="mt-1 text-xs text-slate-500">
-                            {
-                              event.assigned_to
-                            }
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )
-                )}
-              </div>
-            )}
-          </RecordSection>
+          {/* INVOICE HISTORY — VIEW ONLY */}
 
-          <RecordSection
-            title="Invoices"
-            subtitle={`${invoices.length} invoices linked to this contract`}
-            action={
-              contract.status ===
-              "Signed" ? (
-                <Link
-                  href={`/invoices/new?contract=${contract.id}`}
-                  className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
-                >
-                  + Create Invoice
-                </Link>
-              ) : undefined
-            }
-          >
-            {invoices.length ===
-            0 ? (
-              <EmptyState text="No invoices created from this contract yet." />
-            ) : (
+          {invoices.length > 0 && (
+            <RecordSection
+              title="Linked Invoices"
+              subtitle="Invoices created from this contract"
+            >
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-slate-50">
@@ -785,9 +773,7 @@ export default async function ContractPage({
 
                   <tbody className="divide-y divide-slate-100">
                     {invoices.map(
-                      (
-                        invoice
-                      ) => (
+                      (invoice) => (
                         <tr
                           key={
                             invoice.id
@@ -849,17 +835,16 @@ export default async function ContractPage({
                   </tbody>
                 </table>
               </div>
-            )}
-          </RecordSection>
+            </RecordSection>
+          )}
 
-          <RecordSection
-            title="Guarantees"
-            subtitle={`${guarantees.length} guarantees linked to this contract`}
-          >
-            {guarantees.length ===
-            0 ? (
-              <EmptyState text="No guarantees linked to this contract yet." />
-            ) : (
+          {/* GUARANTEES — VIEW ONLY */}
+
+          {guarantees.length > 0 && (
+            <RecordSection
+              title="Linked Guarantees"
+              subtitle="Guarantees connected to this contract"
+            >
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-slate-50">
@@ -892,9 +877,7 @@ export default async function ContractPage({
 
                   <tbody className="divide-y divide-slate-100">
                     {guarantees.map(
-                      (
-                        guarantee
-                      ) => {
+                      (guarantee) => {
                         const expired =
                           guarantee.expiry_date
                             ? new Date(
@@ -970,8 +953,10 @@ export default async function ContractPage({
                   </tbody>
                 </table>
               </div>
-            )}
-          </RecordSection>
+            </RecordSection>
+          )}
+
+          {/* CONTRACT ACTIVITY */}
 
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">
@@ -1010,6 +995,8 @@ export default async function ContractPage({
             </div>
           </section>
 
+          {/* CUSTOMER CONTRACT */}
+
           {contract.public_token && (
             <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">
@@ -1035,6 +1022,10 @@ export default async function ContractPage({
   );
 }
 
+/* =========================================================
+   SUMMARY CARD
+   ========================================================= */
+
 function SummaryCard({
   title,
   value,
@@ -1055,37 +1046,82 @@ function SummaryCard({
   );
 }
 
+/* =========================================================
+   RELATED CARD
+   ========================================================= */
+
+function RelatedCard({
+  title,
+  count,
+  label,
+  href,
+  actionLabel,
+}: {
+  title: string;
+  count: number;
+  label: string;
+  href?: string;
+  actionLabel: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+        {title}
+      </p>
+
+      <p className="mt-2 text-2xl font-bold text-slate-900">
+        {count}
+      </p>
+
+      <p className="mt-1 text-sm text-slate-500">
+        {label}
+      </p>
+
+      {href && (
+        <Link
+          href={href}
+          className="mt-4 inline-flex text-sm font-semibold text-slate-900 hover:underline"
+        >
+          {actionLabel} →
+        </Link>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================
+   RECORD SECTION
+   ========================================================= */
+
 function RecordSection({
   title,
   subtitle,
   children,
-  action,
 }: {
   title: string;
   subtitle: string;
   children: React.ReactNode;
-  action?: React.ReactNode;
 }) {
   return (
     <section className="mt-8 overflow-hidden rounded-2xl bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-6 py-5">
-        <div>
-          <h2 className="text-xl font-semibold text-slate-900">
-            {title}
-          </h2>
+      <div className="border-b border-slate-200 px-6 py-5">
+        <h2 className="text-xl font-semibold text-slate-900">
+          {title}
+        </h2>
 
-          <p className="mt-1 text-sm text-slate-500">
-            {subtitle}
-          </p>
-        </div>
-
-        {action}
+        <p className="mt-1 text-sm text-slate-500">
+          {subtitle}
+        </p>
       </div>
 
       {children}
     </section>
   );
 }
+
+/* =========================================================
+   DETAIL ROW
+   ========================================================= */
 
 function DetailRow({
   label,
@@ -1108,6 +1144,10 @@ function DetailRow({
   );
 }
 
+/* =========================================================
+   STATUS BADGE
+   ========================================================= */
+
 function StatusBadge({
   status,
 }: {
@@ -1119,18 +1159,22 @@ function StatusBadge({
     status === "Issued" ||
     status === "Completed"
       ? "bg-emerald-100 text-emerald-800"
+
       : status === "Part Paid" ||
           status === "Expired"
         ? "bg-amber-100 text-amber-800"
+
         : status === "Sent" ||
             status === "Viewed" ||
             status === "Scheduled" ||
             status === "Work" ||
             status === "Survey"
           ? "bg-blue-100 text-blue-800"
+
           : status === "Cancelled" ||
               status === "Overdue"
             ? "bg-red-100 text-red-700"
+
             : "bg-slate-100 text-slate-700";
 
   return (
@@ -1141,6 +1185,10 @@ function StatusBadge({
     </span>
   );
 }
+
+/* =========================================================
+   TABLE HEADING
+   ========================================================= */
 
 function Heading({
   children,
@@ -1162,6 +1210,10 @@ function Heading({
   );
 }
 
+/* =========================================================
+   TABLE CELL
+   ========================================================= */
+
 function TableCell({
   children,
   right = false,
@@ -1182,6 +1234,10 @@ function TableCell({
   );
 }
 
+/* =========================================================
+   RECORD LINK
+   ========================================================= */
+
 function RecordLink({
   href,
 }: {
@@ -1197,19 +1253,9 @@ function RecordLink({
   );
 }
 
-function EmptyState({
-  text,
-}: {
-  text: string;
-}) {
-  return (
-    <div className="p-10 text-center">
-      <p className="text-sm text-slate-500">
-        {text}
-      </p>
-    </div>
-  );
-}
+/* =========================================================
+   CURRENCY
+   ========================================================= */
 
 function formatCurrency(
   value:
@@ -1229,6 +1275,10 @@ function formatCurrency(
     )
   );
 }
+
+/* =========================================================
+   DATE
+   ========================================================= */
 
 function formatDate(
   value: string | null
@@ -1264,6 +1314,10 @@ function formatDate(
   );
 }
 
+/* =========================================================
+   DATE / TIME
+   ========================================================= */
+
 function formatDateTime(
   value: string | null
 ) {
@@ -1276,34 +1330,15 @@ function formatDateTime(
     {
       timeZone:
         "Europe/London",
+
       day: "2-digit",
       month: "short",
       year: "numeric",
+
       hour: "2-digit",
       minute: "2-digit",
     }
   ).format(
     new Date(value)
   );
-}
-
-function formatEventTime(
-  start: string | null,
-  end: string | null
-) {
-  if (!start) {
-    return "Time not set";
-  }
-
-  const startTime =
-    start.slice(0, 5);
-
-  if (!end) {
-    return startTime;
-  }
-
-  return `${startTime} – ${end.slice(
-    0,
-    5
-  )}`;
 }
