@@ -34,6 +34,10 @@ const navItems = [
     label: "Invoices",
     href: "/invoices",
   },
+  {
+    label: "Guarantees",
+    href: "/guarantees",
+  },
 ];
 
 export default function Sidebar() {
