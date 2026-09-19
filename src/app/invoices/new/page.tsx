@@ -1,28 +1,98 @@
 import Link from "next/link";
-import Sidebar from "@/components/Sidebar";
-import InvoiceForm from "@/components/InvoiceForm";
+
 import { createClient } from "@/lib/supabase/server";
+import InvoiceForm from "@/components/InvoiceForm";
+
 import { addInvoice } from "../actions";
 
-type NewInvoicePageProps = {
-  searchParams: Promise<{
-    contract?: string;
-    quote?: string;
-    error?: string;
-  }>;
-};
+type SearchParams = Promise<{
+  contract?: string;
+  quote?: string;
+}>;
+
+function clientName(client: any) {
+  if (!client) {
+    return "Unknown client";
+  }
+
+  if (client.display_name) {
+    return client.display_name;
+  }
+
+  const personalName = [
+    client.first_name,
+    client.last_name,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  if (personalName) {
+    return personalName;
+  }
+
+  if (client.company_name) {
+    return client.company_name;
+  }
+
+  return "Unnamed client";
+}
+
+function jobName(job: any) {
+  if (!job) {
+    return "Unknown job";
+  }
+
+  const number =
+    job.job_number || "Job";
+
+  const title =
+    job.title || "";
+
+  return title
+    ? `${number} — ${title}`
+    : number;
+}
+
+function money(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function formatMoney(value: number) {
+  return new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+  }).format(value);
+}
+
+function todayDate() {
+  return new Date()
+    .toISOString()
+    .slice(0, 10);
+}
+
+function defaultDueDate() {
+  const date = new Date();
+
+  date.setDate(date.getDate() + 7);
+
+  return date
+    .toISOString()
+    .slice(0, 10);
+}
 
 export default async function NewInvoicePage({
   searchParams,
-}: NewInvoicePageProps) {
-  const params =
-    await searchParams;
+}: {
+  searchParams: SearchParams;
+}) {
+  const params = await searchParams;
 
   const selectedContractId =
-    params.contract || "";
+    params.contract ?? "";
 
   const selectedQuoteId =
-    params.quote || "";
+    params.quote ?? "";
 
   const supabase =
     await createClient();
@@ -35,86 +105,57 @@ export default async function NewInvoicePage({
   ] = await Promise.all([
     supabase
       .from("clients")
-      .select(`
-        id,
-        display_name,
-        first_name,
-        last_name
-      `)
-      .order(
-        "display_name",
-        {
-          ascending: true,
-        }
-      ),
+      .select("*")
+      .order("created_at", {
+        ascending: false,
+      }),
 
     supabase
       .from("jobs")
-      .select(`
-        id,
-        job_number,
-        title,
-        client_id,
-        status
-      `)
-      .neq(
-        "status",
-        "Cancelled"
-      )
-      .order(
-        "created_at",
-        {
-          ascending: false,
-        }
-      ),
+      .select("*")
+      .order("created_at", {
+        ascending: false,
+      }),
 
     supabase
       .from("contracts")
-      .select(`
-        id,
-        contract_number,
-        client_id,
-        job_id,
-        quote_id,
-        title,
-        description,
-        amount,
-        status
-      `)
-      .eq(
-        "status",
-        "Signed"
-      )
-      .order(
-        "created_at",
-        {
-          ascending: false,
-        }
-      ),
+      .select("*")
+      .eq("status", "Signed")
+      .order("created_at", {
+        ascending: false,
+      }),
 
     supabase
       .from("quotes")
-      .select(`
-        id,
-        quote_number,
-        client_id,
-        job_id,
-        title,
-        description,
-        amount,
-        status
-      `)
-      .eq(
-        "status",
-        "Accepted"
-      )
-      .order(
-        "created_at",
-        {
-          ascending: false,
-        }
-      ),
+      .select("*")
+      .order("created_at", {
+        ascending: false,
+      }),
   ]);
+
+  if (clientsResult.error) {
+    throw new Error(
+      clientsResult.error.message
+    );
+  }
+
+  if (jobsResult.error) {
+    throw new Error(
+      jobsResult.error.message
+    );
+  }
+
+  if (contractsResult.error) {
+    throw new Error(
+      contractsResult.error.message
+    );
+  }
+
+  if (quotesResult.error) {
+    throw new Error(
+      quotesResult.error.message
+    );
+  }
 
   const clients =
     clientsResult.data ?? [];
@@ -128,141 +169,294 @@ export default async function NewInvoicePage({
   const quotes =
     quotesResult.data ?? [];
 
+  const acceptedQuotes =
+    quotes.filter(
+      (quote) =>
+        quote.status === "Accepted"
+    );
+
   const selectedContract =
     contracts.find(
       (contract) =>
         contract.id ===
         selectedContractId
-    ) || null;
+    ) ?? null;
+
+  /*
+   * If the selected contract already belongs to a quote,
+   * that quote becomes the invoice source automatically.
+   */
+  const sourceQuoteId =
+    selectedQuoteId ||
+    selectedContract?.quote_id ||
+    "";
 
   const selectedQuote =
-    !selectedContract
-      ? quotes.find(
-          (quote) =>
-            quote.id ===
-            selectedQuoteId
-        ) || null
-      : null;
+    quotes.find(
+      (quote) =>
+        quote.id === sourceQuoteId
+    ) ?? null;
 
-  const selectedClientId =
-    selectedContract?.client_id ||
+  const sourceClientId =
     selectedQuote?.client_id ||
+    selectedContract?.client_id ||
     "";
 
-  const selectedJobId =
-    selectedContract?.job_id ||
+  const sourceJobId =
     selectedQuote?.job_id ||
-    "";
-
-  const sourceQuoteId =
-    selectedContract?.quote_id ||
-    selectedQuote?.id ||
+    selectedContract?.job_id ||
     "";
 
   const sourceTitle =
-    selectedContract?.title ||
     selectedQuote?.title ||
-    "";
+    selectedContract?.title ||
+    "Invoice";
 
   const sourceDescription =
-    selectedContract?.description ||
     selectedQuote?.description ||
+    selectedContract?.description ||
     "";
 
-  const sourceAmount =
+  /*
+   * Quote value is always preferred when a quote exists.
+   *
+   * If a contract exists without a quote, its amount becomes
+   * the source value instead.
+   */
+  const sourceTotal = money(
     Number(
-      selectedContract?.amount ??
-        selectedQuote?.amount ??
+      selectedQuote?.amount ??
+        selectedContract?.amount ??
         0
-    );
-
-  const today =
-    new Date()
-      .toISOString()
-      .slice(0, 10);
-
-  const dueDate =
-    new Date();
-
-  dueDate.setDate(
-    dueDate.getDate() + 14
+    )
   );
 
-  const defaultDueDate =
-    dueDate
-      .toISOString()
-      .slice(0, 10);
+  /*
+   * Work out how much has already been invoiced.
+   */
+  let alreadyInvoiced = 0;
+
+  if (sourceQuoteId) {
+    const {
+      data: existingInvoices,
+      error: existingInvoicesError,
+    } = await supabase
+      .from("invoices")
+      .select("amount, status")
+      .eq("quote_id", sourceQuoteId)
+      .neq("status", "Cancelled");
+
+    if (existingInvoicesError) {
+      throw new Error(
+        existingInvoicesError.message
+      );
+    }
+
+    alreadyInvoiced = money(
+      (existingInvoices ?? []).reduce(
+        (sum, invoice) =>
+          sum +
+          Number(invoice.amount ?? 0),
+        0
+      )
+    );
+  } else if (selectedContractId) {
+    const {
+      data: existingInvoices,
+      error: existingInvoicesError,
+    } = await supabase
+      .from("invoices")
+      .select("amount, status")
+      .eq(
+        "contract_id",
+        selectedContractId
+      )
+      .neq("status", "Cancelled");
+
+    if (existingInvoicesError) {
+      throw new Error(
+        existingInvoicesError.message
+      );
+    }
+
+    alreadyInvoiced = money(
+      (existingInvoices ?? []).reduce(
+        (sum, invoice) =>
+          sum +
+          Number(invoice.amount ?? 0),
+        0
+      )
+    );
+  }
+
+  const remainingBalance =
+    sourceTotal > 0
+      ? money(
+          Math.max(
+            0,
+            sourceTotal -
+              alreadyInvoiced
+          )
+        )
+      : 0;
+
+  const hasSource =
+    Boolean(
+      sourceQuoteId ||
+        selectedContractId
+    );
+
+  const fullyInvoiced =
+    hasSource &&
+    sourceTotal > 0 &&
+    remainingBalance <= 0;
+
+  const partInvoiced =
+    alreadyInvoiced > 0 &&
+    remainingBalance > 0;
 
   return (
-    <div className="flex min-h-screen bg-slate-100">
-      <Sidebar />
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm text-slate-500">
+            DryHome Office
+          </p>
 
-      <main className="flex-1 p-8">
-        <div className="mx-auto max-w-6xl">
-          <div className="mb-8">
-            <Link
-              href="/invoices"
-              className="text-sm font-medium text-slate-500 hover:text-slate-900"
-            >
-              ← Back to Invoices
-            </Link>
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
+            New Invoice
+          </h1>
 
-            <h1 className="mt-4 text-3xl font-bold text-slate-900">
-              Create Invoice
-            </h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Create a deposit,
+            interim or final invoice.
+          </p>
+        </div>
 
-            <p className="mt-2 text-slate-500">
-              Create an invoice from a signed contract,
-              accepted quote or directly against a client
-              and job.
-            </p>
-          </div>
+        <Link
+          href="/invoices"
+          className="inline-flex w-fit items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+        >
+          Back to Invoices
+        </Link>
+      </div>
 
-          {params.error && (
-            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm font-medium text-red-700">
-              {decodeURIComponent(
-                params.error
-              )}
-            </div>
-          )}
+      {hasSource &&
+        sourceTotal > 0 && (
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  Invoice Balance
+                </h2>
 
-          {selectedQuote &&
-            !selectedContract && (
-              <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4">
-                <p className="text-sm font-semibold text-emerald-900">
-                  Creating invoice directly from accepted
-                  quote
-                </p>
-
-                <p className="mt-1 text-sm text-emerald-800">
-                  No contract is required for this invoice.
-                  The invoice will remain linked to the
-                  original quote and job.
+                <p className="text-sm text-slate-500">
+                  Based on the
+                  accepted quote /
+                  signed contract.
                 </p>
               </div>
-            )}
 
-          <form
-            action={
-              addInvoice
-            }
-          >
-            <section className="rounded-2xl bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-slate-900">
-                Invoice Source
-              </h2>
+              {fullyInvoiced ? (
+                <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-800">
+                  Fully Invoiced
+                </span>
+              ) : partInvoiced ? (
+                <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
+                  Part Invoiced
+                </span>
+              ) : (
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700">
+                  Not Yet Invoiced
+                </span>
+              )}
+            </div>
 
-              <p className="mt-1 text-sm text-slate-500">
-                A signed contract is optional. You can also
-                invoice directly from an accepted quote.
-              </p>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="rounded-lg bg-slate-50 p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Quote Value
+                </p>
 
-              <div className="mt-6">
+                <p className="mt-1 text-xl font-semibold text-slate-900">
+                  {formatMoney(
+                    sourceTotal
+                  )}
+                </p>
+              </div>
+
+              <div className="rounded-lg bg-slate-50 p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Already Invoiced
+                </p>
+
+                <p className="mt-1 text-xl font-semibold text-slate-900">
+                  {formatMoney(
+                    alreadyInvoiced
+                  )}
+                </p>
+              </div>
+
+              <div className="rounded-lg bg-slate-900 p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-300">
+                  Remaining to
+                  Invoice
+                </p>
+
+                <p className="mt-1 text-xl font-semibold text-white">
+                  {formatMoney(
+                    remainingBalance
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+      {fullyInvoiced ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-6">
+          <h2 className="text-lg font-semibold text-emerald-900">
+            This quote is fully
+            invoiced
+          </h2>
+
+          <p className="mt-2 text-sm text-emerald-800">
+            The full value of{" "}
+            {formatMoney(sourceTotal)}{" "}
+            has already been
+            invoiced. No further
+            invoice can be raised
+            against this quote
+            unless an existing
+            invoice is cancelled.
+          </p>
+
+          {sourceQuoteId && (
+            <Link
+              href={`/quotes/${sourceQuoteId}`}
+              className="mt-4 inline-flex rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+            >
+              Return to Quote
+            </Link>
+          )}
+        </div>
+      ) : (
+        <form
+          action={addInvoice}
+          className="space-y-6"
+        >
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-slate-900">
+              Invoice Source
+            </h2>
+
+            <div className="grid gap-5 md:grid-cols-2">
+              <div>
                 <label
                   htmlFor="contract_id"
-                  className="mb-2 block text-sm font-medium text-slate-700"
+                  className="mb-1 block text-sm font-medium text-slate-700"
                 >
-                  Signed Contract
+                  Contract
                 </label>
 
                 <select
@@ -271,10 +465,10 @@ export default async function NewInvoicePage({
                   defaultValue={
                     selectedContractId
                   }
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
                 >
                   <option value="">
-                    No linked contract
+                    No contract
                   </option>
 
                   {contracts.map(
@@ -287,16 +481,101 @@ export default async function NewInvoicePage({
                           contract.id
                         }
                       >
-                        {
-                          contract.contract_number
-                        }{" "}
-                        —{" "}
-                        {
-                          contract.title
-                        }{" "}
-                        —{" "}
-                        {formatCurrency(
-                          contract.amount
+                        {contract.contract_number ||
+                          contract.title ||
+                          "Signed contract"}
+                      </option>
+                    )
+                  )}
+                </select>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Contracts are
+                  optional.
+                </p>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="quote_id"
+                  className="mb-1 block text-sm font-medium text-slate-700"
+                >
+                  Accepted Quote
+                </label>
+
+                <select
+                  id="quote_id"
+                  name="quote_id"
+                  defaultValue={
+                    sourceQuoteId
+                  }
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="">
+                    No linked quote
+                  </option>
+
+                  {acceptedQuotes.map(
+                    (quote) => (
+                      <option
+                        key={quote.id}
+                        value={quote.id}
+                      >
+                        {quote.quote_number ||
+                          quote.title ||
+                          "Accepted quote"}
+                      </option>
+                    )
+                  )}
+
+                  {selectedQuote &&
+                    !acceptedQuotes.some(
+                      (quote) =>
+                        quote.id ===
+                        selectedQuote.id
+                    ) && (
+                      <option
+                        value={
+                          selectedQuote.id
+                        }
+                      >
+                        {selectedQuote.quote_number ||
+                          selectedQuote.title ||
+                          "Linked quote"}
+                      </option>
+                    )}
+                </select>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="client_id"
+                  className="mb-1 block text-sm font-medium text-slate-700"
+                >
+                  Client
+                </label>
+
+                <select
+                  id="client_id"
+                  name="client_id"
+                  required
+                  defaultValue={
+                    sourceClientId
+                  }
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="">
+                    Select client
+                  </option>
+
+                  {clients.map(
+                    (client) => (
+                      <option
+                        key={client.id}
+                        value={client.id}
+                      >
+                        {clientName(
+                          client
                         )}
                       </option>
                     )
@@ -304,275 +583,142 @@ export default async function NewInvoicePage({
                 </select>
               </div>
 
-              {selectedContract && (
-                <div className="mt-6 rounded-xl bg-slate-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    Selected Contract
-                  </p>
+              <div>
+                <label
+                  htmlFor="job_id"
+                  className="mb-1 block text-sm font-medium text-slate-700"
+                >
+                  Job
+                </label>
 
-                  <p className="mt-1 font-semibold text-slate-900">
-                    {
-                      selectedContract.contract_number
-                    }{" "}
-                    —{" "}
-                    {
-                      selectedContract.title
-                    }
-                  </p>
+                <select
+                  id="job_id"
+                  name="job_id"
+                  defaultValue={
+                    sourceJobId
+                  }
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="">
+                    No linked job
+                  </option>
 
-                  <p className="mt-1 text-sm text-slate-500">
-                    {formatCurrency(
-                      selectedContract.amount
-                    )}
-                  </p>
+                  {jobs.map(
+                    (job) => (
+                      <option
+                        key={job.id}
+                        value={job.id}
+                      >
+                        {jobName(job)}
+                      </option>
+                    )
+                  )}
+                </select>
+              </div>
+            </div>
+          </div>
 
-                  <Link
-                    href={`/contracts/${selectedContract.id}`}
-                    className="mt-2 inline-block text-sm font-semibold text-slate-700 hover:underline"
-                  >
-                    View Contract →
-                  </Link>
-                </div>
-              )}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-slate-900">
+              Invoice Details
+            </h2>
 
-              {selectedQuote &&
-                !selectedContract && (
-                  <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                      Accepted Quote
-                    </p>
+            <div className="grid gap-5 md:grid-cols-2">
+              <div>
+                <label
+                  htmlFor="invoice_type"
+                  className="mb-1 block text-sm font-medium text-slate-700"
+                >
+                  Invoice Type
+                </label>
 
-                    <p className="mt-1 font-semibold text-emerald-950">
-                      {
-                        selectedQuote.quote_number
-                      }{" "}
-                      —{" "}
-                      {
-                        selectedQuote.title
-                      }
-                    </p>
+                <select
+                  id="invoice_type"
+                  name="invoice_type"
+                  defaultValue={
+                    alreadyInvoiced > 0
+                      ? "Interim"
+                      : "Deposit"
+                  }
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="Deposit">
+                    Deposit
+                  </option>
 
-                    <p className="mt-1 text-sm text-emerald-800">
-                      {formatCurrency(
-                        selectedQuote.amount
-                      )}
-                    </p>
+                  <option value="Interim">
+                    Interim
+                  </option>
 
-                    <Link
-                      href={`/quotes/${selectedQuote.id}`}
-                      className="mt-2 inline-block text-sm font-semibold text-emerald-800 hover:underline"
-                    >
-                      View Quote →
-                    </Link>
-                  </div>
-                )}
-            </section>
-
-            <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-slate-900">
-                Client & Job
-              </h2>
-
-              <div className="mt-6 grid gap-5 lg:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="client_id"
-                    className="mb-2 block text-sm font-medium text-slate-700"
-                  >
-                    Client
-                  </label>
-
-                  <select
-                    id="client_id"
-                    name="client_id"
-                    defaultValue={
-                      selectedClientId
-                    }
-                    required
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
-                  >
-                    <option value="">
-                      Select client
-                    </option>
-
-                    {clients.map(
-                      (client) => {
-                        const name =
-                          client.display_name ||
-                          [
-                            client.first_name,
-                            client.last_name,
-                          ]
-                            .filter(Boolean)
-                            .join(" ");
-
-                        return (
-                          <option
-                            key={
-                              client.id
-                            }
-                            value={
-                              client.id
-                            }
-                          >
-                            {name}
-                          </option>
-                        );
-                      }
-                    )}
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="job_id"
-                    className="mb-2 block text-sm font-medium text-slate-700"
-                  >
-                    Job
-                  </label>
-
-                  <select
-                    id="job_id"
-                    name="job_id"
-                    defaultValue={
-                      selectedJobId
-                    }
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
-                  >
-                    <option value="">
-                      No linked job
-                    </option>
-
-                    {jobs.map(
-                      (job) => (
-                        <option
-                          key={
-                            job.id
-                          }
-                          value={
-                            job.id
-                          }
-                        >
-                          {
-                            job.job_number
-                          }{" "}
-                          —{" "}
-                          {
-                            job.title
-                          }
-                        </option>
-                      )
-                    )}
-                  </select>
-                </div>
+                  <option value="Final">
+                    Final
+                  </option>
+                </select>
               </div>
 
-              <input
-                type="hidden"
-                name="quote_id"
-                value={
-                  sourceQuoteId
-                }
-              />
-            </section>
+              <div>
+                <label
+                  htmlFor="title"
+                  className="mb-1 block text-sm font-medium text-slate-700"
+                >
+                  Invoice Title
+                </label>
 
-            <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-slate-900">
-                Invoice Details
-              </h2>
-
-              <div className="mt-6 grid gap-5 md:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="invoice_type"
-                    className="mb-2 block text-sm font-medium text-slate-700"
-                  >
-                    Invoice Type
-                  </label>
-
-                  <select
-                    id="invoice_type"
-                    name="invoice_type"
-                    defaultValue="Final"
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
-                  >
-                    <option value="Deposit">
-                      Deposit
-                    </option>
-
-                    <option value="Interim">
-                      Interim
-                    </option>
-
-                    <option value="Final">
-                      Final
-                    </option>
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="title"
-                    className="mb-2 block text-sm font-medium text-slate-700"
-                  >
-                    Invoice Title
-                  </label>
-
-                  <input
-                    id="title"
-                    name="title"
-                    type="text"
-                    defaultValue={
-                      sourceTitle
-                    }
-                    placeholder="e.g. Final Invoice - Damp Proofing Works"
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="invoice_date"
-                    className="mb-2 block text-sm font-medium text-slate-700"
-                  >
-                    Invoice Date
-                  </label>
-
-                  <input
-                    id="invoice_date"
-                    name="invoice_date"
-                    type="date"
-                    defaultValue={
-                      today
-                    }
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="due_date"
-                    className="mb-2 block text-sm font-medium text-slate-700"
-                  >
-                    Due Date
-                  </label>
-
-                  <input
-                    id="due_date"
-                    name="due_date"
-                    type="date"
-                    defaultValue={
-                      defaultDueDate
-                    }
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
-                  />
-                </div>
+                <input
+                  id="title"
+                  name="title"
+                  type="text"
+                  defaultValue={
+                    sourceTitle
+                  }
+                  required
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
               </div>
 
-              <div className="mt-5">
+              <div>
+                <label
+                  htmlFor="invoice_date"
+                  className="mb-1 block text-sm font-medium text-slate-700"
+                >
+                  Invoice Date
+                </label>
+
+                <input
+                  id="invoice_date"
+                  name="invoice_date"
+                  type="date"
+                  defaultValue={
+                    todayDate()
+                  }
+                  required
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="due_date"
+                  className="mb-1 block text-sm font-medium text-slate-700"
+                >
+                  Due Date
+                </label>
+
+                <input
+                  id="due_date"
+                  name="due_date"
+                  type="date"
+                  defaultValue={
+                    defaultDueDate()
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div className="md:col-span-2">
                 <label
                   htmlFor="description"
-                  className="mb-2 block text-sm font-medium text-slate-700"
+                  className="mb-1 block text-sm font-medium text-slate-700"
                 >
                   Description
                 </label>
@@ -580,103 +726,109 @@ export default async function NewInvoicePage({
                 <textarea
                   id="description"
                   name="description"
-                  rows={6}
+                  rows={4}
                   defaultValue={
                     sourceDescription
                   }
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 />
               </div>
-            </section>
-
-            <InvoiceForm
-              defaultAmount={
-                sourceAmount
-              }
-              defaultDescription={
-                sourceTitle
-              }
-            />
-
-            <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-slate-900">
-                Customer Message
-              </h2>
-
-              <textarea
-                name="customer_message"
-                rows={4}
-                defaultValue="Thank you for your business. Please see the invoice details above."
-                className="mt-5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
-              />
-            </section>
-
-            <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-slate-900">
-                Payment Terms
-              </h2>
-
-              <textarea
-                name="payment_terms"
-                rows={4}
-                defaultValue="Payment is due within 14 days of the invoice date unless otherwise agreed."
-                className="mt-5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
-              />
-            </section>
-
-            <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-slate-900">
-                Internal Notes
-              </h2>
-
-              <p className="mt-1 text-sm text-slate-500">
-                These notes are for DryHome only.
-              </p>
-
-              <textarea
-                name="internal_notes"
-                rows={4}
-                className="mt-5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
-              />
-            </section>
-
-            <div className="mt-8 flex justify-end gap-3">
-              <Link
-                href="/invoices"
-                className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
-              </Link>
-
-              <button
-                type="submit"
-                className="rounded-lg bg-slate-900 px-6 py-3 text-sm font-semibold text-white hover:bg-slate-700"
-              >
-                Save Draft Invoice
-              </button>
             </div>
-          </form>
-        </div>
-      </main>
-    </div>
-  );
-}
+          </div>
 
-function formatCurrency(
-  value:
-    | number
-    | string
-    | null
-) {
-  return new Intl.NumberFormat(
-    "en-GB",
-    {
-      style: "currency",
-      currency: "GBP",
-    }
-  ).format(
-    Number(
-      value ?? 0
-    )
+          <InvoiceForm
+            defaultAmount={
+              hasSource
+                ? remainingBalance
+                : 0
+            }
+            defaultDescription={
+              sourceTitle
+            }
+            maxAmount={
+              hasSource &&
+              sourceTotal > 0
+                ? remainingBalance
+                : undefined
+            }
+          />
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-slate-900">
+              Customer & Payment
+            </h2>
+
+            <div className="space-y-5">
+              <div>
+                <label
+                  htmlFor="customer_message"
+                  className="mb-1 block text-sm font-medium text-slate-700"
+                >
+                  Customer Message
+                </label>
+
+                <textarea
+                  id="customer_message"
+                  name="customer_message"
+                  rows={3}
+                  placeholder="Optional message shown to the customer."
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="payment_terms"
+                  className="mb-1 block text-sm font-medium text-slate-700"
+                >
+                  Payment Terms
+                </label>
+
+                <textarea
+                  id="payment_terms"
+                  name="payment_terms"
+                  rows={3}
+                  defaultValue="Payment due within 7 days of invoice date."
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="internal_notes"
+                  className="mb-1 block text-sm font-medium text-slate-700"
+                >
+                  Internal Notes
+                </label>
+
+                <textarea
+                  id="internal_notes"
+                  name="internal_notes"
+                  rows={3}
+                  placeholder="These notes are for DryHome Office only."
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <Link
+              href="/invoices"
+              className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </Link>
+
+            <button
+              type="submit"
+              className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              Create Invoice
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
   );
 }

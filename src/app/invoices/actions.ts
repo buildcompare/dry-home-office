@@ -1,286 +1,533 @@
 "use server";
 
+import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 
 type InvoiceItem = {
-  description: string;
-  quantity: number;
-  unit: string;
-  unit_price: number;
-  item_type: string;
+  description?: string;
+  quantity?: number | string;
+  unit?: string;
+  unit_price?: number | string;
+  item_type?: string;
 };
 
-export async function addInvoice(
-  formData: FormData
-) {
-  const supabase =
-    await createClient();
+function money(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
 
-  const contractId =
-    String(
-      formData.get("contract_id") || ""
-    ).trim() || null;
+function toPence(value: number) {
+  return Math.round(money(value) * 100);
+}
+
+function invoiceRowTotal(invoice: {
+  amount?: number | string | null;
+  subtotal?: number | string | null;
+  vat_amount?: number | string | null;
+}) {
+  const amount = Number(invoice.amount ?? 0);
+
+  if (Number.isFinite(amount) && amount > 0) {
+    return money(amount);
+  }
+
+  const subtotal = Number(invoice.subtotal ?? 0);
+  const vatAmount = Number(invoice.vat_amount ?? 0);
+
+  return money(
+    (Number.isFinite(subtotal) ? subtotal : 0) +
+      (Number.isFinite(vatAmount) ? vatAmount : 0)
+  );
+}
+
+/* =========================================================
+   CREATE INVOICE
+   ========================================================= */
+
+export async function addInvoice(formData: FormData) {
+  const supabase = await createClient();
+
+  let contractId =
+    String(formData.get("contract_id") ?? "").trim() || null;
 
   let clientId =
-    String(
-      formData.get("client_id") || ""
-    ).trim();
+    String(formData.get("client_id") ?? "").trim() || null;
 
   let jobId =
-    String(
-      formData.get("job_id") || ""
-    ).trim() || null;
+    String(formData.get("job_id") ?? "").trim() || null;
 
   let quoteId =
-    String(
-      formData.get("quote_id") || ""
-    ).trim() || null;
+    String(formData.get("quote_id") ?? "").trim() || null;
 
   const invoiceType =
-    String(
-      formData.get("invoice_type") ||
-        "Final"
-    ).trim();
+    String(formData.get("invoice_type") ?? "").trim() ||
+    "Interim";
 
   const title =
-    String(
-      formData.get("title") || ""
-    ).trim() || null;
+    String(formData.get("title") ?? "").trim() ||
+    "Invoice";
 
   const description =
-    String(
-      formData.get("description") || ""
-    ).trim() || null;
+    String(formData.get("description") ?? "").trim() ||
+    null;
 
   const invoiceDate =
-    String(
-      formData.get("invoice_date") || ""
-    ).trim();
+    String(formData.get("invoice_date") ?? "").trim() ||
+    null;
 
   const dueDate =
-    String(
-      formData.get("due_date") || ""
-    ).trim() || null;
+    String(formData.get("due_date") ?? "").trim() ||
+    null;
 
   const customerMessage =
-    String(
-      formData.get(
-        "customer_message"
-      ) || ""
-    ).trim() || null;
+    String(formData.get("customer_message") ?? "").trim() ||
+    null;
 
   const paymentTerms =
-    String(
-      formData.get(
-        "payment_terms"
-      ) || ""
-    ).trim() || null;
+    String(formData.get("payment_terms") ?? "").trim() ||
+    null;
 
   const internalNotes =
-    String(
-      formData.get(
-        "internal_notes"
-      ) || ""
-    ).trim() || null;
+    String(formData.get("internal_notes") ?? "").trim() ||
+    null;
+
+  const vatEnabledValue = String(
+    formData.get("vat_enabled") ?? ""
+  ).toLowerCase();
 
   const vatEnabled =
-    formData.get("vat_enabled") ===
-    "on";
+    vatEnabledValue === "true" ||
+    vatEnabledValue === "on" ||
+    vatEnabledValue === "1";
 
-  const vatRate =
-    Number(
-      formData.get("vat_rate") || 20
+  const vatRateRaw = Number(
+    formData.get("vat_rate") ?? 20
+  );
+
+  const vatRate = Number.isFinite(vatRateRaw)
+    ? vatRateRaw
+    : 20;
+
+  let items: InvoiceItem[] = [];
+
+  try {
+    const itemsJson = String(
+      formData.get("items") ?? "[]"
     );
 
-  /*
-   * If invoice originates from
-   * a contract, trust the contract
-   * for client/job/quote.
-   */
+    const parsed = JSON.parse(itemsJson);
+
+    if (Array.isArray(parsed)) {
+      items = parsed;
+    }
+  } catch {
+    throw new Error(
+      "The invoice items could not be read."
+    );
+  }
+
+  const cleanedItems = items
+    .map((item) => {
+      const quantity = Number(item.quantity ?? 0);
+      const unitPrice = Number(item.unit_price ?? 0);
+
+      return {
+        description: String(
+          item.description ?? ""
+        ).trim(),
+
+        quantity: Number.isFinite(quantity)
+          ? quantity
+          : 0,
+
+        unit:
+          String(item.unit ?? "").trim() ||
+          "item",
+
+        unit_price: Number.isFinite(unitPrice)
+          ? unitPrice
+          : 0,
+
+        item_type:
+          String(item.item_type ?? "").trim() ||
+          "Labour",
+      };
+    })
+    .filter(
+      (item) =>
+        item.description !== "" ||
+        item.unit_price !== 0
+    );
+
+  if (cleanedItems.length === 0) {
+    throw new Error(
+      "Please add at least one invoice item."
+    );
+  }
+
+  /* =======================================================
+     CONTRACT SOURCE
+     ======================================================= */
+
   if (contractId) {
     const {
       data: contract,
       error: contractError,
     } = await supabase
       .from("contracts")
-      .select(`
+      .select(
+        `
         id,
         client_id,
         job_id,
         quote_id,
+        amount,
         status
-      `)
+        `
+      )
       .eq("id", contractId)
       .single();
 
-    if (
-      contractError ||
-      !contract
-    ) {
-      redirect(
-        "/invoices/new?error=Unable%20to%20find%20the%20selected%20contract"
+    if (contractError || !contract) {
+      throw new Error(
+        "The linked contract could not be found."
       );
     }
 
-    if (
-      contract.status !==
-      "Signed"
-    ) {
-      redirect(
-        "/invoices/new?error=Invoices%20can%20only%20be%20created%20from%20signed%20contracts"
+    if (contract.status !== "Signed") {
+      throw new Error(
+        "Invoices can only be created from a signed contract."
       );
     }
 
     clientId =
-      contract.client_id;
+      contract.client_id ?? clientId;
 
     jobId =
-      contract.job_id;
+      contract.job_id ?? jobId;
 
     quoteId =
-      contract.quote_id;
+      contract.quote_id ?? quoteId;
+  }
+
+  /* =======================================================
+     QUOTE SOURCE
+     ======================================================= */
+
+  if (quoteId) {
+    const {
+      data: quote,
+      error: quoteError,
+    } = await supabase
+      .from("quotes")
+      .select(
+        `
+        id,
+        client_id,
+        job_id,
+        amount,
+        status
+        `
+      )
+      .eq("id", quoteId)
+      .single();
+
+    if (quoteError || !quote) {
+      throw new Error(
+        "The linked quote could not be found."
+      );
+    }
+
+    clientId =
+      quote.client_id ?? clientId;
+
+    jobId =
+      quote.job_id ?? jobId;
   }
 
   if (!clientId) {
-    redirect(
-      "/invoices/new?error=Please%20select%20a%20client"
+    throw new Error(
+      "A client must be linked to the invoice."
     );
   }
 
-  let items: InvoiceItem[] =
-    [];
+  /* =======================================================
+     CALCULATE INVOICE
+     ======================================================= */
 
-  try {
-    items =
-      JSON.parse(
-        String(
-          formData.get("items") ||
-            "[]"
-        )
-      );
-  } catch {
-    redirect(
-      "/invoices/new?error=Invoice%20items%20could%20not%20be%20read"
-    );
-  }
-
-  items = items
-    .map((item) => ({
-      description:
-        String(
-          item.description || ""
-        ).trim(),
-
-      quantity:
-        Number(item.quantity || 0),
-
-      unit:
-        String(
-          item.unit || ""
-        ).trim(),
-
-      unit_price:
-        Number(
-          item.unit_price || 0
-        ),
-
-      item_type:
-        String(
-          item.item_type ||
-            "Labour"
-        ).trim(),
-    }))
-    .filter(
-      (item) =>
-        item.description &&
-        item.quantity > 0
-    );
-
-  if (items.length === 0) {
-    redirect(
-      "/invoices/new?error=Please%20add%20at%20least%20one%20invoice%20item"
-    );
-  }
-
-  const subtotal =
-    items.reduce(
-      (total, item) =>
-        total +
+  const subtotal = money(
+    cleanedItems.reduce((sum, item) => {
+      return (
+        sum +
         item.quantity *
-          item.unit_price,
-      0
+          item.unit_price
+      );
+    }, 0)
+  );
+
+  if (subtotal <= 0) {
+    throw new Error(
+      "The invoice amount must be greater than £0."
+    );
+  }
+
+  const vatAmount = vatEnabled
+    ? money(
+        subtotal *
+          (vatRate / 100)
+      )
+    : 0;
+
+  const total = money(
+    subtotal + vatAmount
+  );
+
+  /* =======================================================
+     PARTIAL INVOICE PROTECTION — QUOTE
+     ======================================================= */
+
+  if (quoteId) {
+    const {
+      data: quote,
+      error: quoteError,
+    } = await supabase
+      .from("quotes")
+      .select("id, amount")
+      .eq("id", quoteId)
+      .single();
+
+    if (quoteError || !quote) {
+      throw new Error(
+        "Unable to calculate the quote balance."
+      );
+    }
+
+    const quoteTotal = money(
+      Number(quote.amount ?? 0)
     );
 
-  const vatAmount =
-    vatEnabled
-      ? subtotal *
-        (vatRate / 100)
-      : 0;
+    if (quoteTotal <= 0) {
+      throw new Error(
+        "The linked quote does not have a valid total."
+      );
+    }
 
-  const total =
-    subtotal +
-    vatAmount;
+    const {
+      data: previousInvoices,
+      error: previousInvoicesError,
+    } = await supabase
+      .from("invoices")
+      .select(
+        `
+        id,
+        amount,
+        subtotal,
+        vat_amount,
+        status
+        `
+      )
+      .eq("quote_id", quoteId)
+      .neq("status", "Cancelled");
 
-  /*
-   * Generate next invoice number.
-   */
+    if (previousInvoicesError) {
+      throw new Error(
+        "Unable to calculate the amount already invoiced."
+      );
+    }
+
+    const alreadyInvoiced = money(
+      (previousInvoices ?? []).reduce(
+        (sum, invoice) =>
+          sum +
+          invoiceRowTotal(invoice),
+        0
+      )
+    );
+
+    const remainingBalance = money(
+      Math.max(
+        0,
+        quoteTotal -
+          alreadyInvoiced
+      )
+    );
+
+    if (
+      toPence(total) >
+      toPence(remainingBalance)
+    ) {
+      throw new Error(
+        `This invoice cannot exceed the remaining quote balance of £${remainingBalance.toFixed(
+          2
+        )}.`
+      );
+    }
+  }
+
+  /* =======================================================
+     PARTIAL INVOICE PROTECTION — CONTRACT ONLY
+     ======================================================= */
+
+  else if (contractId) {
+    const {
+      data: contract,
+      error: contractError,
+    } = await supabase
+      .from("contracts")
+      .select("id, amount")
+      .eq("id", contractId)
+      .single();
+
+    if (contractError || !contract) {
+      throw new Error(
+        "Unable to calculate the contract balance."
+      );
+    }
+
+    const contractTotal = money(
+      Number(
+        contract.amount ?? 0
+      )
+    );
+
+    if (contractTotal > 0) {
+      const {
+        data: previousInvoices,
+        error: previousInvoicesError,
+      } = await supabase
+        .from("invoices")
+        .select(
+          `
+          id,
+          amount,
+          subtotal,
+          vat_amount,
+          status
+          `
+        )
+        .eq(
+          "contract_id",
+          contractId
+        )
+        .neq(
+          "status",
+          "Cancelled"
+        );
+
+      if (
+        previousInvoicesError
+      ) {
+        throw new Error(
+          "Unable to calculate the amount already invoiced."
+        );
+      }
+
+      const alreadyInvoiced =
+        money(
+          (
+            previousInvoices ??
+            []
+          ).reduce(
+            (
+              sum,
+              invoice
+            ) =>
+              sum +
+              invoiceRowTotal(
+                invoice
+              ),
+            0
+          )
+        );
+
+      const remainingBalance =
+        money(
+          Math.max(
+            0,
+            contractTotal -
+              alreadyInvoiced
+          )
+        );
+
+      if (
+        toPence(total) >
+        toPence(
+          remainingBalance
+        )
+      ) {
+        throw new Error(
+          `This invoice cannot exceed the remaining contract balance of £${remainingBalance.toFixed(
+            2
+          )}.`
+        );
+      }
+    }
+  }
+
+  /* =======================================================
+     NEXT INVOICE NUMBER
+     ======================================================= */
+
   const year =
     new Date().getFullYear();
 
-  const {
-    data: recentInvoices,
-  } = await supabase
-    .from("invoices")
-    .select("invoice_number")
-    .like(
-      "invoice_number",
-      `DH-I-${year}-%`
-    )
-    .order(
-      "invoice_number",
-      {
-        ascending: false,
-      }
-    )
-    .limit(1);
+  const prefix =
+    `DH-I-${year}-`;
+
+  const { data: lastInvoice } =
+    await supabase
+      .from("invoices")
+      .select(
+        "invoice_number"
+      )
+      .like(
+        "invoice_number",
+        `${prefix}%`
+      )
+      .order(
+        "invoice_number",
+        {
+          ascending: false,
+        }
+      )
+      .limit(1)
+      .maybeSingle();
 
   let nextNumber = 1;
 
   if (
-    recentInvoices &&
-    recentInvoices.length > 0
+    lastInvoice?.invoice_number
   ) {
-    const lastNumber =
-      recentInvoices[0]
-        .invoice_number;
+    const finalPart =
+      lastInvoice.invoice_number
+        .split("-")
+        .pop() ?? "0";
 
-    const lastSequence =
-      Number(
-        lastNumber
-          .split("-")
-          .pop()
-      );
+    const previousNumber =
+      Number(finalPart);
 
     if (
       Number.isFinite(
-        lastSequence
+        previousNumber
       )
     ) {
       nextNumber =
-        lastSequence + 1;
+        previousNumber + 1;
     }
   }
 
   const invoiceNumber =
-    `DH-I-${year}-${String(
+    `${prefix}${String(
       nextNumber
     ).padStart(4, "0")}`;
 
+  /* =======================================================
+     INSERT INVOICE
+     ======================================================= */
+
   const {
     data: invoice,
-    error,
+    error: invoiceError,
   } = await supabase
     .from("invoices")
     .insert({
@@ -299,23 +546,20 @@ export async function addInvoice(
       contract_id:
         contractId,
 
+      invoice_type:
+        invoiceType,
+
       title,
 
       description,
 
-      invoice_type:
-        invoiceType,
-
-      status: "Draft",
-
       invoice_date:
-        invoiceDate ||
-        new Date()
-          .toISOString()
-          .slice(0, 10),
+        invoiceDate,
 
       due_date:
         dueDate,
+
+      status: "Draft",
 
       subtotal,
 
@@ -323,7 +567,9 @@ export async function addInvoice(
         vatEnabled,
 
       vat_rate:
-        vatRate,
+        vatEnabled
+          ? vatRate
+          : 0,
 
       vat_amount:
         vatAmount,
@@ -341,26 +587,33 @@ export async function addInvoice(
 
       internal_notes:
         internalNotes,
+
+      public_token:
+        crypto.randomUUID(),
     })
     .select("id")
     .single();
 
   if (
-    error ||
+    invoiceError ||
     !invoice
   ) {
     console.error(
-      "Invoice creation error:",
-      error
+      invoiceError
     );
 
-    redirect(
-      "/invoices/new?error=Unable%20to%20create%20invoice"
+    throw new Error(
+      invoiceError?.message ||
+        "The invoice could not be created."
     );
   }
 
+  /* =======================================================
+     INVOICE ITEMS
+     ======================================================= */
+
   const invoiceItems =
-    items.map(
+    cleanedItems.map(
       (item, index) => ({
         invoice_id:
           invoice.id,
@@ -372,7 +625,7 @@ export async function addInvoice(
           item.quantity,
 
         unit:
-          item.unit || null,
+          item.unit,
 
         unit_price:
           item.unit_price,
@@ -385,18 +638,12 @@ export async function addInvoice(
       })
     );
 
-  const {
-    error: itemError,
-  } = await supabase
-    .from("invoice_items")
-    .insert(invoiceItems);
+  const { error: itemsError } =
+    await supabase
+      .from("invoice_items")
+      .insert(invoiceItems);
 
-  if (itemError) {
-    console.error(
-      "Invoice item error:",
-      itemError
-    );
-
+  if (itemsError) {
     await supabase
       .from("invoices")
       .delete()
@@ -405,25 +652,19 @@ export async function addInvoice(
         invoice.id
       );
 
-    redirect(
-      "/invoices/new?error=Invoice%20items%20could%20not%20be%20saved"
+    console.error(
+      itemsError
+    );
+
+    throw new Error(
+      itemsError.message ||
+        "The invoice items could not be saved."
     );
   }
 
-  revalidatePath("/");
   revalidatePath(
     "/invoices"
   );
-
-  revalidatePath(
-    `/clients/${clientId}`
-  );
-
-  if (jobId) {
-    revalidatePath(
-      `/jobs/${jobId}`
-    );
-  }
 
   if (quoteId) {
     revalidatePath(
@@ -437,16 +678,21 @@ export async function addInvoice(
     );
   }
 
+  if (clientId) {
+    revalidatePath(
+      `/clients/${clientId}`
+    );
+  }
+
   redirect(
     `/invoices/${invoice.id}`
   );
 }
 
-/*
- * --------------------------------------------------
- * RECORD PAYMENT
- * --------------------------------------------------
- */
+/* =========================================================
+   RECORD INVOICE PAYMENT
+   ========================================================= */
+
 export async function recordInvoicePayment(
   formData: FormData
 ) {
@@ -455,149 +701,186 @@ export async function recordInvoicePayment(
 
   const invoiceId =
     String(
-      formData.get("invoice_id") || ""
+      formData.get(
+        "invoice_id"
+      ) ?? ""
     ).trim();
 
-  const amount =
+  const paymentAmountRaw =
     Number(
-      formData.get("payment_amount") ||
-        0
+      formData.get(
+        "payment_amount"
+      ) ?? 0
     );
 
   const paymentDate =
     String(
-      formData.get("payment_date") ||
-        ""
+      formData.get(
+        "payment_date"
+      ) ?? ""
     ).trim();
 
   const paymentMethod =
     String(
       formData.get(
         "payment_method"
-      ) || ""
+      ) ?? ""
     ).trim() || null;
 
   const paymentReference =
     String(
       formData.get(
         "payment_reference"
-      ) || ""
+      ) ?? ""
     ).trim() || null;
 
-  const notes =
+  const paymentNotes =
     String(
       formData.get(
         "payment_notes"
-      ) || ""
+      ) ?? ""
     ).trim() || null;
 
   if (!invoiceId) {
-    redirect(
-      "/invoices?error=Invoice%20could%20not%20be%20identified"
+    throw new Error(
+      "Invoice ID is missing."
     );
   }
 
   if (
-    !Number.isFinite(amount) ||
-    amount <= 0
+    !Number.isFinite(
+      paymentAmountRaw
+    ) ||
+    paymentAmountRaw <= 0
   ) {
-    redirect(
-      `/invoices/${invoiceId}?error=Please%20enter%20a%20valid%20payment%20amount`
+    throw new Error(
+      "Payment amount must be greater than £0."
     );
   }
+
+  const paymentAmount =
+    money(
+      paymentAmountRaw
+    );
+
+  /* =======================================================
+     LOAD INVOICE
+     ======================================================= */
 
   const {
     data: invoice,
     error: invoiceError,
   } = await supabase
     .from("invoices")
-    .select(`
+    .select(
+      `
       id,
-      client_id,
-      job_id,
-      contract_id,
-      invoice_type,
-      status,
+      invoice_number,
       amount,
-      amount_paid
-    `)
-    .eq("id", invoiceId)
+      subtotal,
+      vat_amount,
+      amount_paid,
+      status,
+      client_id,
+      quote_id,
+      contract_id
+      `
+    )
+    .eq(
+      "id",
+      invoiceId
+    )
     .single();
 
   if (
     invoiceError ||
     !invoice
   ) {
-    redirect(
-      `/invoices/${invoiceId}?error=Invoice%20could%20not%20be%20found`
+    throw new Error(
+      "The invoice could not be found."
     );
   }
 
-  if (
-    invoice.status ===
-    "Cancelled"
-  ) {
-    redirect(
-      `/invoices/${invoiceId}?error=Payments%20cannot%20be%20added%20to%20a%20cancelled%20invoice`
-    );
-  }
+  /*
+   * IMPORTANT:
+   *
+   * Some older invoices may have amount = 0 / null.
+   *
+   * In that case we rebuild the true invoice total from:
+   *
+   * subtotal + VAT.
+   */
 
   const invoiceTotal =
-    Number(
-      invoice.amount ?? 0
+    invoiceRowTotal(
+      invoice
     );
 
-  const existingPaid =
-    Number(
-      invoice.amount_paid ?? 0
+  if (invoiceTotal <= 0) {
+    throw new Error(
+      "This invoice does not have a valid total."
+    );
+  }
+
+  const currentAmountPaid =
+    money(
+      Number(
+        invoice.amount_paid ??
+          0
+      )
     );
 
   const outstandingBalance =
-    Math.max(
-      invoiceTotal -
-        existingPaid,
-      0
+    money(
+      Math.max(
+        0,
+        invoiceTotal -
+          currentAmountPaid
+      )
     );
 
   if (
     outstandingBalance <= 0
   ) {
-    redirect(
-      `/invoices/${invoiceId}?error=This%20invoice%20is%20already%20fully%20paid`
+    throw new Error(
+      "This invoice has already been paid in full."
     );
   }
 
   if (
-    amount >
-    outstandingBalance + 0.009
+    toPence(paymentAmount) >
+    toPence(
+      outstandingBalance
+    )
   ) {
-    redirect(
-      `/invoices/${invoiceId}?error=Payment%20cannot%20be%20greater%20than%20the%20outstanding%20balance`
+    throw new Error(
+      `Payment cannot exceed the outstanding balance of £${outstandingBalance.toFixed(
+        2
+      )}.`
     );
   }
 
-  const effectivePaymentDate =
-    paymentDate ||
-    new Date()
-      .toISOString()
-      .slice(0, 10);
+  /* =======================================================
+     RECORD PAYMENT
+     ======================================================= */
 
-  /*
-   * First save the individual
-   * payment record.
-   */
   const {
+    data: payment,
     error: paymentError,
   } = await supabase
-    .from("invoice_payments")
+    .from(
+      "invoice_payments"
+    )
     .insert({
       invoice_id:
         invoiceId,
 
-      amount,
+      amount:
+        paymentAmount,
 
       payment_date:
-        effectivePaymentDate,
+        paymentDate ||
+        null,
 
       payment_method:
         paymentMethod,
@@ -605,42 +888,77 @@ export async function recordInvoicePayment(
       payment_reference:
         paymentReference,
 
-      notes,
-    });
+      notes:
+        paymentNotes,
+    })
+    .select("id")
+    .single();
 
-  if (paymentError) {
+  if (
+    paymentError ||
+    !payment
+  ) {
     console.error(
-      "Payment save error:",
       paymentError
     );
 
-    redirect(
-      `/invoices/${invoiceId}?error=Payment%20could%20not%20be%20recorded`
+    throw new Error(
+      paymentError?.message ||
+        "The payment could not be recorded."
     );
   }
 
-  const newAmountPaid =
-    existingPaid + amount;
+  /* =======================================================
+     CALCULATE NEW BALANCE
+     ======================================================= */
 
-  const fullyPaid =
-    newAmountPaid >=
-    invoiceTotal - 0.009;
+  const newAmountPaid =
+    money(
+      currentAmountPaid +
+        paymentAmount
+    );
+
+  const remainingAfterPayment =
+    money(
+      Math.max(
+        0,
+        invoiceTotal -
+          newAmountPaid
+      )
+    );
+
+  /*
+   * This is the important part.
+   *
+   * PAID only when the remaining balance is genuinely £0.
+   */
+
+  const isPaid =
+    toPence(
+      remainingAfterPayment
+    ) === 0;
 
   const newStatus =
-    fullyPaid
+    isPaid
       ? "Paid"
       : "Part Paid";
 
-  const paidAt =
-    fullyPaid
-      ? new Date().toISOString()
-      : null;
+  /* =======================================================
+     UPDATE INVOICE
+     ======================================================= */
 
   const {
     error: updateError,
   } = await supabase
     .from("invoices")
     .update({
+      /*
+       * This also repairs older invoices
+       * where amount was missing.
+       */
+      amount:
+        invoiceTotal,
+
       amount_paid:
         newAmountPaid,
 
@@ -648,13 +966,9 @@ export async function recordInvoicePayment(
         newStatus,
 
       paid_at:
-        paidAt,
-
-      payment_method:
-        paymentMethod,
-
-      payment_reference:
-        paymentReference,
+        isPaid
+          ? new Date().toISOString()
+          : null,
     })
     .eq(
       "id",
@@ -662,43 +976,33 @@ export async function recordInvoicePayment(
     );
 
   if (updateError) {
+    /*
+     * Roll payment back if invoice
+     * update fails.
+     */
+    await supabase
+      .from(
+        "invoice_payments"
+      )
+      .delete()
+      .eq(
+        "id",
+        payment.id
+      );
+
     console.error(
-      "Invoice payment update error:",
       updateError
     );
 
-    /*
-     * Remove the payment we just
-     * inserted if the invoice itself
-     * could not be updated.
-     */
-    await supabase
-      .from("invoice_payments")
-      .delete()
-      .eq(
-        "invoice_id",
-        invoiceId
-      )
-      .eq(
-        "amount",
-        amount
-      )
-      .eq(
-        "payment_date",
-        effectivePaymentDate
-      )
-      .order(
-        "created_at",
-        {
-          ascending: false,
-        }
-      )
-      .limit(1);
-
-    redirect(
-      `/invoices/${invoiceId}?error=Invoice%20payment%20totals%20could%20not%20be%20updated`
+    throw new Error(
+      updateError.message ||
+        "The invoice payment balance could not be updated."
     );
   }
+
+  /* =======================================================
+     REFRESH PAGES
+     ======================================================= */
 
   revalidatePath(
     "/invoices"
@@ -717,10 +1021,10 @@ export async function recordInvoicePayment(
   }
 
   if (
-    invoice.job_id
+    invoice.quote_id
   ) {
     revalidatePath(
-      `/jobs/${invoice.job_id}`
+      `/quotes/${invoice.quote_id}`
     );
   }
 
@@ -733,6 +1037,6 @@ export async function recordInvoicePayment(
   }
 
   redirect(
-    `/invoices/${invoiceId}?payment=success`
+    `/invoices/${invoiceId}`
   );
 }

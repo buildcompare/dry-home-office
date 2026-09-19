@@ -91,6 +91,7 @@ export default async function QuotePage({
   const [
     itemsResult,
     contractResult,
+    invoicesResult,
   ] = await Promise.all([
     supabase
       .from("quote_items")
@@ -139,10 +140,44 @@ export default async function QuotePage({
         }
       )
       .limit(1),
+
+    supabase
+      .from("invoices")
+      .select(`
+        id,
+        invoice_number,
+        title,
+        invoice_type,
+        status,
+        invoice_date,
+        due_date,
+        subtotal,
+        vat_amount,
+        amount,
+        amount_paid,
+        created_at
+      `)
+      .eq(
+        "quote_id",
+        id
+      )
+      .neq(
+        "status",
+        "Cancelled"
+      )
+      .order(
+        "created_at",
+        {
+          ascending: false,
+        }
+      ),
   ]);
 
   const items =
     itemsResult.data ?? [];
+
+  const linkedInvoices =
+    invoicesResult.data ?? [];
 
   const linkedContract =
     contractResult.data &&
@@ -194,10 +229,53 @@ export default async function QuotePage({
     quote.status !==
       "Declined";
 
-  const acceptedWithoutContract =
+  const quoteAccepted =
     quote.status ===
-      "Accepted" &&
-    !linkedContract;
+    "Accepted";
+
+  const quoteTotal =
+    Number(
+      quote.amount ?? 0
+    );
+
+  const invoicedTotal =
+    linkedInvoices.reduce(
+      (
+        total,
+        invoice
+      ) =>
+        total +
+        getInvoiceValue(
+          invoice
+        ),
+      0
+    );
+
+  const paidTotal =
+    linkedInvoices.reduce(
+      (
+        total,
+        invoice
+      ) =>
+        total +
+        Number(
+          invoice.amount_paid ??
+            0
+        ),
+      0
+    );
+
+  const remainingToInvoice =
+    Math.max(
+      quoteTotal -
+        invoicedTotal,
+      0
+    );
+
+  const fullyInvoiced =
+    quoteTotal > 0 &&
+    remainingToInvoice <=
+      0.009;
 
   const scheduleWorkHref =
     jobData?.id
@@ -286,66 +364,6 @@ export default async function QuotePage({
                   }
                 />
 
-                {canManuallyAccept && (
-                  <form
-                    action={
-                      manuallyAcceptQuote
-                    }
-                  >
-                    <input
-                      type="hidden"
-                      name="quote_id"
-                      value={
-                        quote.id
-                      }
-                    />
-
-                    <button
-                      type="submit"
-                      title="Use when approval has been received outside DryHome Office, such as by email, phone or purchase order."
-                      className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"
-                    >
-                      Manual Accept
-                    </button>
-                  </form>
-                )}
-
-                {acceptedWithoutContract && (
-                  <>
-                    <Link
-                      href={
-                        scheduleWorkHref
-                      }
-                      className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      Schedule Work
-                    </Link>
-
-                    <Link
-                      href={`/invoices/new?quote=${quote.id}`}
-                      className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"
-                    >
-                      Create Invoice
-                    </Link>
-
-                    <Link
-                      href={`/contracts/new?quote=${quote.id}`}
-                      className="rounded-lg bg-emerald-700 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-800"
-                    >
-                      Create Contract
-                    </Link>
-                  </>
-                )}
-
-                {linkedContract && (
-                  <Link
-                    href={`/contracts/${linkedContract.id}`}
-                    className="rounded-lg bg-emerald-700 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-800"
-                  >
-                    View Contract
-                  </Link>
-                )}
-
                 <StatusBadge
                   status={
                     quote.status
@@ -364,64 +382,317 @@ export default async function QuotePage({
           </div>
 
           {canManuallyAccept && (
-            <section className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-5">
-              <p className="text-sm font-semibold text-amber-900">
-                External approval
-              </p>
-
-              <p className="mt-1 text-sm leading-6 text-amber-800">
-                If this quote has been approved outside
-                DryHome Office — for example by a council
-                purchase order, email, phone call or other
-                written instruction — use Manual Accept
-                above to record the approval.
-              </p>
-            </section>
-          )}
-
-          {acceptedWithoutContract && (
-            <section className="mb-8 rounded-2xl border border-blue-200 bg-blue-50 p-6">
-              <div className="flex flex-wrap items-start justify-between gap-5">
+            <section className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-6">
+              <div className="flex flex-wrap items-center justify-between gap-5">
                 <div className="max-w-2xl">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
-                    Quote Accepted
+                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                    Awaiting Acceptance
                   </p>
 
-                  <h2 className="mt-2 text-xl font-bold text-blue-950">
-                    Choose the next step
+                  <h2 className="mt-2 text-xl font-bold text-amber-950">
+                    Has the customer approved this quote?
                   </h2>
 
-                  <p className="mt-2 text-sm leading-6 text-blue-800">
-                    A contract is optional. You can schedule
-                    the work or create an invoice directly
-                    from this accepted quote, or create a
-                    contract if one is required.
+                  <p className="mt-2 text-sm leading-6 text-amber-800">
+                    If approval came by email, phone or purchase
+                    order — for example from a council — record it
+                    here. Once accepted, all of the job actions will
+                    be available from this quote.
                   </p>
                 </div>
 
-                <div className="flex flex-wrap gap-3">
+                <form
+                  action={
+                    manuallyAcceptQuote
+                  }
+                >
+                  <input
+                    type="hidden"
+                    name="quote_id"
+                    value={
+                      quote.id
+                    }
+                  />
+
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-amber-700 px-5 py-3 text-sm font-semibold text-white hover:bg-amber-800"
+                  >
+                    Manual Accept
+                  </button>
+                </form>
+              </div>
+            </section>
+          )}
+
+          {quoteAccepted && (
+            <section className="mb-8 overflow-hidden rounded-2xl bg-white shadow-sm">
+              <div className="border-b border-slate-200 p-6">
+                <div className="flex flex-wrap items-start justify-between gap-5">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                      Quote Accepted
+                    </p>
+
+                    <h2 className="mt-2 text-2xl font-bold text-slate-900">
+                      What would you like to do next?
+                    </h2>
+
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                      Everything for this accepted quote starts here.
+                      A contract is optional, so you can invoice,
+                      schedule the work or create a contract in
+                      whichever order suits the job.
+                    </p>
+                  </div>
+
+                  <StatusBadge
+                    status={
+                      quote.status
+                    }
+                  />
+                </div>
+
+                <div className="mt-6 flex flex-wrap gap-3">
+                  {!fullyInvoiced ? (
+                    <Link
+                      href={`/invoices/new?quote=${quote.id}`}
+                      className="rounded-lg bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800"
+                    >
+                      Create Invoice
+                    </Link>
+                  ) : (
+                    <span className="rounded-lg bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-800">
+                      Fully Invoiced
+                    </span>
+                  )}
+
+                  {linkedContract ? (
+                    <Link
+                      href={`/contracts/${linkedContract.id}`}
+                      className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      View Contract
+                    </Link>
+                  ) : (
+                    <Link
+                      href={`/contracts/new?quote=${quote.id}`}
+                      className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Create Contract
+                    </Link>
+                  )}
+
                   <Link
                     href={
                       scheduleWorkHref
                     }
-                    className="rounded-lg border border-blue-300 bg-white px-4 py-3 text-sm font-semibold text-blue-800 hover:bg-blue-100"
+                    className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                   >
                     Schedule Work
                   </Link>
 
-                  <Link
-                    href={`/invoices/new?quote=${quote.id}`}
-                    className="rounded-lg border border-emerald-300 bg-white px-4 py-3 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
-                  >
-                    Create Invoice
-                  </Link>
+                  {jobData?.id && (
+                    <Link
+                      href={`/jobs/${jobData.id}`}
+                      className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      View Job
+                    </Link>
+                  )}
+                </div>
+              </div>
 
-                  <Link
-                    href={`/contracts/new?quote=${quote.id}`}
-                    className="rounded-lg bg-blue-700 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-800"
-                  >
-                    Create Contract
-                  </Link>
+              <div className="grid gap-px bg-slate-200 md:grid-cols-4">
+                <WorkflowStat
+                  title="Quote Value"
+                  value={formatCurrency(
+                    quoteTotal
+                  )}
+                />
+
+                <WorkflowStat
+                  title="Invoiced"
+                  value={formatCurrency(
+                    invoicedTotal
+                  )}
+                />
+
+                <WorkflowStat
+                  title="Paid"
+                  value={formatCurrency(
+                    paidTotal
+                  )}
+                />
+
+                <WorkflowStat
+                  title="Remaining to Invoice"
+                  value={formatCurrency(
+                    remainingToInvoice
+                  )}
+                  strong
+                />
+              </div>
+
+              <div className="border-t border-slate-200 p-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900">
+                      Invoices
+                    </h3>
+
+                    <p className="mt-1 text-sm text-slate-500">
+                      All invoices raised from this quote.
+                    </p>
+                  </div>
+
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                    {linkedInvoices.length}{" "}
+                    {linkedInvoices.length ===
+                    1
+                      ? "invoice"
+                      : "invoices"}
+                  </span>
+                </div>
+
+                {linkedInvoices.length ===
+                0 ? (
+                  <div className="mt-5 rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-500">
+                    No invoices have been created from this quote yet.
+                  </div>
+                ) : (
+                  <div className="mt-5 overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <Heading>
+                            Invoice
+                          </Heading>
+
+                          <Heading>
+                            Type
+                          </Heading>
+
+                          <Heading>
+                            Date
+                          </Heading>
+
+                          <Heading right>
+                            Total
+                          </Heading>
+
+                          <Heading right>
+                            Paid
+                          </Heading>
+
+                          <Heading>
+                            Status
+                          </Heading>
+
+                          <Heading right>
+                            Action
+                          </Heading>
+                        </tr>
+                      </thead>
+
+                      <tbody className="divide-y divide-slate-100">
+                        {linkedInvoices.map(
+                          (
+                            invoice
+                          ) => (
+                            <tr
+                              key={
+                                invoice.id
+                              }
+                            >
+                              <td className="px-6 py-4 text-sm font-semibold text-slate-900">
+                                {invoice.invoice_number}
+                              </td>
+
+                              <td className="px-6 py-4 text-sm text-slate-600">
+                                {invoice.invoice_type ||
+                                  "Invoice"}
+                              </td>
+
+                              <td className="px-6 py-4 text-sm text-slate-600">
+                                {formatDate(
+                                  invoice.invoice_date
+                                )}
+                              </td>
+
+                              <td className="px-6 py-4 text-right text-sm font-semibold text-slate-900">
+                                {formatCurrency(
+                                  getInvoiceValue(
+                                    invoice
+                                  )
+                                )}
+                              </td>
+
+                              <td className="px-6 py-4 text-right text-sm text-slate-600">
+                                {formatCurrency(
+                                  invoice.amount_paid
+                                )}
+                              </td>
+
+                              <td className="px-6 py-4">
+                                <InvoiceStatusBadge
+                                  status={
+                                    invoice.status
+                                  }
+                                />
+                              </td>
+
+                              <td className="px-6 py-4 text-right">
+                                <Link
+                                  href={`/invoices/${invoice.id}`}
+                                  className="text-sm font-semibold text-slate-700 hover:underline"
+                                >
+                                  View →
+                                </Link>
+                              </td>
+                            </tr>
+                          )
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-slate-200 bg-slate-50 p-6">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                      Contract
+                    </p>
+
+                    {linkedContract ? (
+                      <p className="mt-1 text-sm font-semibold text-slate-800">
+                        {linkedContract.contract_number} ·{" "}
+                        {linkedContract.status}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-sm text-slate-600">
+                        No contract created — this is optional.
+                      </p>
+                    )}
+                  </div>
+
+                  {linkedContract ? (
+                    <Link
+                      href={`/contracts/${linkedContract.id}`}
+                      className="text-sm font-semibold text-slate-700 hover:underline"
+                    >
+                      View Contract →
+                    </Link>
+                  ) : (
+                    <Link
+                      href={`/contracts/new?quote=${quote.id}`}
+                      className="text-sm font-semibold text-slate-700 hover:underline"
+                    >
+                      Create Contract →
+                    </Link>
+                  )}
                 </div>
               </div>
             </section>
@@ -456,40 +727,6 @@ export default async function QuotePage({
               }
             />
           </div>
-
-          {linkedContract && (
-            <section className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                    Contract Created
-                  </p>
-
-                  <h2 className="mt-2 text-lg font-bold text-emerald-950">
-                    {
-                      linkedContract.contract_number
-                    }
-                  </h2>
-
-                  <p className="mt-1 text-sm text-emerald-800">
-                    {linkedContract.title ||
-                      "Contract"}{" "}
-                    ·{" "}
-                    {
-                      linkedContract.status
-                    }
-                  </p>
-                </div>
-
-                <Link
-                  href={`/contracts/${linkedContract.id}`}
-                  className="rounded-lg bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800"
-                >
-                  View Contract
-                </Link>
-              </div>
-            </section>
-          )}
 
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -901,6 +1138,46 @@ function TotalRow({
   );
 }
 
+function WorkflowStat({
+  title,
+  value,
+  strong = false,
+}: {
+  title: string;
+  value: string;
+  strong?: boolean;
+}) {
+  return (
+    <div
+      className={
+        strong
+          ? "bg-slate-900 p-5"
+          : "bg-white p-5"
+      }
+    >
+      <p
+        className={
+          strong
+            ? "text-xs font-semibold uppercase tracking-wide text-slate-300"
+            : "text-xs font-semibold uppercase tracking-wide text-slate-400"
+        }
+      >
+        {title}
+      </p>
+
+      <p
+        className={
+          strong
+            ? "mt-2 text-xl font-bold text-white"
+            : "mt-2 text-xl font-bold text-slate-900"
+        }
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
 function SummaryCard({
   title,
   value,
@@ -973,6 +1250,33 @@ function StatusBadge({
   );
 }
 
+function InvoiceStatusBadge({
+  status,
+}: {
+  status: string;
+}) {
+  const classes =
+    status === "Paid"
+      ? "bg-emerald-100 text-emerald-800"
+      : status === "Part Paid"
+        ? "bg-amber-100 text-amber-800"
+        : status === "Sent"
+          ? "bg-blue-100 text-blue-800"
+          : status === "Viewed"
+            ? "bg-violet-100 text-violet-800"
+            : status === "Overdue"
+              ? "bg-red-100 text-red-800"
+              : "bg-slate-100 text-slate-700";
+
+  return (
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${classes}`}
+    >
+      {status}
+    </span>
+  );
+}
+
 function Heading({
   children,
   right = false,
@@ -990,6 +1294,43 @@ function Heading({
     >
       {children}
     </th>
+  );
+}
+
+function getInvoiceValue(invoice: {
+  amount?: number | string | null;
+  subtotal?: number | string | null;
+  vat_amount?: number | string | null;
+}) {
+  const amount =
+    Number(
+      invoice.amount ?? 0
+    );
+
+  if (
+    Number.isFinite(amount) &&
+    amount > 0
+  ) {
+    return amount;
+  }
+
+  const subtotal =
+    Number(
+      invoice.subtotal ?? 0
+    );
+
+  const vatAmount =
+    Number(
+      invoice.vat_amount ?? 0
+    );
+
+  return (
+    (Number.isFinite(subtotal)
+      ? subtotal
+      : 0) +
+    (Number.isFinite(vatAmount)
+      ? vatAmount
+      : 0)
   );
 }
 

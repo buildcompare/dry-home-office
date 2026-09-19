@@ -79,11 +79,13 @@ export default async function InvoicePage({
       ),
       quotes (
         id,
-        quote_number
+        quote_number,
+        amount
       ),
       contracts (
         id,
         contract_number,
+        amount,
         status
       )
     `)
@@ -158,6 +160,76 @@ export default async function InvoicePage({
   const payments =
     paymentsResult.data ?? [];
 
+  let relatedInvoices: {
+    id: string;
+    amount: number | string | null;
+    subtotal: number | string | null;
+    vat_amount: number | string | null;
+    status: string | null;
+  }[] = [];
+
+  if (invoice.quote_id) {
+    const {
+      data: quoteInvoices,
+      error: quoteInvoicesError,
+    } = await supabase
+      .from("invoices")
+      .select(`
+        id,
+        amount,
+        subtotal,
+        vat_amount,
+        status
+      `)
+      .eq(
+        "quote_id",
+        invoice.quote_id
+      )
+      .neq(
+        "status",
+        "Cancelled"
+      );
+
+    if (quoteInvoicesError) {
+      throw new Error(
+        quoteInvoicesError.message
+      );
+    }
+
+    relatedInvoices =
+      quoteInvoices ?? [];
+  } else if (invoice.contract_id) {
+    const {
+      data: contractInvoices,
+      error: contractInvoicesError,
+    } = await supabase
+      .from("invoices")
+      .select(`
+        id,
+        amount,
+        subtotal,
+        vat_amount,
+        status
+      `)
+      .eq(
+        "contract_id",
+        invoice.contract_id
+      )
+      .neq(
+        "status",
+        "Cancelled"
+      );
+
+    if (contractInvoicesError) {
+      throw new Error(
+        contractInvoicesError.message
+      );
+    }
+
+    relatedInvoices =
+      contractInvoices ?? [];
+  }
+
   const client =
     Array.isArray(
       invoice.clients
@@ -211,8 +283,8 @@ export default async function InvoicePage({
     );
 
   const invoiceTotal =
-    Number(
-      invoice.amount ?? 0
+    getInvoiceTotal(
+      invoice
     );
 
   const amountPaid =
@@ -228,9 +300,65 @@ export default async function InvoicePage({
     );
 
   const fullyPaid =
-    invoice.status ===
-      "Paid" ||
+    invoiceTotal > 0 &&
     balance <= 0.009;
+
+  const displayStatus =
+    fullyPaid
+      ? "Paid"
+      : amountPaid > 0
+        ? "Part Paid"
+        : invoice.status;
+
+  const sourceTotal =
+    quote?.id
+      ? Number(
+          quote.amount ?? 0
+        )
+      : contract?.id
+        ? Number(
+            contract.amount ?? 0
+          )
+        : 0;
+
+  const totalInvoiced =
+    relatedInvoices.reduce(
+      (sum, relatedInvoice) =>
+        sum +
+        getInvoiceTotal(
+          relatedInvoice
+        ),
+      0
+    );
+
+  const remainingToInvoice =
+    Math.max(
+      sourceTotal -
+        totalInvoiced,
+      0
+    );
+
+  const hasInvoiceProgress =
+    sourceTotal > 0 &&
+    Boolean(
+      quote?.id ||
+        contract?.id
+    );
+
+  const invoiceProgressStatus =
+    remainingToInvoice <=
+    0.009
+      ? "Fully Invoiced"
+      : totalInvoiced > 0
+        ? "Part Invoiced"
+        : "Not Yet Invoiced";
+
+  const nextInvoiceHref =
+    quote?.id
+      ? `/invoices/new?quote=${quote.id}`
+      : contract?.id
+        ? `/invoices/new?contract=${contract.id}`
+        : null;
 
   const today =
     new Date()
@@ -307,13 +435,13 @@ export default async function InvoicePage({
                     null
                   }
                   status={
-                    invoice.status
+                    displayStatus
                   }
                 />
 
                 <StatusBadge
                   status={
-                    invoice.status
+                    displayStatus
                   }
                 />
               </div>
@@ -407,6 +535,67 @@ export default async function InvoicePage({
             />
           </div>
 
+          {hasInvoiceProgress && (
+            <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Quote / Contract Progress
+                  </p>
+
+                  <h2 className="mt-1 text-xl font-semibold text-slate-900">
+                    {invoiceProgressStatus}
+                  </h2>
+
+                  <p className="mt-2 text-sm text-slate-500">
+                    This is separate from the balance due on this individual invoice.
+                  </p>
+                </div>
+
+                {nextInvoiceHref &&
+                  remainingToInvoice >
+                    0.009 && (
+                    <Link
+                      href={
+                        nextInvoiceHref
+                      }
+                      className="inline-flex rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+                    >
+                      Create Next Invoice
+                    </Link>
+                  )}
+              </div>
+
+              <div className="mt-6 grid gap-5 md:grid-cols-3">
+                <ProgressCard
+                  title={
+                    quote?.id
+                      ? "Quote Total"
+                      : "Contract Total"
+                  }
+                  value={formatCurrency(
+                    sourceTotal
+                  )}
+                />
+
+                <ProgressCard
+                  title="Invoiced So Far"
+                  value={formatCurrency(
+                    totalInvoiced
+                  )}
+                />
+
+                <ProgressCard
+                  title="Remaining to Invoice"
+                  value={formatCurrency(
+                    remainingToInvoice
+                  )}
+                  strong
+                />
+              </div>
+            </section>
+          )}
+
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <div className="grid gap-5 md:grid-cols-3">
               <DetailRow
@@ -426,7 +615,7 @@ export default async function InvoicePage({
               <DetailRow
                 label="Status"
                 value={
-                  invoice.status
+                  displayStatus
                 }
               />
             </div>
@@ -1063,6 +1252,46 @@ function SummaryCard({
   );
 }
 
+function ProgressCard({
+  title,
+  value,
+  strong = false,
+}: {
+  title: string;
+  value: string;
+  strong?: boolean;
+}) {
+  return (
+    <div
+      className={
+        strong
+          ? "rounded-xl bg-slate-900 p-5"
+          : "rounded-xl bg-slate-50 p-5"
+      }
+    >
+      <p
+        className={
+          strong
+            ? "text-xs font-semibold uppercase tracking-wide text-slate-300"
+            : "text-xs font-semibold uppercase tracking-wide text-slate-500"
+        }
+      >
+        {title}
+      </p>
+
+      <p
+        className={
+          strong
+            ? "mt-2 text-2xl font-bold text-white"
+            : "mt-2 text-2xl font-bold text-slate-900"
+        }
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
 function InfoCard({
   title,
   value,
@@ -1161,6 +1390,43 @@ function StatusBadge({
     >
       {status}
     </span>
+  );
+}
+
+function getInvoiceTotal(invoice: {
+  amount?: number | string | null;
+  subtotal?: number | string | null;
+  vat_amount?: number | string | null;
+}) {
+  const amount =
+    Number(
+      invoice.amount ?? 0
+    );
+
+  if (
+    Number.isFinite(amount) &&
+    amount > 0
+  ) {
+    return amount;
+  }
+
+  const subtotal =
+    Number(
+      invoice.subtotal ?? 0
+    );
+
+  const vatAmount =
+    Number(
+      invoice.vat_amount ?? 0
+    );
+
+  return (
+    (Number.isFinite(subtotal)
+      ? subtotal
+      : 0) +
+    (Number.isFinite(vatAmount)
+      ? vatAmount
+      : 0)
   );
 }
 

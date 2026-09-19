@@ -18,165 +18,84 @@ type InvoiceItem = {
 type InvoiceFormProps = {
   defaultAmount?: number;
   defaultDescription?: string;
+  maxAmount?: number;
 };
+
+function money(value: number) {
+  return (
+    Math.round(
+      (value +
+        Number.EPSILON) *
+        100
+    ) / 100
+  );
+}
+
+function formatMoney(
+  value: number
+) {
+  return new Intl.NumberFormat(
+    "en-GB",
+    {
+      style: "currency",
+      currency: "GBP",
+    }
+  ).format(value);
+}
+
+function makeItem(
+  type:
+    | "Labour"
+    | "Materials",
+  description = "",
+  amount = 0
+): InvoiceItem {
+  return {
+    description,
+    quantity: 1,
+    unit: "item",
+    unit_price: amount,
+    item_type: type,
+  };
+}
 
 export default function InvoiceForm({
   defaultAmount = 0,
   defaultDescription = "",
+  maxAmount,
 }: InvoiceFormProps) {
-  const [
-    labourItems,
-    setLabourItems,
-  ] =
+  const [labourItems, setLabourItems] =
     useState<InvoiceItem[]>([
-      {
-        description:
-          defaultDescription ||
-          "Labour and works as agreed",
-        quantity: 1,
-        unit: "item",
-        unit_price:
-          defaultAmount > 0
-            ? defaultAmount
-            : 0,
-        item_type:
-          "Labour",
-      },
+      makeItem(
+        "Labour",
+        defaultDescription,
+        defaultAmount
+      ),
     ]);
 
   const [
     materialItems,
     setMaterialItems,
-  ] =
-    useState<InvoiceItem[]>(
-      []
-    );
+  ] = useState<InvoiceItem[]>([
+    makeItem("Materials"),
+  ]);
 
-  const [
-    vatEnabled,
-    setVatEnabled,
-  ] =
+  const [vatEnabled, setVatEnabled] =
     useState(false);
 
-  const vatRate = 20;
+  const [vatRate, setVatRate] =
+    useState(20);
 
-  const allItems = [
-    ...labourItems,
-    ...materialItems,
-  ];
-
-  const subtotal =
-    useMemo(() => {
-      return allItems.reduce(
-        (
-          total,
-          item
-        ) =>
-          total +
-          Number(
-            item.quantity ||
-              0
-          ) *
-            Number(
-              item.unit_price ||
-                0
-            ),
-        0
-      );
-    }, [
-      labourItems,
-      materialItems,
-    ]);
-
-  const vatAmount =
-    vatEnabled
-      ? subtotal *
-        (vatRate / 100)
-      : 0;
-
-  const total =
-    subtotal +
-    vatAmount;
-
-  function setInvoiceAmount(
-    value: string
-  ) {
-    const amount =
-      Number(value);
-
-    setLabourItems(
-      (current) => {
-        if (
-          current.length === 0
-        ) {
-          return [
-            {
-              description:
-                defaultDescription ||
-                "Labour and works as agreed",
-              quantity: 1,
-              unit: "item",
-              unit_price:
-                Number.isFinite(
-                  amount
-                )
-                  ? amount
-                  : 0,
-              item_type:
-                "Labour",
-            },
-          ];
-        }
-
-        return current.map(
-          (
-            item,
-            index
-          ) =>
-            index === 0
-              ? {
-                  ...item,
-                  quantity:
-                    1,
-                  unit_price:
-                    Number.isFinite(
-                      amount
-                    )
-                      ? amount
-                      : 0,
-                }
-              : item
-        );
-      }
-    );
-  }
-
-  function updateItem(
-    type:
-      | "Labour"
-      | "Materials",
+  function updateLabourItem(
     index: number,
-    field:
-      | "description"
-      | "quantity"
-      | "unit"
-      | "unit_price",
-    value: string
+    field: keyof InvoiceItem,
+    value: string | number
   ) {
-    const setter =
-      type === "Labour"
-        ? setLabourItems
-        : setMaterialItems;
-
-    setter(
+    setLabourItems(
       (current) =>
         current.map(
-          (
-            item,
-            i
-          ) =>
-            i ===
-            index
+          (item, itemIndex) =>
+            itemIndex === index
               ? {
                   ...item,
                   [field]:
@@ -194,77 +113,169 @@ export default function InvoiceForm({
     );
   }
 
-  function addItem(
-    type:
-      | "Labour"
-      | "Materials"
+  function updateMaterialItem(
+    index: number,
+    field: keyof InvoiceItem,
+    value: string | number
   ) {
-    const item: InvoiceItem =
-      {
-        description: "",
-        quantity: 1,
-        unit: "item",
-        unit_price: 0,
-        item_type:
-          type,
-      };
-
-    if (
-      type === "Labour"
-    ) {
-      setLabourItems(
-        (current) => [
-          ...current,
-          item,
-        ]
-      );
-    } else {
-      setMaterialItems(
-        (current) => [
-          ...current,
-          item,
-        ]
-      );
-    }
+    setMaterialItems(
+      (current) =>
+        current.map(
+          (item, itemIndex) =>
+            itemIndex === index
+              ? {
+                  ...item,
+                  [field]:
+                    field ===
+                      "quantity" ||
+                    field ===
+                      "unit_price"
+                      ? Number(
+                          value
+                        )
+                      : value,
+                }
+              : item
+        )
+    );
   }
 
-  function removeItem(
-    type:
-      | "Labour"
-      | "Materials",
+  function addLabourItem() {
+    setLabourItems(
+      (current) => [
+        ...current,
+        makeItem("Labour"),
+      ]
+    );
+  }
+
+  function addMaterialItem() {
+    setMaterialItems(
+      (current) => [
+        ...current,
+        makeItem(
+          "Materials"
+        ),
+      ]
+    );
+  }
+
+  function removeLabourItem(
     index: number
   ) {
-    if (
-      type === "Labour"
-    ) {
-      setLabourItems(
-        (current) =>
-          current.filter(
-            (
-              _,
-              i
-            ) =>
-              i !==
-              index
-          )
-      );
-    } else {
-      setMaterialItems(
-        (current) =>
-          current.filter(
-            (
-              _,
-              i
-            ) =>
-              i !==
-              index
-          )
-      );
-    }
+    setLabourItems(
+      (current) =>
+        current.length === 1
+          ? [
+              makeItem(
+                "Labour"
+              ),
+            ]
+          : current.filter(
+              (_, itemIndex) =>
+                itemIndex !== index
+            )
+    );
   }
 
+  function removeMaterialItem(
+    index: number
+  ) {
+    setMaterialItems(
+      (current) =>
+        current.length === 1
+          ? [
+              makeItem(
+                "Materials"
+              ),
+            ]
+          : current.filter(
+              (_, itemIndex) =>
+                itemIndex !== index
+            )
+    );
+  }
+
+  const allItems =
+    useMemo(() => {
+      return [
+        ...labourItems,
+        ...materialItems,
+      ].filter((item) => {
+        return (
+          item.description
+            .trim() !== "" ||
+          Number(
+            item.unit_price
+          ) !== 0
+        );
+      });
+    }, [
+      labourItems,
+      materialItems,
+    ]);
+
+  const subtotal =
+    useMemo(() => {
+      return money(
+        allItems.reduce(
+          (sum, item) => {
+            const quantity =
+              Number(
+                item.quantity
+              ) || 0;
+
+            const unitPrice =
+              Number(
+                item.unit_price
+              ) || 0;
+
+            return (
+              sum +
+              quantity *
+                unitPrice
+            );
+          },
+          0
+        )
+      );
+    }, [allItems]);
+
+  const vatAmount =
+    useMemo(() => {
+      if (!vatEnabled) {
+        return 0;
+      }
+
+      return money(
+        subtotal *
+          (vatRate / 100)
+      );
+    }, [
+      subtotal,
+      vatEnabled,
+      vatRate,
+    ]);
+
+  const total = money(
+    subtotal + vatAmount
+  );
+
+  const hasMaximum =
+    typeof maxAmount ===
+      "number" &&
+    Number.isFinite(maxAmount);
+
+  const overMaximum =
+    hasMaximum &&
+    Math.round(total * 100) >
+      Math.round(
+        Number(maxAmount) *
+          100
+      );
+
   return (
-    <>
+    <div className="space-y-6">
       <input
         type="hidden"
         name="items"
@@ -275,283 +286,95 @@ export default function InvoiceForm({
 
       <input
         type="hidden"
-        name="vat_rate"
+        name="vat_enabled"
         value={
-          vatRate
+          vatEnabled
+            ? "true"
+            : "false"
         }
       />
 
-      <section className="mt-8 rounded-2xl border border-blue-200 bg-blue-50 p-6">
-        <div className="max-w-xl">
-          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
-            Invoice Amount
-          </p>
+      <input
+        type="hidden"
+        name="vat_rate"
+        value={vatRate}
+      />
 
-          <h2 className="mt-2 text-xl font-bold text-blue-950">
-            Amount for this invoice
-          </h2>
+      {hasMaximum && (
+        <input
+          type="number"
+          value={total.toFixed(
+            2
+          )}
+          max={Number(
+            maxAmount
+          ).toFixed(2)}
+          readOnly
+          tabIndex={-1}
+          aria-hidden="true"
+          className="absolute h-px w-px opacity-0"
+        />
+      )}
 
-          <p className="mt-2 text-sm leading-6 text-blue-800">
-            For a deposit or
-            interim invoice,
-            enter only the
-            amount you want to
-            invoice now. For a
-            final invoice, enter
-            the final amount due.
-          </p>
+      {hasMaximum && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-blue-900">
+                Maximum available
+                to invoice
+              </p>
 
-          <div className="mt-5">
-            <label
-              htmlFor="invoice_amount"
-              className="mb-2 block text-sm font-semibold text-blue-950"
-            >
-              Invoice amount
-            </label>
-
-            <div className="relative">
-              <span className="absolute left-3 top-3 text-slate-500">
-                £
-              </span>
-
-              <input
-                id="invoice_amount"
-                type="number"
-                min="0"
-                step="0.01"
-                value={
-                  labourItems[0]
-                    ?.unit_price ??
-                  0
-                }
-                onChange={(
-                  event
-                ) =>
-                  setInvoiceAmount(
-                    event
-                      .target
-                      .value
-                  )
-                }
-                className="w-full rounded-lg border border-blue-300 bg-white py-3 pl-8 pr-4 text-lg font-semibold text-slate-900 outline-none focus:border-blue-500"
-              />
+              <p className="mt-1 text-xs text-blue-700">
+                You can invoice
+                all or part of
+                this amount.
+              </p>
             </div>
 
-            {defaultAmount >
-              0 && (
-              <p className="mt-2 text-sm text-blue-700">
-                Full source
-                value:{" "}
-                <span className="font-semibold">
-                  {formatCurrency(
-                    defaultAmount
-                  )}
-                </span>
-              </p>
-            )}
+            <p className="text-xl font-semibold text-blue-950">
+              {formatMoney(
+                Number(maxAmount)
+              )}
+            </p>
           </div>
         </div>
-      </section>
+      )}
 
-      <InvoiceSection
-        title="Labour"
-        items={
-          labourItems
-        }
-        type="Labour"
-        onAdd={() =>
-          addItem(
-            "Labour"
-          )
-        }
-        onRemove={(
-          index
-        ) =>
-          removeItem(
-            "Labour",
-            index
-          )
-        }
-        onChange={
-          updateItem
-        }
-      />
-
-      <InvoiceSection
-        title="Materials"
-        items={
-          materialItems
-        }
-        type="Materials"
-        onAdd={() =>
-          addItem(
-            "Materials"
-          )
-        }
-        onRemove={(
-          index
-        ) =>
-          removeItem(
-            "Materials",
-            index
-          )
-        }
-        onChange={
-          updateItem
-        }
-      />
-
-      <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between gap-4">
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-semibold text-slate-900">
-              VAT
+            <h2 className="text-lg font-semibold text-slate-900">
+              Labour
             </h2>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Add 20% VAT to
-              this invoice.
+            <p className="text-sm text-slate-500">
+              Add labour or
+              work-related invoice
+              lines.
             </p>
           </div>
 
-          <label className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              name="vat_enabled"
-              checked={
-                vatEnabled
-              }
-              onChange={(
-                event
-              ) =>
-                setVatEnabled(
-                  event
-                    .target
-                    .checked
-                )
-              }
-              className="h-5 w-5"
-            />
-
-            <span className="text-sm font-semibold text-slate-700">
-              Add VAT
-            </span>
-          </label>
+          <button
+            type="button"
+            onClick={
+              addLabourItem
+            }
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            + Add Labour
+          </button>
         </div>
 
-        <div className="ml-auto mt-8 max-w-md">
-          <TotalRow
-            label="Subtotal"
-            value={formatCurrency(
-              subtotal
-            )}
-          />
-
-          {vatEnabled && (
-            <TotalRow
-              label="VAT (20%)"
-              value={formatCurrency(
-                vatAmount
-              )}
-            />
-          )}
-
-          <div className="mt-4 flex items-center justify-between border-t-2 border-slate-900 pt-5">
-            <span className="text-xl font-bold text-slate-900">
-              Total
-            </span>
-
-            <span className="text-2xl font-bold text-slate-900">
-              {formatCurrency(
-                total
-              )}
-            </span>
-          </div>
-        </div>
-      </section>
-    </>
-  );
-}
-
-function InvoiceSection({
-  title,
-  items,
-  type,
-  onAdd,
-  onRemove,
-  onChange,
-}: {
-  title: string;
-  items: InvoiceItem[];
-  type:
-    | "Labour"
-    | "Materials";
-  onAdd: () => void;
-  onRemove: (
-    index: number
-  ) => void;
-  onChange: (
-    type:
-      | "Labour"
-      | "Materials",
-    index: number,
-    field:
-      | "description"
-      | "quantity"
-      | "unit"
-      | "unit_price",
-    value: string
-  ) => void;
-}) {
-  return (
-    <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-semibold text-slate-900">
-            {title}
-          </h2>
-
-          <p className="mt-1 text-sm text-slate-500">
-            Add the{" "}
-            {title.toLowerCase()}{" "}
-            included on this
-            invoice.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={
-            onAdd
-          }
-          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-        >
-          + Add Item
-        </button>
-      </div>
-
-      {items.length ===
-      0 ? (
-        <div className="mt-6 rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-500">
-          No{" "}
-          {title.toLowerCase()}{" "}
-          items added.
-        </div>
-      ) : (
-        <div className="mt-6 space-y-4">
-          {items.map(
-            (
-              item,
-              index
-            ) => (
+        <div className="space-y-4">
+          {labourItems.map(
+            (item, index) => (
               <div
-                key={
-                  index
-                }
-                className="grid gap-4 rounded-xl border border-slate-200 p-4 lg:grid-cols-[2fr_120px_120px_150px_auto]"
+                key={index}
+                className="grid gap-3 rounded-lg border border-slate-200 p-4 md:grid-cols-[minmax(0,1fr)_100px_120px_140px_auto]"
               >
                 <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
                     Description
                   </label>
 
@@ -563,22 +386,20 @@ function InvoiceSection({
                     onChange={(
                       event
                     ) =>
-                      onChange(
-                        type,
+                      updateLabourItem(
                         index,
                         "description",
-                        event
-                          .target
+                        event.target
                           .value
                       )
                     }
-                    placeholder="Description"
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    placeholder="Labour description"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
                     Qty
                   </label>
 
@@ -592,21 +413,19 @@ function InvoiceSection({
                     onChange={(
                       event
                     ) =>
-                      onChange(
-                        type,
+                      updateLabourItem(
                         index,
                         "quantity",
-                        event
-                          .target
+                        event.target
                           .value
                       )
                     }
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
                     Unit
                   </label>
 
@@ -618,27 +437,25 @@ function InvoiceSection({
                     onChange={(
                       event
                     ) =>
-                      onChange(
-                        type,
+                      updateLabourItem(
                         index,
                         "unit",
-                        event
-                          .target
+                        event.target
                           .value
                       )
                     }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                     placeholder="item"
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
                     Unit Price
                   </label>
 
                   <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-slate-500">
+                    <span className="absolute left-3 top-2 text-sm text-slate-500">
                       £
                     </span>
 
@@ -652,16 +469,14 @@ function InvoiceSection({
                       onChange={(
                         event
                       ) =>
-                        onChange(
-                          type,
+                        updateLabourItem(
                           index,
                           "unit_price",
-                          event
-                            .target
+                          event.target
                             .value
                         )
                       }
-                      className="w-full rounded-lg border border-slate-300 py-2.5 pl-7 pr-3 text-slate-900 outline-none focus:border-slate-500"
+                      className="w-full rounded-lg border border-slate-300 py-2 pl-7 pr-3 text-sm"
                     />
                   </div>
                 </div>
@@ -670,11 +485,11 @@ function InvoiceSection({
                   <button
                     type="button"
                     onClick={() =>
-                      onRemove(
+                      removeLabourItem(
                         index
                       )
                     }
-                    className="w-full rounded-lg border border-red-200 px-3 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50"
+                    className="rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
                   >
                     Remove
                   </button>
@@ -683,39 +498,305 @@ function InvoiceSection({
             )
           )}
         </div>
-      )}
-    </section>
-  );
-}
+      </section>
 
-function TotalRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex items-center justify-between border-b border-slate-200 py-4">
-      <span className="font-medium text-slate-600">
-        {label}
-      </span>
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">
+              Materials
+            </h2>
 
-      <span className="font-semibold text-slate-900">
-        {value}
-      </span>
+            <p className="text-sm text-slate-500">
+              Add any materials
+              being charged on this
+              invoice.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={
+              addMaterialItem
+            }
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            + Add Material
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {materialItems.map(
+            (item, index) => (
+              <div
+                key={index}
+                className="grid gap-3 rounded-lg border border-slate-200 p-4 md:grid-cols-[minmax(0,1fr)_100px_120px_140px_auto]"
+              >
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Description
+                  </label>
+
+                  <input
+                    type="text"
+                    value={
+                      item.description
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      updateMaterialItem(
+                        index,
+                        "description",
+                        event.target
+                          .value
+                      )
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    placeholder="Material description"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Qty
+                  </label>
+
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={
+                      item.quantity
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      updateMaterialItem(
+                        index,
+                        "quantity",
+                        event.target
+                          .value
+                      )
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Unit
+                  </label>
+
+                  <input
+                    type="text"
+                    value={
+                      item.unit
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      updateMaterialItem(
+                        index,
+                        "unit",
+                        event.target
+                          .value
+                      )
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    placeholder="item"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Unit Price
+                  </label>
+
+                  <div className="relative">
+                    <span className="absolute left-3 top-2 text-sm text-slate-500">
+                      £
+                    </span>
+
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={
+                        item.unit_price
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        updateMaterialItem(
+                          index,
+                          "unit_price",
+                          event.target
+                            .value
+                        )
+                      }
+                      className="w-full rounded-lg border border-slate-300 py-2 pl-7 pr-3 text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      removeMaterialItem(
+                        index
+                      )
+                    }
+                    className="rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            )
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+          <div>
+            <label className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={
+                  vatEnabled
+                }
+                onChange={(
+                  event
+                ) =>
+                  setVatEnabled(
+                    event.target
+                      .checked
+                  )
+                }
+                className="h-4 w-4 rounded border-slate-300"
+              />
+
+              <span className="text-sm font-medium text-slate-700">
+                Add VAT
+              </span>
+            </label>
+
+            {vatEnabled && (
+              <div className="mt-3 flex items-center gap-2">
+                <label className="text-sm text-slate-600">
+                  VAT Rate
+                </label>
+
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={vatRate}
+                  onChange={(
+                    event
+                  ) =>
+                    setVatRate(
+                      Number(
+                        event.target
+                          .value
+                      ) || 0
+                    )
+                  }
+                  className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+
+                <span className="text-sm text-slate-600">
+                  %
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="w-full max-w-sm space-y-2 text-sm">
+            <div className="flex justify-between text-slate-600">
+              <span>
+                Subtotal
+              </span>
+
+              <span>
+                {formatMoney(
+                  subtotal
+                )}
+              </span>
+            </div>
+
+            {vatEnabled && (
+              <div className="flex justify-between text-slate-600">
+                <span>
+                  VAT ({vatRate}
+                  %)
+                </span>
+
+                <span>
+                  {formatMoney(
+                    vatAmount
+                  )}
+                </span>
+              </div>
+            )}
+
+            <div className="border-t border-slate-200 pt-2">
+              <div className="flex justify-between text-lg font-semibold text-slate-900">
+                <span>
+                  Invoice Total
+                </span>
+
+                <span>
+                  {formatMoney(
+                    total
+                  )}
+                </span>
+              </div>
+            </div>
+
+            {hasMaximum && (
+              <div className="flex justify-between text-sm text-slate-600">
+                <span>
+                  Remaining
+                  available
+                </span>
+
+                <span>
+                  {formatMoney(
+                    Number(
+                      maxAmount
+                    )
+                  )}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {overMaximum && (
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4">
+            <p className="font-medium text-red-800">
+              Invoice amount is
+              too high
+            </p>
+
+            <p className="mt-1 text-sm text-red-700">
+              The invoice total
+              cannot exceed{" "}
+              {formatMoney(
+                Number(maxAmount)
+              )}
+              , which is the
+              remaining balance
+              available on this
+              quote.
+            </p>
+          </div>
+        )}
+      </section>
     </div>
   );
-}
-
-function formatCurrency(
-  value: number
-) {
-  return new Intl.NumberFormat(
-    "en-GB",
-    {
-      style: "currency",
-      currency: "GBP",
-    }
-  ).format(value);
 }
