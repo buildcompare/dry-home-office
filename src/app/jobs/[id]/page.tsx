@@ -14,9 +14,13 @@ export default async function JobPage({
 }: JobPageProps) {
   const { id } = await params;
 
-  const supabase = await createClient();
+  const supabase =
+    await createClient();
 
-  const { data: job, error } = await supabase
+  const {
+    data: job,
+    error,
+  } = await supabase
     .from("jobs")
     .select(`
       id,
@@ -49,13 +53,19 @@ export default async function JobPage({
     .eq("id", id)
     .single();
 
-  if (error || !job) {
+  if (
+    error ||
+    !job
+  ) {
     notFound();
   }
 
-  const clientData = Array.isArray(job.clients)
-    ? job.clients[0]
-    : job.clients;
+  const clientData =
+    Array.isArray(
+      job.clients
+    )
+      ? job.clients[0]
+      : job.clients;
 
   const clientName =
     clientData?.display_name ||
@@ -70,8 +80,9 @@ export default async function JobPage({
   const [
     scheduleResult,
     quotesResult,
-    invoicesResult,
     contractsResult,
+    invoicesResult,
+    guaranteesResult,
   ] = await Promise.all([
     supabase
       .from("schedule_events")
@@ -86,7 +97,8 @@ export default async function JobPage({
         end_time,
         all_day,
         location,
-        assigned_to
+        assigned_to,
+        contract_id
       `)
       .eq("job_id", id)
       .order("start_date", {
@@ -113,12 +125,15 @@ export default async function JobPage({
       }),
 
     supabase
-      .from("invoices")
+      .from("contracts")
       .select(`
         id,
-        invoice_number,
+        contract_number,
+        title,
         status,
         amount,
+        contract_date,
+        signed_at,
         created_at
       `)
       .eq("job_id", id)
@@ -127,13 +142,34 @@ export default async function JobPage({
       }),
 
     supabase
-      .from("contracts")
+      .from("invoices")
       .select(`
         id,
-        contract_number,
-        title,
+        invoice_number,
+        invoice_type,
         status,
-        signed_at,
+        amount,
+        amount_paid,
+        invoice_date,
+        due_date,
+        paid_at,
+        created_at
+      `)
+      .eq("job_id", id)
+      .order("created_at", {
+        ascending: false,
+      }),
+
+    supabase
+      .from("guarantees")
+      .select(`
+        id,
+        guarantee_number,
+        title,
+        guarantee_type,
+        status,
+        issue_date,
+        expiry_date,
         created_at
       `)
       .eq("job_id", id)
@@ -148,11 +184,14 @@ export default async function JobPage({
   const quotes =
     quotesResult.data ?? [];
 
+  const contracts =
+    contractsResult.data ?? [];
+
   const invoices =
     invoicesResult.data ?? [];
 
-  const contracts =
-    contractsResult.data ?? [];
+  const guarantees =
+    guaranteesResult.data ?? [];
 
   return (
     <div className="flex min-h-screen bg-slate-100">
@@ -160,7 +199,6 @@ export default async function JobPage({
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
-          {/* Header */}
           <div className="mb-8">
             <Link
               href="/jobs"
@@ -172,11 +210,14 @@ export default async function JobPage({
             <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-slate-500">
-                  {job.job_number}
+                  {
+                    job.job_number
+                  }
                 </p>
 
                 <h1 className="mt-1 text-3xl font-bold text-slate-900">
-                  {job.title || "Untitled Job"}
+                  {job.title ||
+                    "Untitled Job"}
                 </h1>
 
                 <p className="mt-2 text-slate-500">
@@ -209,8 +250,7 @@ export default async function JobPage({
             </div>
           </div>
 
-          {/* Summary */}
-          <div className="mb-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mb-8 grid gap-5 md:grid-cols-2 xl:grid-cols-5">
             <SummaryCard
               title="Status"
               value={job.status}
@@ -219,7 +259,8 @@ export default async function JobPage({
             <SummaryCard
               title="Job Type"
               value={
-                job.job_type || "Not set"
+                job.job_type ||
+                "Not set"
               }
             />
 
@@ -231,9 +272,17 @@ export default async function JobPage({
             />
 
             <SummaryCard
+              title="Invoices"
+              value={String(
+                invoices.length
+              )}
+            />
+
+            <SummaryCard
               title="Estimated Value"
               value={
-                job.estimated_value !== null
+                job.estimated_value !==
+                null
                   ? formatCurrency(
                       job.estimated_value
                     )
@@ -242,7 +291,6 @@ export default async function JobPage({
             />
           </div>
 
-          {/* Main details */}
           <div className="grid gap-6 lg:grid-cols-3">
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">
@@ -252,17 +300,23 @@ export default async function JobPage({
               <div className="mt-5 space-y-4">
                 <DetailRow
                   label="Name"
-                  value={clientName}
+                  value={
+                    clientName
+                  }
                 />
 
                 <DetailRow
                   label="Phone"
-                  value={clientData?.phone}
+                  value={
+                    clientData?.phone
+                  }
                 />
 
                 <DetailRow
                   label="Email"
-                  value={clientData?.email}
+                  value={
+                    clientData?.email
+                  }
                 />
 
                 {clientData?.id && (
@@ -285,26 +339,40 @@ export default async function JobPage({
                 {job.address_line_1 ? (
                   <>
                     <p>
-                      {job.address_line_1}
+                      {
+                        job.address_line_1
+                      }
                     </p>
 
                     {job.address_line_2 && (
                       <p>
-                        {job.address_line_2}
+                        {
+                          job.address_line_2
+                        }
                       </p>
                     )}
 
                     {job.town && (
-                      <p>{job.town}</p>
+                      <p>
+                        {
+                          job.town
+                        }
+                      </p>
                     )}
 
                     {job.county && (
-                      <p>{job.county}</p>
+                      <p>
+                        {
+                          job.county
+                        }
+                      </p>
                     )}
 
                     {job.postcode && (
                       <p className="mt-1 font-semibold">
-                        {job.postcode}
+                        {
+                          job.postcode
+                        }
                       </p>
                     )}
                   </>
@@ -346,7 +414,6 @@ export default async function JobPage({
             </section>
           </div>
 
-          {/* Description / Notes */}
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">
@@ -371,50 +438,50 @@ export default async function JobPage({
             </section>
           </div>
 
-          {/* Schedule */}
-          <section className="mt-8 overflow-hidden rounded-2xl bg-white shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-5">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">
-                  Schedule
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  {scheduleEvents.length}{" "}
-                  appointments linked to this
-                  job
-                </p>
-              </div>
-
+          <RecordSection
+            title="Schedule"
+            subtitle={`${scheduleEvents.length} appointments linked to this job`}
+            action={
               <Link
                 href={`/schedule/new?job=${job.id}`}
                 className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
               >
                 + Add Appointment
               </Link>
-            </div>
-
-            {scheduleEvents.length === 0 ? (
+            }
+          >
+            {scheduleEvents.length ===
+            0 ? (
               <EmptyState text="No appointments scheduled for this job yet." />
             ) : (
               <div className="divide-y divide-slate-100">
                 {scheduleEvents.map(
                   (event) => (
                     <div
-                      key={event.id}
+                      key={
+                        event.id
+                      }
                       className="flex flex-wrap items-center justify-between gap-4 px-6 py-5"
                     >
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-semibold text-slate-900">
-                            {event.title}
+                            {
+                              event.title
+                            }
                           </p>
 
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
-                            {
+                          <StatusBadge
+                            status={
                               event.event_type
                             }
-                          </span>
+                          />
+
+                          <StatusBadge
+                            status={
+                              event.status
+                            }
+                          />
                         </div>
 
                         <p className="mt-2 text-sm text-slate-500">
@@ -432,7 +499,9 @@ export default async function JobPage({
 
                         {event.location && (
                           <p className="mt-1 text-sm text-slate-500">
-                            {event.location}
+                            {
+                              event.location
+                            }
                           </p>
                         )}
                       </div>
@@ -460,44 +529,23 @@ export default async function JobPage({
                 )}
               </div>
             )}
-          </section>
+          </RecordSection>
 
-          {/* Quotes */}
-          <section className="mt-8 overflow-hidden rounded-2xl bg-white shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-6 py-5">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">
-                  Quotes
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  {quotes.length} quotes linked
-                  to this job
-                </p>
-              </div>
-
+          <RecordSection
+            title="Quotes"
+            subtitle={`${quotes.length} quotes linked to this job`}
+            action={
               <Link
                 href={`/quotes/new?job=${job.id}`}
                 className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
               >
                 + Create Quote
               </Link>
-            </div>
-
-            {quotes.length === 0 ? (
-              <div className="p-10 text-center">
-                <p className="text-sm text-slate-500">
-                  No quotes created for this
-                  job yet.
-                </p>
-
-                <Link
-                  href={`/quotes/new?job=${job.id}`}
-                  className="mt-4 inline-flex rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  Create First Quote
-                </Link>
-              </div>
+            }
+          >
+            {quotes.length ===
+            0 ? (
+              <EmptyState text="No quotes created for this job yet." />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -520,7 +568,7 @@ export default async function JobPage({
                       </Heading>
 
                       <Heading right>
-                        View
+                        Action
                       </Heading>
                     </tr>
                   </thead>
@@ -529,48 +577,51 @@ export default async function JobPage({
                     {quotes.map(
                       (quote) => (
                         <tr
-                          key={quote.id}
-                          className="hover:bg-slate-50"
+                          key={
+                            quote.id
+                          }
                         >
-                          <td className="px-6 py-5">
-                            <p className="font-semibold text-slate-900">
+                          <TableCell>
+                            <Link
+                              href={`/quotes/${quote.id}`}
+                              className="font-semibold text-slate-900 hover:underline"
+                            >
                               {
                                 quote.quote_number
                               }
-                            </p>
+                            </Link>
 
                             <p className="mt-1 text-sm text-slate-500">
                               {quote.title ||
                                 "Quote"}
                             </p>
-                          </td>
+                          </TableCell>
 
-                          <td className="px-6 py-5">
-                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                              {quote.status}
-                            </span>
-                          </td>
+                          <TableCell>
+                            <StatusBadge
+                              status={
+                                quote.status
+                              }
+                            />
+                          </TableCell>
 
-                          <td className="px-6 py-5 text-sm text-slate-600">
+                          <TableCell>
                             {formatDate(
                               quote.quote_date
                             )}
-                          </td>
+                          </TableCell>
 
-                          <td className="px-6 py-5 text-right text-sm font-semibold text-slate-900">
+                          <TableCell right>
                             {formatCurrency(
                               quote.amount
                             )}
-                          </td>
+                          </TableCell>
 
-                          <td className="px-6 py-5 text-right">
-                            <Link
+                          <TableCell right>
+                            <RecordLink
                               href={`/quotes/${quote.id}`}
-                              className="text-sm font-semibold text-slate-900 hover:underline"
-                            >
-                              View
-                            </Link>
-                          </td>
+                            />
+                          </TableCell>
                         </tr>
                       )
                     )}
@@ -578,22 +629,329 @@ export default async function JobPage({
                 </table>
               </div>
             )}
-          </section>
+          </RecordSection>
 
-          {/* Contracts + Invoices */}
-          <div className="mt-8 grid gap-6 lg:grid-cols-2">
-            <DocumentCard
-              title="Contracts"
-              count={contracts.length}
-              text="Contracts linked to this job."
-            />
+          <RecordSection
+            title="Contracts"
+            subtitle={`${contracts.length} contracts linked to this job`}
+          >
+            {contracts.length ===
+            0 ? (
+              <EmptyState text="No contracts linked to this job yet." />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <Heading>
+                        Contract
+                      </Heading>
 
-            <DocumentCard
-              title="Invoices"
-              count={invoices.length}
-              text="Invoices linked to this job."
-            />
-          </div>
+                      <Heading>
+                        Title
+                      </Heading>
+
+                      <Heading>
+                        Status
+                      </Heading>
+
+                      <Heading>
+                        Signed
+                      </Heading>
+
+                      <Heading right>
+                        Action
+                      </Heading>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-100">
+                    {contracts.map(
+                      (
+                        contract
+                      ) => (
+                        <tr
+                          key={
+                            contract.id
+                          }
+                        >
+                          <TableCell>
+                            <Link
+                              href={`/contracts/${contract.id}`}
+                              className="font-semibold text-slate-900 hover:underline"
+                            >
+                              {
+                                contract.contract_number
+                              }
+                            </Link>
+                          </TableCell>
+
+                          <TableCell>
+                            {contract.title ||
+                              "Contract"}
+                          </TableCell>
+
+                          <TableCell>
+                            <StatusBadge
+                              status={
+                                contract.status
+                              }
+                            />
+                          </TableCell>
+
+                          <TableCell>
+                            {contract.signed_at
+                              ? formatDate(
+                                  contract.signed_at
+                                )
+                              : "—"}
+                          </TableCell>
+
+                          <TableCell right>
+                            <RecordLink
+                              href={`/contracts/${contract.id}`}
+                            />
+                          </TableCell>
+                        </tr>
+                      )
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </RecordSection>
+
+          <RecordSection
+            title="Invoices"
+            subtitle={`${invoices.length} invoices linked to this job`}
+          >
+            {invoices.length ===
+            0 ? (
+              <EmptyState text="No invoices linked to this job yet." />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <Heading>
+                        Invoice
+                      </Heading>
+
+                      <Heading>
+                        Type
+                      </Heading>
+
+                      <Heading>
+                        Status
+                      </Heading>
+
+                      <Heading>
+                        Due Date
+                      </Heading>
+
+                      <Heading right>
+                        Amount
+                      </Heading>
+
+                      <Heading right>
+                        Paid
+                      </Heading>
+
+                      <Heading right>
+                        Action
+                      </Heading>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-100">
+                    {invoices.map(
+                      (
+                        invoice
+                      ) => (
+                        <tr
+                          key={
+                            invoice.id
+                          }
+                        >
+                          <TableCell>
+                            <Link
+                              href={`/invoices/${invoice.id}`}
+                              className="font-semibold text-slate-900 hover:underline"
+                            >
+                              {
+                                invoice.invoice_number
+                              }
+                            </Link>
+                          </TableCell>
+
+                          <TableCell>
+                            {invoice.invoice_type ||
+                              "—"}
+                          </TableCell>
+
+                          <TableCell>
+                            <StatusBadge
+                              status={
+                                invoice.status
+                              }
+                            />
+                          </TableCell>
+
+                          <TableCell>
+                            {formatDate(
+                              invoice.due_date
+                            )}
+                          </TableCell>
+
+                          <TableCell right>
+                            {formatCurrency(
+                              invoice.amount
+                            )}
+                          </TableCell>
+
+                          <TableCell right>
+                            {formatCurrency(
+                              Number(
+                                invoice.amount_paid ??
+                                  0
+                              )
+                            )}
+                          </TableCell>
+
+                          <TableCell right>
+                            <RecordLink
+                              href={`/invoices/${invoice.id}`}
+                            />
+                          </TableCell>
+                        </tr>
+                      )
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </RecordSection>
+
+          <RecordSection
+            title="Guarantees"
+            subtitle={`${guarantees.length} guarantees linked to this job`}
+          >
+            {guarantees.length ===
+            0 ? (
+              <EmptyState text="No guarantees linked to this job yet." />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <Heading>
+                        Guarantee
+                      </Heading>
+
+                      <Heading>
+                        Type
+                      </Heading>
+
+                      <Heading>
+                        Status
+                      </Heading>
+
+                      <Heading>
+                        Issue Date
+                      </Heading>
+
+                      <Heading>
+                        Expiry Date
+                      </Heading>
+
+                      <Heading right>
+                        Action
+                      </Heading>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-100">
+                    {guarantees.map(
+                      (
+                        guarantee
+                      ) => {
+                        const expired =
+                          guarantee.expiry_date
+                            ? new Date(
+                                `${guarantee.expiry_date}T23:59:59`
+                              ) <
+                              new Date()
+                            : false;
+
+                        const displayStatus =
+                          guarantee.status ===
+                          "Cancelled"
+                            ? "Cancelled"
+                            : expired
+                              ? "Expired"
+                              : guarantee.status;
+
+                        return (
+                          <tr
+                            key={
+                              guarantee.id
+                            }
+                          >
+                            <TableCell>
+                              <Link
+                                href={`/guarantees/${guarantee.id}`}
+                                className="font-semibold text-slate-900 hover:underline"
+                              >
+                                {
+                                  guarantee.guarantee_number
+                                }
+                              </Link>
+
+                              <p className="mt-1 text-sm text-slate-500">
+                                {guarantee.title ||
+                                  "Works Guarantee"}
+                              </p>
+                            </TableCell>
+
+                            <TableCell>
+                              {guarantee.guarantee_type ||
+                                "—"}
+                            </TableCell>
+
+                            <TableCell>
+                              <StatusBadge
+                                status={
+                                  displayStatus
+                                }
+                              />
+                            </TableCell>
+
+                            <TableCell>
+                              {formatDate(
+                                guarantee.issue_date
+                              )}
+                            </TableCell>
+
+                            <TableCell>
+                              {formatDate(
+                                guarantee.expiry_date
+                              )}
+                            </TableCell>
+
+                            <TableCell right>
+                              <RecordLink
+                                href={`/guarantees/${guarantee.id}`}
+                              />
+                            </TableCell>
+                          </tr>
+                        );
+                      }
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </RecordSection>
         </div>
       </main>
     </div>
@@ -620,6 +978,38 @@ function SummaryCard({
   );
 }
 
+function RecordSection({
+  title,
+  subtitle,
+  children,
+  action,
+}: {
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <section className="mt-8 overflow-hidden rounded-2xl bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-6 py-5">
+        <div>
+          <h2 className="text-xl font-semibold text-slate-900">
+            {title}
+          </h2>
+
+          <p className="mt-1 text-sm text-slate-500">
+            {subtitle}
+          </p>
+        </div>
+
+        {action}
+      </div>
+
+      {children}
+    </section>
+  );
+}
+
 function DetailRow({
   label,
   value,
@@ -634,37 +1024,46 @@ function DetailRow({
       </p>
 
       <p className="mt-1 text-sm text-slate-700">
-        {value || "Not recorded"}
+        {value ||
+          "Not recorded"}
       </p>
     </div>
   );
 }
 
-function DocumentCard({
-  title,
-  count,
-  text,
+function StatusBadge({
+  status,
 }: {
-  title: string;
-  count: number;
-  text: string;
+  status: string;
 }) {
+  const classes =
+    status === "Paid" ||
+    status === "Signed" ||
+    status === "Accepted" ||
+    status === "Issued" ||
+    status === "Completed"
+      ? "bg-emerald-100 text-emerald-800"
+      : status === "Part Paid" ||
+          status === "Expired"
+        ? "bg-amber-100 text-amber-800"
+        : status === "Sent" ||
+            status === "Viewed" ||
+            status === "Scheduled" ||
+            status === "Survey" ||
+            status === "Work"
+          ? "bg-blue-100 text-blue-800"
+          : status === "Cancelled" ||
+              status === "Declined" ||
+              status === "Overdue"
+            ? "bg-red-100 text-red-700"
+            : "bg-slate-100 text-slate-700";
+
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-sm">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-900">
-          {title}
-        </h2>
-
-        <span className="text-2xl font-bold text-slate-900">
-          {count}
-        </span>
-      </div>
-
-      <p className="mt-2 text-sm text-slate-500">
-        {text}
-      </p>
-    </div>
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${classes}`}
+    >
+      {status}
+    </span>
   );
 }
 
@@ -688,6 +1087,41 @@ function Heading({
   );
 }
 
+function TableCell({
+  children,
+  right = false,
+}: {
+  children: React.ReactNode;
+  right?: boolean;
+}) {
+  return (
+    <td
+      className={`px-6 py-5 text-sm text-slate-600 ${
+        right
+          ? "text-right"
+          : ""
+      }`}
+    >
+      {children}
+    </td>
+  );
+}
+
+function RecordLink({
+  href,
+}: {
+  href: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="inline-flex rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+    >
+      View
+    </Link>
+  );
+}
+
 function EmptyState({
   text,
 }: {
@@ -703,12 +1137,27 @@ function EmptyState({
 }
 
 function formatCurrency(
-  value: number | string
+  value:
+    | number
+    | string
+    | null
 ) {
-  return new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "GBP",
-  }).format(Number(value));
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return "—";
+  }
+
+  return new Intl.NumberFormat(
+    "en-GB",
+    {
+      style: "currency",
+      currency: "GBP",
+    }
+  ).format(
+    Number(value)
+  );
 }
 
 function formatDate(
@@ -718,7 +1167,11 @@ function formatDate(
     return "Not set";
   }
 
-  const [year, month, day] = value
+  const [
+    year,
+    month,
+    day,
+  ] = value
     .slice(0, 10)
     .split("-")
     .map(Number);

@@ -9,9 +9,13 @@ type ClientPageProps = {
   }>;
 };
 
-export default async function ClientPage({ params }: ClientPageProps) {
+export default async function ClientPage({
+  params,
+}: ClientPageProps) {
   const { id } = await params;
-  const supabase = await createClient();
+
+  const supabase =
+    await createClient();
 
   const [
     clientResult,
@@ -19,6 +23,7 @@ export default async function ClientPage({ params }: ClientPageProps) {
     quotesResult,
     invoicesResult,
     contractsResult,
+    guaranteesResult,
   ] = await Promise.all([
     supabase
       .from("clients")
@@ -56,7 +61,9 @@ export default async function ClientPage({ params }: ClientPageProps) {
         created_at
       `)
       .eq("client_id", id)
-      .order("created_at", { ascending: false }),
+      .order("created_at", {
+        ascending: false,
+      }),
 
     supabase
       .from("quotes")
@@ -70,21 +77,27 @@ export default async function ClientPage({ params }: ClientPageProps) {
         created_at
       `)
       .eq("client_id", id)
-      .order("created_at", { ascending: false }),
+      .order("created_at", {
+        ascending: false,
+      }),
 
     supabase
       .from("invoices")
       .select(`
         id,
         invoice_number,
+        invoice_type,
         status,
         amount,
+        amount_paid,
         due_date,
         paid_at,
         created_at
       `)
       .eq("client_id", id)
-      .order("created_at", { ascending: false }),
+      .order("created_at", {
+        ascending: false,
+      }),
 
     supabase
       .from("contracts")
@@ -97,23 +110,63 @@ export default async function ClientPage({ params }: ClientPageProps) {
         created_at
       `)
       .eq("client_id", id)
-      .order("created_at", { ascending: false }),
+      .order("created_at", {
+        ascending: false,
+      }),
+
+    supabase
+      .from("guarantees")
+      .select(`
+        id,
+        guarantee_number,
+        title,
+        guarantee_type,
+        status,
+        issue_date,
+        expiry_date,
+        sent_at,
+        viewed_at,
+        created_at
+      `)
+      .eq("client_id", id)
+      .order("created_at", {
+        ascending: false,
+      }),
   ]);
 
-  const client = clientResult.data;
+  const client =
+    clientResult.data;
 
-  if (clientResult.error || !client) {
+  if (
+    clientResult.error ||
+    !client
+  ) {
     notFound();
   }
 
-  const jobs = jobsResult.data ?? [];
-  const quotes = quotesResult.data ?? [];
-  const invoices = invoicesResult.data ?? [];
-  const contracts = contractsResult.data ?? [];
+  const jobs =
+    jobsResult.data ?? [];
+
+  const quotes =
+    quotesResult.data ?? [];
+
+  const invoices =
+    invoicesResult.data ?? [];
+
+  const contracts =
+    contractsResult.data ?? [];
+
+  const guarantees =
+    guaranteesResult.data ?? [];
 
   const clientName =
     client.display_name ||
-    [client.first_name, client.last_name].filter(Boolean).join(" ") ||
+    [
+      client.first_name,
+      client.last_name,
+    ]
+      .filter(Boolean)
+      .join(" ") ||
     client.company_name ||
     "Unnamed client";
 
@@ -142,13 +195,16 @@ export default async function ClientPage({ params }: ClientPageProps) {
 
               {client.friendly_name && (
                 <p className="mt-2 text-slate-500">
-                  Contact: {client.friendly_name}
+                  Contact:{" "}
+                  {
+                    client.friendly_name
+                  }
                 </p>
               )}
             </div>
           </div>
 
-          <div className="mb-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mb-8 grid gap-5 md:grid-cols-2 xl:grid-cols-5">
             <SummaryCard
               title="Jobs"
               value={jobs.length}
@@ -160,13 +216,24 @@ export default async function ClientPage({ params }: ClientPageProps) {
             />
 
             <SummaryCard
-              title="Invoices"
-              value={invoices.length}
+              title="Contracts"
+              value={
+                contracts.length
+              }
             />
 
             <SummaryCard
-              title="Contracts"
-              value={contracts.length}
+              title="Invoices"
+              value={
+                invoices.length
+              }
+            />
+
+            <SummaryCard
+              title="Guarantees"
+              value={
+                guarantees.length
+              }
             />
           </div>
 
@@ -179,12 +246,16 @@ export default async function ClientPage({ params }: ClientPageProps) {
               <div className="mt-5 space-y-4">
                 <DetailRow
                   label="Email"
-                  value={client.email}
+                  value={
+                    client.email
+                  }
                 />
 
                 <DetailRow
                   label="Phone"
-                  value={client.phone}
+                  value={
+                    client.phone
+                  }
                 />
               </div>
             </section>
@@ -197,18 +268,41 @@ export default async function ClientPage({ params }: ClientPageProps) {
               <div className="mt-5 text-sm text-slate-700">
                 {client.address_line_1 ? (
                   <>
-                    <p>{client.address_line_1}</p>
+                    <p>
+                      {
+                        client.address_line_1
+                      }
+                    </p>
 
                     {client.address_line_2 && (
-                      <p>{client.address_line_2}</p>
+                      <p>
+                        {
+                          client.address_line_2
+                        }
+                      </p>
                     )}
 
-                    {client.town && <p>{client.town}</p>}
-                    {client.county && <p>{client.county}</p>}
+                    {client.town && (
+                      <p>
+                        {
+                          client.town
+                        }
+                      </p>
+                    )}
+
+                    {client.county && (
+                      <p>
+                        {
+                          client.county
+                        }
+                      </p>
+                    )}
 
                     {client.postcode && (
                       <p className="mt-1 font-medium">
-                        {client.postcode}
+                        {
+                          client.postcode
+                        }
                       </p>
                     )}
                   </>
@@ -243,51 +337,97 @@ export default async function ClientPage({ params }: ClientPageProps) {
             title="Jobs"
             subtitle={`${jobs.length} jobs linked to this client`}
           >
-            {jobs.length === 0 ? (
+            {jobs.length ===
+            0 ? (
               <EmptyState text="No jobs for this client yet." />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-slate-50">
                     <tr>
-                      <TableHeading>Job</TableHeading>
-                      <TableHeading>Type</TableHeading>
-                      <TableHeading>Status</TableHeading>
-                      <TableHeading>Location</TableHeading>
-                      <TableHeading right>Value</TableHeading>
+                      <TableHeading>
+                        Job
+                      </TableHeading>
+
+                      <TableHeading>
+                        Type
+                      </TableHeading>
+
+                      <TableHeading>
+                        Status
+                      </TableHeading>
+
+                      <TableHeading>
+                        Location
+                      </TableHeading>
+
+                      <TableHeading right>
+                        Value
+                      </TableHeading>
+
+                      <TableHeading right>
+                        Action
+                      </TableHeading>
                     </tr>
                   </thead>
 
                   <tbody className="divide-y divide-slate-100">
-                    {jobs.map((job) => (
-                      <tr key={job.id}>
-                        <TableCell>
-                          <p className="font-semibold text-slate-900">
-                            {job.job_number}
-                          </p>
+                    {jobs.map(
+                      (job) => (
+                        <tr
+                          key={
+                            job.id
+                          }
+                        >
+                          <TableCell>
+                            <Link
+                              href={`/jobs/${job.id}`}
+                              className="font-semibold text-slate-900 hover:underline"
+                            >
+                              {
+                                job.job_number
+                              }
+                            </Link>
 
-                          <p className="mt-1 text-sm text-slate-500">
-                            {job.title || "Untitled job"}
-                          </p>
-                        </TableCell>
+                            <p className="mt-1 text-sm text-slate-500">
+                              {job.title ||
+                                "Untitled job"}
+                            </p>
+                          </TableCell>
 
-                        <TableCell>
-                          {job.job_type || "—"}
-                        </TableCell>
+                          <TableCell>
+                            {job.job_type ||
+                              "—"}
+                          </TableCell>
 
-                        <TableCell>
-                          <StatusBadge status={job.status} />
-                        </TableCell>
+                          <TableCell>
+                            <StatusBadge
+                              status={
+                                job.status
+                              }
+                            />
+                          </TableCell>
 
-                        <TableCell>
-                          {job.town || job.postcode || "—"}
-                        </TableCell>
+                          <TableCell>
+                            {job.town ||
+                              job.postcode ||
+                              "—"}
+                          </TableCell>
 
-                        <TableCell right>
-                          {formatCurrency(job.estimated_value)}
-                        </TableCell>
-                      </tr>
-                    ))}
+                          <TableCell right>
+                            {formatCurrency(
+                              job.estimated_value
+                            )}
+                          </TableCell>
+
+                          <TableCell right>
+                            <RecordLink
+                              href={`/jobs/${job.id}`}
+                            />
+                          </TableCell>
+                        </tr>
+                      )
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -298,92 +438,88 @@ export default async function ClientPage({ params }: ClientPageProps) {
             title="Quotes"
             subtitle={`${quotes.length} quotes linked to this client`}
           >
-            {quotes.length === 0 ? (
+            {quotes.length ===
+            0 ? (
               <EmptyState text="No quotes for this client yet." />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-slate-50">
                     <tr>
-                      <TableHeading>Quote</TableHeading>
-                      <TableHeading>Status</TableHeading>
-                      <TableHeading>Valid Until</TableHeading>
-                      <TableHeading right>Amount</TableHeading>
+                      <TableHeading>
+                        Quote
+                      </TableHeading>
+
+                      <TableHeading>
+                        Status
+                      </TableHeading>
+
+                      <TableHeading>
+                        Valid Until
+                      </TableHeading>
+
+                      <TableHeading right>
+                        Amount
+                      </TableHeading>
+
+                      <TableHeading right>
+                        Action
+                      </TableHeading>
                     </tr>
                   </thead>
 
                   <tbody className="divide-y divide-slate-100">
-                    {quotes.map((quote) => (
-                      <tr key={quote.id}>
-                        <TableCell>
-                          <p className="font-semibold text-slate-900">
-                            {quote.quote_number}
-                          </p>
+                    {quotes.map(
+                      (quote) => (
+                        <tr
+                          key={
+                            quote.id
+                          }
+                        >
+                          <TableCell>
+                            <Link
+                              href={`/quotes/${quote.id}`}
+                              className="font-semibold text-slate-900 hover:underline"
+                            >
+                              {
+                                quote.quote_number
+                              }
+                            </Link>
 
-                          <p className="mt-1 text-sm text-slate-500">
-                            {quote.title || "Quote"}
-                          </p>
-                        </TableCell>
+                            <p className="mt-1 text-sm text-slate-500">
+                              {quote.title ||
+                                "Quote"}
+                            </p>
+                          </TableCell>
 
-                        <TableCell>
-                          <StatusBadge status={quote.status} />
-                        </TableCell>
+                          <TableCell>
+                            <StatusBadge
+                              status={
+                                quote.status
+                              }
+                            />
+                          </TableCell>
 
-                        <TableCell>
-                          {formatDate(quote.valid_until)}
-                        </TableCell>
+                          <TableCell>
+                            {formatDate(
+                              quote.valid_until
+                            )}
+                          </TableCell>
 
-                        <TableCell right>
-                          {formatCurrency(quote.amount)}
-                        </TableCell>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </RecordSection>
+                          <TableCell right>
+                            {formatCurrency(
+                              quote.amount
+                            )}
+                          </TableCell>
 
-          <RecordSection
-            title="Invoices"
-            subtitle={`${invoices.length} invoices linked to this client`}
-          >
-            {invoices.length === 0 ? (
-              <EmptyState text="No invoices for this client yet." />
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <TableHeading>Invoice</TableHeading>
-                      <TableHeading>Status</TableHeading>
-                      <TableHeading>Due Date</TableHeading>
-                      <TableHeading right>Amount</TableHeading>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-slate-100">
-                    {invoices.map((invoice) => (
-                      <tr key={invoice.id}>
-                        <TableCell>
-                          <p className="font-semibold text-slate-900">
-                            {invoice.invoice_number}
-                          </p>
-                        </TableCell>
-
-                        <TableCell>
-                          <StatusBadge status={invoice.status} />
-                        </TableCell>
-
-                        <TableCell>
-                          {formatDate(invoice.due_date)}
-                        </TableCell>
-
-                        <TableCell right>
-                          {formatCurrency(invoice.amount)}
-                        </TableCell>
-                      </tr>
-                    ))}
+                          <TableCell right>
+                            <RecordLink
+                              href={`/quotes/${quote.id}`}
+                            />
+                          </TableCell>
+                        </tr>
+                      )
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -394,44 +530,318 @@ export default async function ClientPage({ params }: ClientPageProps) {
             title="Contracts"
             subtitle={`${contracts.length} contracts linked to this client`}
           >
-            {contracts.length === 0 ? (
+            {contracts.length ===
+            0 ? (
               <EmptyState text="No contracts for this client yet." />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-slate-50">
                     <tr>
-                      <TableHeading>Contract</TableHeading>
-                      <TableHeading>Title</TableHeading>
-                      <TableHeading>Status</TableHeading>
-                      <TableHeading>Signed</TableHeading>
+                      <TableHeading>
+                        Contract
+                      </TableHeading>
+
+                      <TableHeading>
+                        Title
+                      </TableHeading>
+
+                      <TableHeading>
+                        Status
+                      </TableHeading>
+
+                      <TableHeading>
+                        Signed
+                      </TableHeading>
+
+                      <TableHeading right>
+                        Action
+                      </TableHeading>
                     </tr>
                   </thead>
 
                   <tbody className="divide-y divide-slate-100">
-                    {contracts.map((contract) => (
-                      <tr key={contract.id}>
-                        <TableCell>
-                          <p className="font-semibold text-slate-900">
-                            {contract.contract_number}
-                          </p>
-                        </TableCell>
+                    {contracts.map(
+                      (
+                        contract
+                      ) => (
+                        <tr
+                          key={
+                            contract.id
+                          }
+                        >
+                          <TableCell>
+                            <Link
+                              href={`/contracts/${contract.id}`}
+                              className="font-semibold text-slate-900 hover:underline"
+                            >
+                              {
+                                contract.contract_number
+                              }
+                            </Link>
+                          </TableCell>
 
-                        <TableCell>
-                          {contract.title || "Contract"}
-                        </TableCell>
+                          <TableCell>
+                            {contract.title ||
+                              "Contract"}
+                          </TableCell>
 
-                        <TableCell>
-                          <StatusBadge status={contract.status} />
-                        </TableCell>
+                          <TableCell>
+                            <StatusBadge
+                              status={
+                                contract.status
+                              }
+                            />
+                          </TableCell>
 
-                        <TableCell>
-                          {contract.signed_at
-                            ? formatDate(contract.signed_at)
-                            : "—"}
-                        </TableCell>
-                      </tr>
-                    ))}
+                          <TableCell>
+                            {contract.signed_at
+                              ? formatDate(
+                                  contract.signed_at
+                                )
+                              : "—"}
+                          </TableCell>
+
+                          <TableCell right>
+                            <RecordLink
+                              href={`/contracts/${contract.id}`}
+                            />
+                          </TableCell>
+                        </tr>
+                      )
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </RecordSection>
+
+          <RecordSection
+            title="Invoices"
+            subtitle={`${invoices.length} invoices linked to this client`}
+          >
+            {invoices.length ===
+            0 ? (
+              <EmptyState text="No invoices for this client yet." />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <TableHeading>
+                        Invoice
+                      </TableHeading>
+
+                      <TableHeading>
+                        Type
+                      </TableHeading>
+
+                      <TableHeading>
+                        Status
+                      </TableHeading>
+
+                      <TableHeading>
+                        Due Date
+                      </TableHeading>
+
+                      <TableHeading right>
+                        Amount
+                      </TableHeading>
+
+                      <TableHeading right>
+                        Paid
+                      </TableHeading>
+
+                      <TableHeading right>
+                        Action
+                      </TableHeading>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-100">
+                    {invoices.map(
+                      (
+                        invoice
+                      ) => (
+                        <tr
+                          key={
+                            invoice.id
+                          }
+                        >
+                          <TableCell>
+                            <Link
+                              href={`/invoices/${invoice.id}`}
+                              className="font-semibold text-slate-900 hover:underline"
+                            >
+                              {
+                                invoice.invoice_number
+                              }
+                            </Link>
+                          </TableCell>
+
+                          <TableCell>
+                            {invoice.invoice_type ||
+                              "—"}
+                          </TableCell>
+
+                          <TableCell>
+                            <StatusBadge
+                              status={
+                                invoice.status
+                              }
+                            />
+                          </TableCell>
+
+                          <TableCell>
+                            {formatDate(
+                              invoice.due_date
+                            )}
+                          </TableCell>
+
+                          <TableCell right>
+                            {formatCurrency(
+                              invoice.amount
+                            )}
+                          </TableCell>
+
+                          <TableCell right>
+                            {formatCurrency(
+                              Number(
+                                invoice.amount_paid ??
+                                  0
+                              )
+                            )}
+                          </TableCell>
+
+                          <TableCell right>
+                            <RecordLink
+                              href={`/invoices/${invoice.id}`}
+                            />
+                          </TableCell>
+                        </tr>
+                      )
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </RecordSection>
+
+          <RecordSection
+            title="Guarantees"
+            subtitle={`${guarantees.length} guarantees linked to this client`}
+          >
+            {guarantees.length ===
+            0 ? (
+              <EmptyState text="No guarantees for this client yet." />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <TableHeading>
+                        Guarantee
+                      </TableHeading>
+
+                      <TableHeading>
+                        Type
+                      </TableHeading>
+
+                      <TableHeading>
+                        Status
+                      </TableHeading>
+
+                      <TableHeading>
+                        Issue Date
+                      </TableHeading>
+
+                      <TableHeading>
+                        Expiry Date
+                      </TableHeading>
+
+                      <TableHeading right>
+                        Action
+                      </TableHeading>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-100">
+                    {guarantees.map(
+                      (
+                        guarantee
+                      ) => {
+                        const expired =
+                          guarantee.expiry_date
+                            ? new Date(
+                                `${guarantee.expiry_date}T23:59:59`
+                              ) <
+                              new Date()
+                            : false;
+
+                        const displayStatus =
+                          guarantee.status ===
+                          "Cancelled"
+                            ? "Cancelled"
+                            : expired
+                              ? "Expired"
+                              : guarantee.status;
+
+                        return (
+                          <tr
+                            key={
+                              guarantee.id
+                            }
+                          >
+                            <TableCell>
+                              <Link
+                                href={`/guarantees/${guarantee.id}`}
+                                className="font-semibold text-slate-900 hover:underline"
+                              >
+                                {
+                                  guarantee.guarantee_number
+                                }
+                              </Link>
+
+                              <p className="mt-1 text-sm text-slate-500">
+                                {guarantee.title ||
+                                  "Works Guarantee"}
+                              </p>
+                            </TableCell>
+
+                            <TableCell>
+                              {guarantee.guarantee_type ||
+                                "—"}
+                            </TableCell>
+
+                            <TableCell>
+                              <StatusBadge
+                                status={
+                                  displayStatus
+                                }
+                              />
+                            </TableCell>
+
+                            <TableCell>
+                              {formatDate(
+                                guarantee.issue_date
+                              )}
+                            </TableCell>
+
+                            <TableCell>
+                              {formatDate(
+                                guarantee.expiry_date
+                              )}
+                            </TableCell>
+
+                            <TableCell right>
+                              <RecordLink
+                                href={`/guarantees/${guarantee.id}`}
+                              />
+                            </TableCell>
+                          </tr>
+                        );
+                      }
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -489,7 +899,11 @@ function RecordSection({
   );
 }
 
-function EmptyState({ text }: { text: string }) {
+function EmptyState({
+  text,
+}: {
+  text: string;
+}) {
   return (
     <div className="p-10 text-center">
       <p className="text-sm text-slate-500">
@@ -513,17 +927,57 @@ function DetailRow({
       </p>
 
       <p className="mt-1 text-sm text-slate-700">
-        {value || "Not recorded"}
+        {value ||
+          "Not recorded"}
       </p>
     </div>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({
+  status,
+}: {
+  status: string;
+}) {
+  const classes =
+    status === "Paid" ||
+    status === "Signed" ||
+    status === "Accepted" ||
+    status === "Issued"
+      ? "bg-emerald-100 text-emerald-800"
+      : status === "Part Paid" ||
+          status === "Expired"
+        ? "bg-amber-100 text-amber-800"
+        : status === "Sent" ||
+            status === "Viewed"
+          ? "bg-blue-100 text-blue-800"
+          : status === "Cancelled" ||
+              status === "Declined" ||
+              status === "Overdue"
+            ? "bg-red-100 text-red-700"
+            : "bg-slate-100 text-slate-700";
+
   return (
-    <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${classes}`}
+    >
       {status}
     </span>
+  );
+}
+
+function RecordLink({
+  href,
+}: {
+  href: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="inline-flex rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+    >
+      View
+    </Link>
   );
 }
 
@@ -537,7 +991,9 @@ function TableHeading({
   return (
     <th
       className={`px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500 ${
-        right ? "text-right" : "text-left"
+        right
+          ? "text-right"
+          : "text-left"
       }`}
     >
       {children}
@@ -555,7 +1011,9 @@ function TableCell({
   return (
     <td
       className={`px-6 py-5 text-sm text-slate-600 ${
-        right ? "text-right" : ""
+        right
+          ? "text-right"
+          : ""
       }`}
     >
       {children}
@@ -563,25 +1021,62 @@ function TableCell({
   );
 }
 
-function formatCurrency(value: number | null) {
-  if (value === null) {
+function formatCurrency(
+  value:
+    | number
+    | string
+    | null
+) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
     return "—";
   }
 
-  return new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "GBP",
-  }).format(Number(value));
+  return new Intl.NumberFormat(
+    "en-GB",
+    {
+      style: "currency",
+      currency: "GBP",
+    }
+  ).format(
+    Number(value)
+  );
 }
 
-function formatDate(value: string | null) {
+function formatDate(
+  value: string | null
+) {
   if (!value) {
     return "—";
   }
 
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
+  const dateValue =
+    value.slice(0, 10);
+
+  const [
+    year,
+    month,
+    day,
+  ] = dateValue
+    .split("-")
+    .map(Number);
+
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }
+  ).format(
+    new Date(
+      Date.UTC(
+        year,
+        month - 1,
+        day
+      )
+    )
+  );
 }

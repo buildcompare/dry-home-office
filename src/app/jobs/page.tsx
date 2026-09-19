@@ -24,7 +24,9 @@ export default async function JobsPage() {
         last_name
       )
     `)
-    .order("created_at", { ascending: false });
+    .order("created_at", {
+      ascending: false,
+    });
 
   if (error) {
     console.error(error);
@@ -75,21 +77,42 @@ export default async function JobsPage() {
                 <table className="w-full">
                   <thead className="border-b border-slate-200 bg-slate-50">
                     <tr>
-                      <Heading>Job</Heading>
-                      <Heading>Client</Heading>
-                      <Heading>Type</Heading>
-                      <Heading>Status</Heading>
-                      <Heading>Location</Heading>
-                      <Heading right>Value</Heading>
-                      <Heading right>Actions</Heading>
+                      <Heading>
+                        Job
+                      </Heading>
+
+                      <Heading>
+                        Client
+                      </Heading>
+
+                      <Heading>
+                        Type
+                      </Heading>
+
+                      <Heading>
+                        Status
+                      </Heading>
+
+                      <Heading>
+                        Location
+                      </Heading>
+
+                      <Heading right>
+                        Value
+                      </Heading>
+
+                      <Heading right>
+                        Actions
+                      </Heading>
                     </tr>
                   </thead>
 
                   <tbody className="divide-y divide-slate-100">
                     {jobs.map((job) => {
-                      const clientData = Array.isArray(job.clients)
-                        ? job.clients[0]
-                        : job.clients;
+                      const clientData =
+                        Array.isArray(job.clients)
+                          ? job.clients[0]
+                          : job.clients;
 
                       const clientName =
                         clientData?.display_name ||
@@ -107,12 +130,16 @@ export default async function JobsPage() {
                           className="hover:bg-slate-50"
                         >
                           <td className="px-6 py-5">
-                            <p className="font-semibold text-slate-900">
+                            <Link
+                              href={`/jobs/${job.id}`}
+                              className="font-semibold text-slate-900 hover:underline"
+                            >
                               {job.job_number}
-                            </p>
+                            </Link>
 
                             <p className="mt-1 text-sm text-slate-500">
-                              {job.title || "Untitled job"}
+                              {job.title ||
+                                "Untitled job"}
                             </p>
                           </td>
 
@@ -121,7 +148,8 @@ export default async function JobsPage() {
                           </td>
 
                           <td className="px-6 py-5 text-sm text-slate-600">
-                            {job.job_type || "—"}
+                            {job.job_type ||
+                              "—"}
                           </td>
 
                           <td className="px-6 py-5">
@@ -131,25 +159,43 @@ export default async function JobsPage() {
                           </td>
 
                           <td className="px-6 py-5 text-sm text-slate-600">
-                            {job.town || job.postcode || "—"}
+                            {job.town ||
+                              job.postcode ||
+                              "—"}
                           </td>
 
                           <td className="px-6 py-5 text-right text-sm font-medium text-slate-900">
                             {job.estimated_value !== null
-                              ? new Intl.NumberFormat("en-GB", {
-                                  style: "currency",
-                                  currency: "GBP",
-                                }).format(Number(job.estimated_value))
+                              ? new Intl.NumberFormat(
+                                  "en-GB",
+                                  {
+                                    style: "currency",
+                                    currency: "GBP",
+                                  }
+                                ).format(
+                                  Number(
+                                    job.estimated_value
+                                  )
+                                )
                               : "—"}
                           </td>
 
-                          <td className="px-6 py-5 text-right">
-                            <Link
-                              href={`/schedule/new?job=${job.id}`}
-                              className="inline-flex rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                            >
-                              Schedule
-                            </Link>
+                          <td className="px-6 py-5">
+                            <div className="flex justify-end gap-2">
+                              <Link
+                                href={`/jobs/${job.id}`}
+                                className="inline-flex rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+                              >
+                                View
+                              </Link>
+
+                              <Link
+                                href={`/schedule/new?job=${job.id}`}
+                                className="inline-flex rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                              >
+                                Schedule
+                              </Link>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -175,7 +221,9 @@ function Heading({
   return (
     <th
       className={`px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500 ${
-        right ? "text-right" : "text-left"
+        right
+          ? "text-right"
+          : "text-left"
       }`}
     >
       {children}

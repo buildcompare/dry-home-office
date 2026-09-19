@@ -26,63 +26,71 @@ export default async function QuotePage({
   const supabase =
     await createClient();
 
-  const { data: quote, error } =
-    await supabase
-      .from("quotes")
-      .select(`
+  const {
+    data: quote,
+    error,
+  } = await supabase
+    .from("quotes")
+    .select(`
+      id,
+      quote_number,
+      client_id,
+      job_id,
+      title,
+      description,
+      status,
+      quote_date,
+      valid_until,
+      subtotal,
+      vat_enabled,
+      vat_rate,
+      vat_amount,
+      amount,
+      customer_message,
+      terms,
+      internal_notes,
+      sent_to,
+      sent_at,
+      viewed_at,
+      accepted_at,
+      declined_at,
+      created_at,
+      clients (
         id,
-        quote_number,
-        client_id,
-        job_id,
+        display_name,
+        first_name,
+        last_name,
+        email,
+        phone,
+        address_line_1,
+        address_line_2,
+        town,
+        county,
+        postcode
+      ),
+      jobs (
+        id,
+        job_number,
         title,
-        description,
-        status,
-        quote_date,
-        valid_until,
-        subtotal,
-        vat_enabled,
-        vat_rate,
-        vat_amount,
-        amount,
-        customer_message,
-        terms,
-        internal_notes,
-        sent_to,
-        sent_at,
-        viewed_at,
-        accepted_at,
-        declined_at,
-        created_at,
-        clients (
-          id,
-          display_name,
-          first_name,
-          last_name,
-          email,
-          phone,
-          address_line_1,
-          address_line_2,
-          town,
-          county,
-          postcode
-        ),
-        jobs (
-          id,
-          job_number,
-          title,
-          job_type,
-          status
-        )
-      `)
-      .eq("id", id)
-      .single();
+        job_type,
+        status
+      )
+    `)
+    .eq("id", id)
+    .single();
 
-  if (error || !quote) {
+  if (
+    error ||
+    !quote
+  ) {
     notFound();
   }
 
-  const { data: items } =
-    await supabase
+  const [
+    itemsResult,
+    contractResult,
+  ] = await Promise.all([
+    supabase
       .from("quote_items")
       .select(`
         id,
@@ -96,15 +104,50 @@ export default async function QuotePage({
       .eq("quote_id", id)
       .order("sort_order", {
         ascending: true,
-      });
+      }),
+
+    supabase
+      .from("contracts")
+      .select(`
+        id,
+        contract_number,
+        title,
+        status,
+        signed_at,
+        created_at
+      `)
+      .eq("quote_id", id)
+      .neq(
+        "status",
+        "Cancelled"
+      )
+      .order("created_at", {
+        ascending: false,
+      })
+      .limit(1),
+  ]);
+
+  const items =
+    itemsResult.data ?? [];
+
+  const linkedContract =
+    contractResult.data &&
+    contractResult.data.length >
+      0
+      ? contractResult.data[0]
+      : null;
 
   const clientData =
-    Array.isArray(quote.clients)
+    Array.isArray(
+      quote.clients
+    )
       ? quote.clients[0]
       : quote.clients;
 
   const jobData =
-    Array.isArray(quote.jobs)
+    Array.isArray(
+      quote.jobs
+    )
       ? quote.jobs[0]
       : quote.jobs;
 
@@ -119,16 +162,18 @@ export default async function QuotePage({
     "Unknown client";
 
   const labourItems =
-    items?.filter(
+    items.filter(
       (item) =>
-        item.item_type !== "Materials"
-    ) ?? [];
+        item.item_type !==
+        "Materials"
+    );
 
   const materialItems =
-    items?.filter(
+    items.filter(
       (item) =>
-        item.item_type === "Materials"
-    ) ?? [];
+        item.item_type ===
+        "Materials"
+    );
 
   return (
     <div className="flex min-h-screen bg-slate-100">
@@ -136,8 +181,8 @@ export default async function QuotePage({
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
-          {/* Notifications */}
-          {query.sent === "1" && (
+          {query.sent ===
+            "1" && (
             <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
               Quote emailed successfully to{" "}
               {quote.sent_to ||
@@ -157,7 +202,6 @@ export default async function QuotePage({
             </div>
           )}
 
-          {/* Header */}
           <div className="mb-8">
             <Link
               href="/quotes"
@@ -169,7 +213,9 @@ export default async function QuotePage({
             <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-slate-500">
-                  {quote.quote_number}
+                  {
+                    quote.quote_number
+                  }
                 </p>
 
                 <h1 className="mt-1 text-3xl font-bold text-slate-900">
@@ -190,41 +236,53 @@ export default async function QuotePage({
                 </a>
 
                 <EmailQuoteButton
-                  quoteId={quote.id}
+                  quoteId={
+                    quote.id
+                  }
                   recipient={
                     clientData?.email ||
                     null
                   }
-                  status={quote.status}
+                  status={
+                    quote.status
+                  }
                 />
 
                 {quote.status ===
-                  "Accepted" && (
+                  "Accepted" &&
+                  !linkedContract && (
+                    <Link
+                      href={`/contracts/new?quote=${quote.id}`}
+                      className="rounded-lg bg-emerald-700 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-800"
+                    >
+                      Create Contract
+                    </Link>
+                  )}
+
+                {linkedContract && (
                   <Link
-                    href={`/contracts/new?quote=${quote.id}`}
+                    href={`/contracts/${linkedContract.id}`}
                     className="rounded-lg bg-emerald-700 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-800"
                   >
-                    Create Contract
+                    View Contract
                   </Link>
                 )}
 
                 <StatusBadge
-                  status={quote.status}
+                  status={
+                    quote.status
+                  }
                 />
               </div>
             </div>
 
             {!clientData?.email && (
               <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                This client does not have an email
-                address saved. Add an email to the
-                client record before emailing the
-                quote.
+                This client does not have an email address saved. Add an email to the client record before emailing the quote.
               </div>
             )}
           </div>
 
-          {/* Overview */}
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             <SummaryCard
               title="Total"
@@ -249,11 +307,46 @@ export default async function QuotePage({
 
             <SummaryCard
               title="Status"
-              value={quote.status}
+              value={
+                quote.status
+              }
             />
           </div>
 
-          {/* Title / Description */}
+          {linkedContract && (
+            <section className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                    Contract Created
+                  </p>
+
+                  <h2 className="mt-2 text-lg font-bold text-emerald-950">
+                    {
+                      linkedContract.contract_number
+                    }
+                  </h2>
+
+                  <p className="mt-1 text-sm text-emerald-800">
+                    {linkedContract.title ||
+                      "Contract"}{" "}
+                    ·{" "}
+                    {
+                      linkedContract.status
+                    }
+                  </p>
+                </div>
+
+                <Link
+                  href={`/contracts/${linkedContract.id}`}
+                  className="rounded-lg bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800"
+                >
+                  View Contract
+                </Link>
+              </div>
+            </section>
+          )}
+
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
               Title
@@ -275,7 +368,6 @@ export default async function QuotePage({
             </div>
           </section>
 
-          {/* Client & Job */}
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between">
@@ -296,7 +388,9 @@ export default async function QuotePage({
               <div className="mt-5 space-y-4">
                 <DetailRow
                   label="Name"
-                  value={clientName}
+                  value={
+                    clientName
+                  }
                 />
 
                 <DetailRow
@@ -342,7 +436,9 @@ export default async function QuotePage({
 
                   <DetailRow
                     label="Job Title"
-                    value={jobData.title}
+                    value={
+                      jobData.title
+                    }
                   />
 
                   <DetailRow
@@ -361,28 +457,28 @@ export default async function QuotePage({
                 </div>
               ) : (
                 <p className="mt-5 text-sm text-slate-500">
-                  This quote is not linked to a
-                  job.
+                  This quote is not linked to a job.
                 </p>
               )}
             </section>
           </div>
 
-          {/* Labour */}
           <QuoteSection
             title="Labour"
             description="Labour included within this quotation."
-            items={labourItems}
+            items={
+              labourItems
+            }
           />
 
-          {/* Materials */}
           <QuoteSection
             title="Materials"
             description="Materials included within this quotation."
-            items={materialItems}
+            items={
+              materialItems
+            }
           />
 
-          {/* Totals */}
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <div className="ml-auto max-w-md">
               <TotalRow
@@ -423,7 +519,6 @@ export default async function QuotePage({
             </div>
           </section>
 
-          {/* Customer Message / Terms */}
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">
@@ -448,7 +543,6 @@ export default async function QuotePage({
             </section>
           </div>
 
-          {/* Internal Notes */}
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">
               Internal Notes
@@ -460,12 +554,10 @@ export default async function QuotePage({
             </p>
 
             <p className="mt-4 text-xs text-slate-400">
-              Internal notes are not included on
-              the customer PDF or email.
+              Internal notes are not included on the customer PDF or email.
             </p>
           </section>
 
-          {/* Activity */}
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">
               Quote Activity
@@ -526,9 +618,13 @@ function QuoteSection({
   items: {
     id: string;
     description: string;
-    quantity: number | string;
+    quantity:
+      | number
+      | string;
     unit: string | null;
-    unit_price: number | string;
+    unit_price:
+      | number
+      | string;
   }[];
 }) {
   return (
@@ -543,10 +639,12 @@ function QuoteSection({
         </p>
       </div>
 
-      {items.length === 0 ? (
+      {items.length ===
+      0 ? (
         <div className="p-8 text-sm text-slate-500">
-          No {title.toLowerCase()} items
-          recorded.
+          No{" "}
+          {title.toLowerCase()}{" "}
+          items recorded.
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -576,54 +674,60 @@ function QuoteSection({
             </thead>
 
             <tbody className="divide-y divide-slate-100">
-              {items.map((item) => {
-                const quantity =
-                  Number(
-                    item.quantity
-                  );
+              {items.map(
+                (item) => {
+                  const quantity =
+                    Number(
+                      item.quantity
+                    );
 
-                const unitPrice =
-                  Number(
-                    item.unit_price
-                  );
+                  const unitPrice =
+                    Number(
+                      item.unit_price
+                    );
 
-                const total =
-                  quantity *
-                  unitPrice;
+                  const total =
+                    quantity *
+                    unitPrice;
 
-                return (
-                  <tr key={item.id}>
-                    <td className="px-6 py-5 text-sm font-medium text-slate-800">
-                      {
-                        item.description
+                  return (
+                    <tr
+                      key={
+                        item.id
                       }
-                    </td>
+                    >
+                      <td className="px-6 py-5 text-sm font-medium text-slate-800">
+                        {
+                          item.description
+                        }
+                      </td>
 
-                    <td className="px-6 py-5 text-right text-sm text-slate-600">
-                      {formatQuantity(
-                        quantity
-                      )}
-                    </td>
+                      <td className="px-6 py-5 text-right text-sm text-slate-600">
+                        {formatQuantity(
+                          quantity
+                        )}
+                      </td>
 
-                    <td className="px-6 py-5 text-sm text-slate-600">
-                      {item.unit ||
-                        "—"}
-                    </td>
+                      <td className="px-6 py-5 text-sm text-slate-600">
+                        {item.unit ||
+                          "—"}
+                      </td>
 
-                    <td className="px-6 py-5 text-right text-sm text-slate-600">
-                      {formatCurrency(
-                        unitPrice
-                      )}
-                    </td>
+                      <td className="px-6 py-5 text-right text-sm text-slate-600">
+                        {formatCurrency(
+                          unitPrice
+                        )}
+                      </td>
 
-                    <td className="px-6 py-5 text-right text-sm font-semibold text-slate-900">
-                      {formatCurrency(
-                        total
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                      <td className="px-6 py-5 text-right text-sm font-semibold text-slate-900">
+                        {formatCurrency(
+                          total
+                        )}
+                      </td>
+                    </tr>
+                  );
+                }
+              )}
             </tbody>
           </table>
         </div>
@@ -701,13 +805,19 @@ function StatusBadge({
   const classes =
     status === "Accepted"
       ? "bg-emerald-100 text-emerald-800"
-      : status === "Declined"
+      : status ===
+          "Declined"
         ? "bg-red-100 text-red-800"
-        : status === "Sent"
+        : status ===
+            "Sent"
           ? "bg-blue-100 text-blue-800"
-          : status === "Expired"
-            ? "bg-amber-100 text-amber-800"
-            : "bg-slate-100 text-slate-700";
+          : status ===
+              "Viewed"
+            ? "bg-violet-100 text-violet-800"
+            : status ===
+                "Expired"
+              ? "bg-amber-100 text-amber-800"
+              : "bg-slate-100 text-slate-700";
 
   return (
     <span
@@ -751,7 +861,9 @@ function formatCurrency(
       currency: "GBP",
     }
   ).format(
-    Number(value ?? 0)
+    Number(
+      value ?? 0
+    )
   );
 }
 
@@ -763,7 +875,9 @@ function formatQuantity(
     {
       maximumFractionDigits: 2,
     }
-  ).format(value);
+  ).format(
+    value
+  );
 }
 
 function formatVatRate(
@@ -789,11 +903,14 @@ function formatDate(
     return "Not set";
   }
 
-  const [year, month, day] =
-    value
-      .slice(0, 10)
-      .split("-")
-      .map(Number);
+  const [
+    year,
+    month,
+    day,
+  ] = value
+    .slice(0, 10)
+    .split("-")
+    .map(Number);
 
   return new Intl.DateTimeFormat(
     "en-GB",
