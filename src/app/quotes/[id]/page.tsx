@@ -146,8 +146,7 @@ export default async function QuotePage({
 
   const linkedContract =
     contractResult.data &&
-    contractResult.data.length >
-      0
+    contractResult.data.length > 0
       ? contractResult.data[0]
       : null;
 
@@ -194,6 +193,16 @@ export default async function QuotePage({
       "Accepted" &&
     quote.status !==
       "Declined";
+
+  const acceptedWithoutContract =
+    quote.status ===
+      "Accepted" &&
+    !linkedContract;
+
+  const scheduleWorkHref =
+    jobData?.id
+      ? `/schedule/new?job=${jobData.id}&type=Work`
+      : `/schedule/new?client=${quote.client_id}&type=Work`;
 
   return (
     <div className="flex min-h-screen bg-slate-100">
@@ -301,16 +310,32 @@ export default async function QuotePage({
                   </form>
                 )}
 
-                {quote.status ===
-                  "Accepted" &&
-                  !linkedContract && (
+                {acceptedWithoutContract && (
+                  <>
+                    <Link
+                      href={
+                        scheduleWorkHref
+                      }
+                      className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Schedule Work
+                    </Link>
+
+                    <Link
+                      href={`/invoices/new?quote=${quote.id}`}
+                      className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"
+                    >
+                      Create Invoice
+                    </Link>
+
                     <Link
                       href={`/contracts/new?quote=${quote.id}`}
                       className="rounded-lg bg-emerald-700 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-800"
                     >
                       Create Contract
                     </Link>
-                  )}
+                  </>
+                )}
 
                 {linkedContract && (
                   <Link
@@ -351,6 +376,54 @@ export default async function QuotePage({
                 written instruction — use Manual Accept
                 above to record the approval.
               </p>
+            </section>
+          )}
+
+          {acceptedWithoutContract && (
+            <section className="mb-8 rounded-2xl border border-blue-200 bg-blue-50 p-6">
+              <div className="flex flex-wrap items-start justify-between gap-5">
+                <div className="max-w-2xl">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                    Quote Accepted
+                  </p>
+
+                  <h2 className="mt-2 text-xl font-bold text-blue-950">
+                    Choose the next step
+                  </h2>
+
+                  <p className="mt-2 text-sm leading-6 text-blue-800">
+                    A contract is optional. You can schedule
+                    the work or create an invoice directly
+                    from this accepted quote, or create a
+                    contract if one is required.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <Link
+                    href={
+                      scheduleWorkHref
+                    }
+                    className="rounded-lg border border-blue-300 bg-white px-4 py-3 text-sm font-semibold text-blue-800 hover:bg-blue-100"
+                  >
+                    Schedule Work
+                  </Link>
+
+                  <Link
+                    href={`/invoices/new?quote=${quote.id}`}
+                    className="rounded-lg border border-emerald-300 bg-white px-4 py-3 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
+                  >
+                    Create Invoice
+                  </Link>
+
+                  <Link
+                    href={`/contracts/new?quote=${quote.id}`}
+                    className="rounded-lg bg-blue-700 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-800"
+                  >
+                    Create Contract
+                  </Link>
+                </div>
+              </div>
             </section>
           )}
 

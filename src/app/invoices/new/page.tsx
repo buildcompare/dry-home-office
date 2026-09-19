@@ -7,6 +7,7 @@ import { addInvoice } from "../actions";
 type NewInvoicePageProps = {
   searchParams: Promise<{
     contract?: string;
+    quote?: string;
     error?: string;
   }>;
 };
@@ -20,6 +21,9 @@ export default async function NewInvoicePage({
   const selectedContractId =
     params.contract || "";
 
+  const selectedQuoteId =
+    params.quote || "";
+
   const supabase =
     await createClient();
 
@@ -27,6 +31,7 @@ export default async function NewInvoicePage({
     clientsResult,
     jobsResult,
     contractsResult,
+    quotesResult,
   ] = await Promise.all([
     supabase
       .from("clients")
@@ -86,6 +91,29 @@ export default async function NewInvoicePage({
           ascending: false,
         }
       ),
+
+    supabase
+      .from("quotes")
+      .select(`
+        id,
+        quote_number,
+        client_id,
+        job_id,
+        title,
+        description,
+        amount,
+        status
+      `)
+      .eq(
+        "status",
+        "Accepted"
+      )
+      .order(
+        "created_at",
+        {
+          ascending: false,
+        }
+      ),
   ]);
 
   const clients =
@@ -97,6 +125,9 @@ export default async function NewInvoicePage({
   const contracts =
     contractsResult.data ?? [];
 
+  const quotes =
+    quotesResult.data ?? [];
+
   const selectedContract =
     contracts.find(
       (contract) =>
@@ -104,17 +135,46 @@ export default async function NewInvoicePage({
         selectedContractId
     ) || null;
 
+  const selectedQuote =
+    !selectedContract
+      ? quotes.find(
+          (quote) =>
+            quote.id ===
+            selectedQuoteId
+        ) || null
+      : null;
+
   const selectedClientId =
     selectedContract?.client_id ||
+    selectedQuote?.client_id ||
     "";
 
   const selectedJobId =
     selectedContract?.job_id ||
+    selectedQuote?.job_id ||
     "";
 
-  const selectedQuoteId =
+  const sourceQuoteId =
     selectedContract?.quote_id ||
+    selectedQuote?.id ||
     "";
+
+  const sourceTitle =
+    selectedContract?.title ||
+    selectedQuote?.title ||
+    "";
+
+  const sourceDescription =
+    selectedContract?.description ||
+    selectedQuote?.description ||
+    "";
+
+  const sourceAmount =
+    Number(
+      selectedContract?.amount ??
+        selectedQuote?.amount ??
+        0
+    );
 
   const today =
     new Date()
@@ -152,7 +212,9 @@ export default async function NewInvoicePage({
             </h1>
 
             <p className="mt-2 text-slate-500">
-              Create an invoice from a signed contract.
+              Create an invoice from a signed contract,
+              accepted quote or directly against a client
+              and job.
             </p>
           </div>
 
@@ -164,13 +226,36 @@ export default async function NewInvoicePage({
             </div>
           )}
 
+          {selectedQuote &&
+            !selectedContract && (
+              <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+                <p className="text-sm font-semibold text-emerald-900">
+                  Creating invoice directly from accepted
+                  quote
+                </p>
+
+                <p className="mt-1 text-sm text-emerald-800">
+                  No contract is required for this invoice.
+                  The invoice will remain linked to the
+                  original quote and job.
+                </p>
+              </div>
+            )}
+
           <form
-            action={addInvoice}
+            action={
+              addInvoice
+            }
           >
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">
-                Source Contract
+                Invoice Source
               </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                A signed contract is optional. You can also
+                invoice directly from an accepted quote.
+              </p>
 
               <div className="mt-6">
                 <label
@@ -249,6 +334,38 @@ export default async function NewInvoicePage({
                   </Link>
                 </div>
               )}
+
+              {selectedQuote &&
+                !selectedContract && (
+                  <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                      Accepted Quote
+                    </p>
+
+                    <p className="mt-1 font-semibold text-emerald-950">
+                      {
+                        selectedQuote.quote_number
+                      }{" "}
+                      —{" "}
+                      {
+                        selectedQuote.title
+                      }
+                    </p>
+
+                    <p className="mt-1 text-sm text-emerald-800">
+                      {formatCurrency(
+                        selectedQuote.amount
+                      )}
+                    </p>
+
+                    <Link
+                      href={`/quotes/${selectedQuote.id}`}
+                      className="mt-2 inline-block text-sm font-semibold text-emerald-800 hover:underline"
+                    >
+                      View Quote →
+                    </Link>
+                  </div>
+                )}
             </section>
 
             <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
@@ -354,7 +471,7 @@ export default async function NewInvoicePage({
                 type="hidden"
                 name="quote_id"
                 value={
-                  selectedQuoteId
+                  sourceQuoteId
                 }
               />
             </section>
@@ -406,8 +523,7 @@ export default async function NewInvoicePage({
                     name="title"
                     type="text"
                     defaultValue={
-                      selectedContract?.title ||
-                      ""
+                      sourceTitle
                     }
                     placeholder="e.g. Final Invoice - Damp Proofing Works"
                     className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
@@ -466,8 +582,7 @@ export default async function NewInvoicePage({
                   name="description"
                   rows={6}
                   defaultValue={
-                    selectedContract?.description ||
-                    ""
+                    sourceDescription
                   }
                   className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
                 />
@@ -476,14 +591,10 @@ export default async function NewInvoicePage({
 
             <InvoiceForm
               defaultAmount={
-                Number(
-                  selectedContract?.amount ||
-                    0
-                )
+                sourceAmount
               }
               defaultDescription={
-                selectedContract?.title ||
-                ""
+                sourceTitle
               }
             />
 
@@ -564,6 +675,8 @@ function formatCurrency(
       currency: "GBP",
     }
   ).format(
-    Number(value ?? 0)
+    Number(
+      value ?? 0
+    )
   );
 }
