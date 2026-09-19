@@ -1,8 +1,16 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import {
+  revalidatePath,
+} from "next/cache";
+
+import {
+  redirect,
+} from "next/navigation";
+
+import {
+  createClient,
+} from "@/lib/supabase/server";
 
 export async function createGuarantee(
   formData: FormData
@@ -10,59 +18,87 @@ export async function createGuarantee(
   const supabase =
     await createClient();
 
+  /*
+   * -------------------------------------------------------
+   * FORM DATA
+   * -------------------------------------------------------
+   */
+
   const invoiceId =
     String(
-      formData.get("invoice_id") || ""
+      formData.get(
+        "invoice_id"
+      ) || ""
     ).trim();
 
   const guaranteeType =
     String(
-      formData.get("guarantee_type") || ""
+      formData.get(
+        "guarantee_type"
+      ) || ""
     ).trim() || null;
 
   const title =
     String(
-      formData.get("title") || ""
+      formData.get(
+        "title"
+      ) || ""
     ).trim() || null;
 
   const issueDate =
     String(
-      formData.get("issue_date") || ""
+      formData.get(
+        "issue_date"
+      ) || ""
     ).trim();
 
   const durationYears =
     Number(
-      formData.get("duration_years") || 0
+      formData.get(
+        "duration_years"
+      ) || 0
     );
 
   const expiryDate =
     String(
-      formData.get("expiry_date") || ""
+      formData.get(
+        "expiry_date"
+      ) || ""
     ).trim() || null;
 
   const coveredWorks =
     String(
-      formData.get("covered_works") || ""
+      formData.get(
+        "covered_works"
+      ) || ""
     ).trim() || null;
 
   const terms =
     String(
-      formData.get("terms") || ""
+      formData.get(
+        "terms"
+      ) || ""
     ).trim() || null;
 
   const exclusions =
     String(
-      formData.get("exclusions") || ""
+      formData.get(
+        "exclusions"
+      ) || ""
     ).trim() || null;
 
   const customerMessage =
     String(
-      formData.get("customer_message") || ""
+      formData.get(
+        "customer_message"
+      ) || ""
     ).trim() || null;
 
   const internalNotes =
     String(
-      formData.get("internal_notes") || ""
+      formData.get(
+        "internal_notes"
+      ) || ""
     ).trim() || null;
 
   if (!invoiceId) {
@@ -70,6 +106,12 @@ export async function createGuarantee(
       "/guarantees/new?error=Invoice%20could%20not%20be%20identified"
     );
   }
+
+  /*
+   * -------------------------------------------------------
+   * SOURCE INVOICE
+   * -------------------------------------------------------
+   */
 
   const {
     data: invoice,
@@ -81,12 +123,18 @@ export async function createGuarantee(
       client_id,
       job_id,
       contract_id,
+      quote_id,
       invoice_type,
       status,
       amount,
+      subtotal,
+      vat_amount,
       amount_paid
     `)
-    .eq("id", invoiceId)
+    .eq(
+      "id",
+      invoiceId
+    )
     .single();
 
   if (
@@ -98,78 +146,218 @@ export async function createGuarantee(
     );
   }
 
-  if (
-    invoice.invoice_type !==
-    "Final"
-  ) {
-    redirect(
-      `/invoices/${invoiceId}?error=Guarantees%20can%20only%20be%20generated%20from%20a%20Final%20invoice`
-    );
-  }
-
-  if (
-    invoice.status !==
-    "Paid"
-  ) {
-    redirect(
-      `/invoices/${invoiceId}?error=The%20Final%20invoice%20must%20be%20paid%20before%20a%20guarantee%20can%20be%20generated`
-    );
-  }
-
-  const invoiceTotal =
-    Number(
-      invoice.amount ?? 0
-    );
-
-  const amountPaid =
-    Number(
-      invoice.amount_paid ?? 0
-    );
-
-  if (
-    amountPaid <
-    invoiceTotal - 0.009
-  ) {
-    redirect(
-      `/invoices/${invoiceId}?error=The%20invoice%20has%20not%20been%20paid%20in%20full`
-    );
-  }
-
   /*
-   * Stop duplicate guarantees being
-   * created from the same invoice.
-   */
-  const {
-    data: existingGuarantee,
-  } = await supabase
-    .from("guarantees")
-    .select("id")
-    .eq(
-      "invoice_id",
-      invoiceId
-    )
-    .neq(
-      "status",
-      "Cancelled"
-    )
-    .maybeSingle();
-
-  if (
-    existingGuarantee
-  ) {
-    redirect(
-      `/guarantees/${existingGuarantee.id}`
-    );
-  }
-
-  /*
-   * Generate the next guarantee number.
+   * -------------------------------------------------------
+   * GUARANTEE ELIGIBILITY
+   * -------------------------------------------------------
    *
-   * Format:
-   * DH-G-2026-0001
+   * We no longer require the source invoice to be
+   * labelled "Final".
+   *
+   * The quote is now the source of truth.
+   *
+   * A guarantee can be created when:
+   *
+   * 1. The source invoice belongs to a quote
+   * 2. The full quote value has been invoiced
+   * 3. Every active invoice linked to that quote is
+   *    fully paid
    */
+
+  if (!invoice.quote_id) {
+    redirect(
+      `/invoices/${invoiceId}?error=This%20invoice%20is%20not%20linked%20to%20a%20quote.%20Guarantees%20are%20created%20once%20the%20quote%20is%20financially%20complete`
+    );
+  }
+
+  const quoteId =
+    invoice.quote_id;
+
+  const [
+    quoteResult,
+    linkedInvoicesResult,
+  ] = await Promise.all([
+    supabase
+      .from("quotes")
+      .select(`
+        id,
+        amount
+      `)
+      .eq(
+        "id",
+        quoteId
+      )
+      .single(),
+
+    supabase
+      .from("invoices")
+      .select(`
+        id,
+        status,
+        amount,
+        subtotal,
+        vat_amount,
+        amount_paid
+      `)
+      .eq(
+        "quote_id",
+        quoteId
+      )
+      .neq(
+        "status",
+        "Cancelled"
+      ),
+  ]);
+
+  const quote =
+    quoteResult.data;
+
+  if (
+    quoteResult.error ||
+    !quote
+  ) {
+    redirect(
+      `/invoices/${invoiceId}?error=The%20linked%20quote%20could%20not%20be%20found`
+    );
+  }
+
+  const linkedInvoices =
+    linkedInvoicesResult.data ??
+    [];
+
+  const quoteTotal =
+    money(
+      Number(
+        quote.amount ?? 0
+      )
+    );
+
+  const totalInvoiced =
+    money(
+      linkedInvoices.reduce(
+        (
+          total,
+          linkedInvoice
+        ) =>
+          total +
+          invoiceRowTotal(
+            linkedInvoice
+          ),
+        0
+      )
+    );
+
+  const fullyInvoiced =
+    quoteTotal > 0 &&
+    totalInvoiced >=
+      quoteTotal -
+        0.009;
+
+  if (!fullyInvoiced) {
+    redirect(
+      `/invoices/${invoiceId}?error=The%20quote%20has%20not%20been%20fully%20invoiced%20yet`
+    );
+  }
+
+  const everyInvoicePaid =
+    linkedInvoices.length >
+      0 &&
+    linkedInvoices.every(
+      (linkedInvoice) => {
+        const invoiceTotal =
+          invoiceRowTotal(
+            linkedInvoice
+          );
+
+        const amountPaid =
+          Number(
+            linkedInvoice.amount_paid ??
+              0
+          );
+
+        return (
+          invoiceTotal > 0 &&
+          amountPaid >=
+            invoiceTotal -
+              0.009
+        );
+      }
+    );
+
+  if (!everyInvoicePaid) {
+    redirect(
+      `/invoices/${invoiceId}?error=All%20invoices%20linked%20to%20the%20quote%20must%20be%20paid%20before%20a%20guarantee%20can%20be%20generated`
+    );
+  }
+
+  /*
+   * -------------------------------------------------------
+   * STOP DUPLICATE GUARANTEES
+   * -------------------------------------------------------
+   *
+   * Guarantees currently store invoice_id rather than
+   * quote_id.
+   *
+   * We therefore look for an existing active guarantee
+   * attached to ANY invoice belonging to this quote.
+   */
+
+  const linkedInvoiceIds =
+    linkedInvoices.map(
+      (linkedInvoice) =>
+        linkedInvoice.id
+    );
+
+  if (
+    linkedInvoiceIds.length >
+    0
+  ) {
+    const {
+      data:
+        existingGuarantees,
+    } = await supabase
+      .from("guarantees")
+      .select("id")
+      .in(
+        "invoice_id",
+        linkedInvoiceIds
+      )
+      .neq(
+        "status",
+        "Cancelled"
+      )
+      .order(
+        "created_at",
+        {
+          ascending: false,
+        }
+      )
+      .limit(1);
+
+    const existingGuarantee =
+      existingGuarantees?.[0];
+
+    if (
+      existingGuarantee
+    ) {
+      redirect(
+        `/guarantees/${existingGuarantee.id}`
+      );
+    }
+  }
+
+  /*
+   * -------------------------------------------------------
+   * GENERATE GUARANTEE NUMBER
+   *
+   * Example:
+   * DH-G-2026-0001
+   * -------------------------------------------------------
+   */
+
   const year =
-    new Date().getFullYear();
+    new Date()
+      .getFullYear();
 
   const {
     data: latestGuarantee,
@@ -190,11 +378,13 @@ export async function createGuarantee(
     )
     .limit(1);
 
-  let nextNumber = 1;
+  let nextNumber =
+    1;
 
   if (
     latestGuarantee &&
-    latestGuarantee.length > 0
+    latestGuarantee.length >
+      0
   ) {
     const lastNumber =
       latestGuarantee[0]
@@ -213,14 +403,24 @@ export async function createGuarantee(
       )
     ) {
       nextNumber =
-        lastSequence + 1;
+        lastSequence +
+        1;
     }
   }
 
   const guaranteeNumber =
     `DH-G-${year}-${String(
       nextNumber
-    ).padStart(4, "0")}`;
+    ).padStart(
+      4,
+      "0"
+    )}`;
+
+  /*
+   * -------------------------------------------------------
+   * CREATE GUARANTEE
+   * -------------------------------------------------------
+   */
 
   const {
     data: guarantee,
@@ -240,6 +440,10 @@ export async function createGuarantee(
       contract_id:
         invoice.contract_id,
 
+      /*
+       * Keep the source invoice for compatibility with
+       * the existing guarantees table and customer pages.
+       */
       invoice_id:
         invoice.id,
 
@@ -255,7 +459,10 @@ export async function createGuarantee(
         issueDate ||
         new Date()
           .toISOString()
-          .slice(0, 10),
+          .slice(
+            0,
+            10
+          ),
 
       duration_years:
         durationYears > 0
@@ -278,7 +485,9 @@ export async function createGuarantee(
       internal_notes:
         internalNotes,
     })
-    .select("id")
+    .select(
+      "id"
+    )
     .single();
 
   if (
@@ -295,12 +504,22 @@ export async function createGuarantee(
     );
   }
 
+  /*
+   * -------------------------------------------------------
+   * REVALIDATE
+   * -------------------------------------------------------
+   */
+
   revalidatePath(
     "/guarantees"
   );
 
   revalidatePath(
     `/invoices/${invoiceId}`
+  );
+
+  revalidatePath(
+    `/quotes/${quoteId}`
   );
 
   if (
@@ -330,4 +549,86 @@ export async function createGuarantee(
   redirect(
     `/guarantees/${guarantee.id}`
   );
+}
+
+/* =========================================================
+   INVOICE TOTAL
+   ========================================================= */
+
+function invoiceRowTotal(invoice: {
+  amount?:
+    | number
+    | string
+    | null;
+
+  subtotal?:
+    | number
+    | string
+    | null;
+
+  vat_amount?:
+    | number
+    | string
+    | null;
+}) {
+  const amount =
+    Number(
+      invoice.amount ?? 0
+    );
+
+  if (
+    Number.isFinite(
+      amount
+    ) &&
+    amount > 0
+  ) {
+    return money(
+      amount
+    );
+  }
+
+  const subtotal =
+    Number(
+      invoice.subtotal ??
+        0
+    );
+
+  const vatAmount =
+    Number(
+      invoice.vat_amount ??
+        0
+    );
+
+  return money(
+    (
+      Number.isFinite(
+        subtotal
+      )
+        ? subtotal
+        : 0
+    ) +
+      (
+        Number.isFinite(
+          vatAmount
+        )
+          ? vatAmount
+          : 0
+      )
+  );
+}
+
+/* =========================================================
+   MONEY
+   ========================================================= */
+
+function money(
+  value: number
+) {
+  return Math.round(
+    (
+      value +
+      Number.EPSILON
+    ) *
+      100
+  ) / 100;
 }

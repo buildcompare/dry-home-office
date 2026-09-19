@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+
 import Sidebar from "@/components/Sidebar";
 import { createClient } from "@/lib/supabase/server";
 import { createGuarantee } from "../actions";
@@ -29,6 +30,12 @@ export default async function NewGuaranteePage({
   const supabase =
     await createClient();
 
+  /*
+   * -------------------------------------------------------
+   * SOURCE INVOICE
+   * -------------------------------------------------------
+   */
+
   const {
     data: invoice,
     error,
@@ -42,21 +49,27 @@ export default async function NewGuaranteePage({
       title,
       description,
       amount,
+      subtotal,
+      vat_amount,
       amount_paid,
       client_id,
       job_id,
       contract_id,
+      quote_id,
+
       clients (
         id,
         display_name,
         email
       ),
+
       jobs (
         id,
         job_number,
         title,
         description
       ),
+
       contracts (
         id,
         contract_number,
@@ -79,39 +92,226 @@ export default async function NewGuaranteePage({
     );
   }
 
-  if (
-    invoice.invoice_type !==
-      "Final" ||
-    invoice.status !==
-      "Paid"
-  ) {
+  /*
+   * -------------------------------------------------------
+   * GUARANTEES NOW BELONG TO THE COMPLETED QUOTE WORKFLOW
+   * -------------------------------------------------------
+   *
+   * Invoice type no longer matters.
+   *
+   * Guarantee becomes available when:
+   *
+   * 1. Invoice belongs to a quote
+   * 2. Quote has been fully invoiced
+   * 3. Every active invoice against the quote is fully paid
+   */
+
+  if (!invoice.quote_id) {
     redirect(
-      `/invoices/${invoice.id}?error=Guarantees%20can%20only%20be%20created%20from%20a%20paid%20Final%20invoice`
+      `/invoices/${invoice.id}?error=This%20invoice%20is%20not%20linked%20to%20a%20quote.%20Guarantees%20are%20created%20once%20the%20quote%20is%20financially%20complete`
     );
   }
 
-  const {
-    data: existingGuarantee,
-  } = await supabase
-    .from("guarantees")
-    .select("id")
-    .eq(
-      "invoice_id",
-      invoice.id
-    )
-    .neq(
-      "status",
-      "Cancelled"
-    )
-    .maybeSingle();
+  const [
+    quoteResult,
+    linkedInvoicesResult,
+  ] = await Promise.all([
+    supabase
+      .from("quotes")
+      .select(`
+        id,
+        quote_number,
+        title,
+        status,
+        amount
+      `)
+      .eq(
+        "id",
+        invoice.quote_id
+      )
+      .single(),
+
+    supabase
+      .from("invoices")
+      .select(`
+        id,
+        invoice_number,
+        status,
+        amount,
+        subtotal,
+        vat_amount,
+        amount_paid,
+        created_at
+      `)
+      .eq(
+        "quote_id",
+        invoice.quote_id
+      )
+      .neq(
+        "status",
+        "Cancelled"
+      )
+      .order(
+        "created_at",
+        {
+          ascending: false,
+        }
+      ),
+  ]);
+
+  const quote =
+    quoteResult.data;
 
   if (
-    existingGuarantee
+    quoteResult.error ||
+    !quote
   ) {
     redirect(
-      `/guarantees/${existingGuarantee.id}`
+      `/invoices/${invoice.id}?error=The%20linked%20quote%20could%20not%20be%20found`
     );
   }
+
+  const linkedInvoices =
+    linkedInvoicesResult.data ??
+    [];
+
+  const quoteTotal =
+    money(
+      Number(
+        quote.amount ?? 0
+      )
+    );
+
+  const totalInvoiced =
+    money(
+      linkedInvoices.reduce(
+        (
+          total,
+          linkedInvoice
+        ) =>
+          total +
+          invoiceRowTotal(
+            linkedInvoice
+          ),
+        0
+      )
+    );
+
+  const totalPaid =
+    money(
+      linkedInvoices.reduce(
+        (
+          total,
+          linkedInvoice
+        ) =>
+          total +
+          Number(
+            linkedInvoice.amount_paid ??
+              0
+          ),
+        0
+      )
+    );
+
+  const fullyInvoiced =
+    quoteTotal > 0 &&
+    totalInvoiced >=
+      quoteTotal - 0.009;
+
+  const everyInvoicePaid =
+    linkedInvoices.length >
+      0 &&
+    linkedInvoices.every(
+      (linkedInvoice) => {
+        const invoiceTotal =
+          invoiceRowTotal(
+            linkedInvoice
+          );
+
+        const amountPaid =
+          Number(
+            linkedInvoice.amount_paid ??
+              0
+          );
+
+        return (
+          invoiceTotal > 0 &&
+          amountPaid >=
+            invoiceTotal -
+              0.009
+        );
+      }
+    );
+
+  const financiallyComplete =
+    fullyInvoiced &&
+    everyInvoicePaid;
+
+  if (!financiallyComplete) {
+    redirect(
+      `/invoices/${invoice.id}?error=The%20quote%20must%20be%20fully%20invoiced%20and%20all%20linked%20invoices%20must%20be%20paid%20before%20a%20guarantee%20can%20be%20created`
+    );
+  }
+
+  /*
+   * -------------------------------------------------------
+   * STOP DUPLICATE GUARANTEES FOR THE SAME QUOTE
+   * -------------------------------------------------------
+   *
+   * Guarantees currently store an invoice_id rather than
+   * a quote_id, so check every invoice belonging to this
+   * quote for an existing active guarantee.
+   */
+
+  const linkedInvoiceIds =
+    linkedInvoices.map(
+      (linkedInvoice) =>
+        linkedInvoice.id
+    );
+
+  if (
+    linkedInvoiceIds.length >
+    0
+  ) {
+    const {
+      data:
+        existingGuarantees,
+    } = await supabase
+      .from("guarantees")
+      .select("id")
+      .in(
+        "invoice_id",
+        linkedInvoiceIds
+      )
+      .neq(
+        "status",
+        "Cancelled"
+      )
+      .order(
+        "created_at",
+        {
+          ascending: false,
+        }
+      )
+      .limit(1);
+
+    const existingGuarantee =
+      existingGuarantees?.[0];
+
+    if (
+      existingGuarantee
+    ) {
+      redirect(
+        `/guarantees/${existingGuarantee.id}`
+      );
+    }
+  }
+
+  /*
+   * -------------------------------------------------------
+   * RELATED RECORDS
+   * -------------------------------------------------------
+   */
 
   const client =
     Array.isArray(
@@ -138,16 +338,19 @@ export default async function NewGuaranteePage({
     client?.display_name ||
     "Unknown client";
 
+  /*
+   * -------------------------------------------------------
+   * DEFAULT GUARANTEE DATES
+   * -------------------------------------------------------
+   */
+
   const today =
     new Date()
       .toISOString()
       .slice(0, 10);
 
-  /*
-   * Start with a 10-year
-   * guarantee by default.
-   */
-  const defaultDuration = 10;
+  const defaultDuration =
+    10;
 
   const expiry =
     new Date();
@@ -165,6 +368,7 @@ export default async function NewGuaranteePage({
   const defaultTitle =
     job?.title ||
     contract?.title ||
+    quote.title ||
     invoice.title ||
     "Works Guarantee";
 
@@ -180,16 +384,30 @@ export default async function NewGuaranteePage({
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-5xl">
-          <Link
-            href={`/invoices/${invoice.id}`}
-            className="text-sm font-medium text-slate-500 hover:text-slate-900"
-          >
-            ← Back to Invoice
-          </Link>
+
+          {/* BACK */}
+
+          <div className="flex flex-wrap items-center gap-4">
+            <Link
+              href={`/quotes/${quote.id}`}
+              className="text-sm font-semibold text-emerald-700 hover:text-emerald-900"
+            >
+              ← Back to Quote Hub
+            </Link>
+
+            <Link
+              href={`/invoices/${invoice.id}`}
+              className="text-sm font-medium text-slate-500 hover:text-slate-900"
+            >
+              View Source Invoice
+            </Link>
+          </div>
+
+          {/* HEADER */}
 
           <div className="mt-4">
             <p className="text-sm font-medium text-emerald-700">
-              Paid Final Invoice
+              Financially Complete Quote
             </p>
 
             <h1 className="mt-1 text-3xl font-bold text-slate-900">
@@ -208,16 +426,65 @@ export default async function NewGuaranteePage({
             </div>
           )}
 
+          {/* FINANCIAL COMPLETE MESSAGE */}
+
+          <section className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+              Guarantee Available
+            </p>
+
+            <h2 className="mt-2 text-xl font-bold text-emerald-950">
+              The quote is financially complete
+            </h2>
+
+            <p className="mt-2 text-sm leading-6 text-emerald-800">
+              The full quote value has been invoiced and all
+              linked invoices have been paid in full.
+            </p>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-3">
+              <FinancialDetail
+                label="Quote Value"
+                value={formatCurrency(
+                  quoteTotal
+                )}
+              />
+
+              <FinancialDetail
+                label="Invoiced"
+                value={formatCurrency(
+                  totalInvoiced
+                )}
+              />
+
+              <FinancialDetail
+                label="Paid"
+                value={formatCurrency(
+                  totalPaid
+                )}
+              />
+            </div>
+          </section>
+
+          {/* SOURCE DETAILS */}
+
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">
               Source Details
             </h2>
 
-            <div className="mt-5 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-5 grid gap-5 md:grid-cols-2 lg:grid-cols-5">
               <Detail
                 label="Client"
                 value={
                   clientName
+                }
+              />
+
+              <Detail
+                label="Quote"
+                value={
+                  quote.quote_number
                 }
               />
 
@@ -246,6 +513,8 @@ export default async function NewGuaranteePage({
             </div>
           </section>
 
+          {/* FORM */}
+
           <form
             action={
               createGuarantee
@@ -259,6 +528,8 @@ export default async function NewGuaranteePage({
                 invoice.id
               }
             />
+
+            {/* GUARANTEE DETAILS */}
 
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">
@@ -429,11 +700,13 @@ export default async function NewGuaranteePage({
                   />
 
                   <p className="mt-2 text-xs text-slate-500">
-                    For now this defaults to 10 years from today. Later we can make the expiry date update automatically when the guarantee period changes.
+                    This defaults to 10 years from today.
                   </p>
                 </div>
               </div>
             </section>
+
+            {/* COVERED WORKS */}
 
             <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">
@@ -454,6 +727,8 @@ export default async function NewGuaranteePage({
               />
             </section>
 
+            {/* TERMS */}
+
             <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">
                 Guarantee Terms
@@ -468,6 +743,8 @@ export default async function NewGuaranteePage({
                 className="mt-5 w-full rounded-lg border border-slate-300 px-3 py-3 text-slate-900 outline-none focus:border-slate-500"
               />
             </section>
+
+            {/* EXCLUSIONS */}
 
             <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">
@@ -484,6 +761,8 @@ export default async function NewGuaranteePage({
               />
             </section>
 
+            {/* CUSTOMER MESSAGE */}
+
             <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">
                 Customer Message
@@ -499,6 +778,8 @@ export default async function NewGuaranteePage({
               />
             </section>
 
+            {/* INTERNAL NOTES */}
+
             <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">
                 Internal Notes
@@ -512,9 +793,11 @@ export default async function NewGuaranteePage({
               />
             </section>
 
+            {/* ACTIONS */}
+
             <div className="mt-8 flex flex-wrap justify-end gap-3">
               <Link
-                href={`/invoices/${invoice.id}`}
+                href={`/quotes/${quote.id}`}
                 className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Cancel
@@ -534,6 +817,10 @@ export default async function NewGuaranteePage({
   );
 }
 
+/* =========================================================
+   DETAIL
+   ========================================================= */
+
 function Detail({
   label,
   value,
@@ -552,4 +839,114 @@ function Detail({
       </p>
     </div>
   );
+}
+
+/* =========================================================
+   FINANCIAL DETAIL
+   ========================================================= */
+
+function FinancialDetail({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl bg-white/70 p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+        {label}
+      </p>
+
+      <p className="mt-1 text-lg font-bold text-emerald-950">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+/* =========================================================
+   INVOICE TOTAL
+   ========================================================= */
+
+function invoiceRowTotal(invoice: {
+  amount?:
+    | number
+    | string
+    | null;
+
+  subtotal?:
+    | number
+    | string
+    | null;
+
+  vat_amount?:
+    | number
+    | string
+    | null;
+}) {
+  const amount =
+    Number(
+      invoice.amount ?? 0
+    );
+
+  if (
+    Number.isFinite(
+      amount
+    ) &&
+    amount > 0
+  ) {
+    return money(amount);
+  }
+
+  const subtotal =
+    Number(
+      invoice.subtotal ?? 0
+    );
+
+  const vatAmount =
+    Number(
+      invoice.vat_amount ?? 0
+    );
+
+  return money(
+    (Number.isFinite(subtotal)
+      ? subtotal
+      : 0) +
+      (Number.isFinite(vatAmount)
+        ? vatAmount
+        : 0)
+  );
+}
+
+/* =========================================================
+   MONEY
+   ========================================================= */
+
+function money(
+  value: number
+) {
+  return Math.round(
+    (
+      value +
+      Number.EPSILON
+    ) *
+      100
+  ) / 100;
+}
+
+/* =========================================================
+   CURRENCY
+   ========================================================= */
+
+function formatCurrency(
+  value: number
+) {
+  return new Intl.NumberFormat(
+    "en-GB",
+    {
+      style: "currency",
+      currency: "GBP",
+    }
+  ).format(value);
 }
