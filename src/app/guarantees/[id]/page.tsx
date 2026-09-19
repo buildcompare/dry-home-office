@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
+import EmailGuaranteeButton from "@/components/EmailGuaranteeButton";
 import { createClient } from "@/lib/supabase/server";
 
 type GuaranteePageProps = {
@@ -19,7 +20,8 @@ export default async function GuaranteePage({
   searchParams,
 }: GuaranteePageProps) {
   const { id } = await params;
-  const query = await searchParams;
+  const query =
+    await searchParams;
 
   const supabase =
     await createClient();
@@ -164,7 +166,9 @@ export default async function GuaranteePage({
           {query.sent ===
             "1" && (
             <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
-              Guarantee sent successfully.
+              Guarantee sent successfully to{" "}
+              {guarantee.sent_to ||
+                client?.email}.
             </div>
           )}
 
@@ -192,6 +196,12 @@ export default async function GuaranteePage({
               }
             />
           </div>
+
+          {!client?.email && (
+            <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              This client does not have an email address saved, so the guarantee cannot be emailed yet.
+            </div>
+          )}
 
           <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             <SummaryCard
@@ -391,25 +401,30 @@ export default async function GuaranteePage({
               </h2>
 
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                We’ll connect this secure guarantee link and customer email in the next stage.
+                Preview the customer guarantee or send the secure guarantee link by email.
               </p>
 
               <div className="mt-5 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  disabled
-                  className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white opacity-50"
+                <Link
+                  href={`/g/${guarantee.public_token}`}
+                  target="_blank"
+                  className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
                 >
                   Preview Guarantee
-                </button>
+                </Link>
 
-                <button
-                  type="button"
-                  disabled
-                  className="rounded-lg bg-emerald-700 px-5 py-3 text-sm font-semibold text-white opacity-50"
-                >
-                  Send Guarantee
-                </button>
+                <EmailGuaranteeButton
+                  guaranteeId={
+                    guarantee.id
+                  }
+                  recipient={
+                    client?.email ||
+                    null
+                  }
+                  status={
+                    guarantee.status
+                  }
+                />
               </div>
             </section>
           )}
@@ -498,7 +513,9 @@ function InfoCard({
 
       {href ? (
         <Link
-          href={href}
+          href={
+            href
+          }
           className="mt-2 block font-semibold text-slate-900 hover:underline"
         >
           {value}
