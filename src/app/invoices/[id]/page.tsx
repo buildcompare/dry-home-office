@@ -25,13 +25,9 @@ export default async function InvoicePage({
   const { id } = await params;
   const query = await searchParams;
 
-  const supabase =
-    await createClient();
+  const supabase = await createClient();
 
-  const {
-    data: invoice,
-    error,
-  } = await supabase
+  const { data: invoice, error } = await supabase
     .from("invoices")
     .select(`
       id,
@@ -63,6 +59,7 @@ export default async function InvoicePage({
       payment_reference,
       public_token,
       created_at,
+
       clients (
         id,
         display_name,
@@ -71,38 +68,33 @@ export default async function InvoicePage({
         email,
         phone
       ),
+
       jobs (
         id,
         job_number,
         title,
         status
       ),
+
       quotes (
         id,
-        quote_number,
-        amount
+        quote_number
       ),
+
       contracts (
         id,
         contract_number,
-        amount,
         status
       )
     `)
     .eq("id", id)
     .single();
 
-  if (
-    error ||
-    !invoice
-  ) {
+  if (error || !invoice) {
     notFound();
   }
 
-  const [
-    itemsResult,
-    paymentsResult,
-  ] = await Promise.all([
+  const [itemsResult, paymentsResult] = await Promise.all([
     supabase
       .from("invoice_items")
       .select(`
@@ -114,16 +106,10 @@ export default async function InvoicePage({
         item_type,
         sort_order
       `)
-      .eq(
-        "invoice_id",
-        id
-      )
-      .order(
-        "sort_order",
-        {
-          ascending: true,
-        }
-      ),
+      .eq("invoice_id", id)
+      .order("sort_order", {
+        ascending: true,
+      }),
 
     supabase
       .from("invoice_payments")
@@ -136,234 +122,82 @@ export default async function InvoicePage({
         notes,
         created_at
       `)
-      .eq(
-        "invoice_id",
-        id
-      )
-      .order(
-        "payment_date",
-        {
-          ascending: false,
-        }
-      )
-      .order(
-        "created_at",
-        {
-          ascending: false,
-        }
-      ),
+      .eq("invoice_id", id)
+      .order("payment_date", {
+        ascending: false,
+      })
+      .order("created_at", {
+        ascending: false,
+      }),
   ]);
 
-  const items =
-    itemsResult.data ?? [];
+  const items = itemsResult.data ?? [];
+  const payments = paymentsResult.data ?? [];
 
-  const payments =
-    paymentsResult.data ?? [];
+  const client = Array.isArray(invoice.clients)
+    ? invoice.clients[0]
+    : invoice.clients;
 
-  let relatedInvoices: {
-    id: string;
-    amount: number | string | null;
-    subtotal: number | string | null;
-    vat_amount: number | string | null;
-    status: string | null;
-  }[] = [];
+  const job = Array.isArray(invoice.jobs)
+    ? invoice.jobs[0]
+    : invoice.jobs;
 
-  if (invoice.quote_id) {
-    const {
-      data: quoteInvoices,
-      error: quoteInvoicesError,
-    } = await supabase
-      .from("invoices")
-      .select(`
-        id,
-        amount,
-        subtotal,
-        vat_amount,
-        status
-      `)
-      .eq(
-        "quote_id",
-        invoice.quote_id
-      )
-      .neq(
-        "status",
-        "Cancelled"
-      );
+  const quote = Array.isArray(invoice.quotes)
+    ? invoice.quotes[0]
+    : invoice.quotes;
 
-    if (quoteInvoicesError) {
-      throw new Error(
-        quoteInvoicesError.message
-      );
-    }
-
-    relatedInvoices =
-      quoteInvoices ?? [];
-  } else if (invoice.contract_id) {
-    const {
-      data: contractInvoices,
-      error: contractInvoicesError,
-    } = await supabase
-      .from("invoices")
-      .select(`
-        id,
-        amount,
-        subtotal,
-        vat_amount,
-        status
-      `)
-      .eq(
-        "contract_id",
-        invoice.contract_id
-      )
-      .neq(
-        "status",
-        "Cancelled"
-      );
-
-    if (contractInvoicesError) {
-      throw new Error(
-        contractInvoicesError.message
-      );
-    }
-
-    relatedInvoices =
-      contractInvoices ?? [];
-  }
-
-  const client =
-    Array.isArray(
-      invoice.clients
-    )
-      ? invoice.clients[0]
-      : invoice.clients;
-
-  const job =
-    Array.isArray(
-      invoice.jobs
-    )
-      ? invoice.jobs[0]
-      : invoice.jobs;
-
-  const quote =
-    Array.isArray(
-      invoice.quotes
-    )
-      ? invoice.quotes[0]
-      : invoice.quotes;
-
-  const contract =
-    Array.isArray(
-      invoice.contracts
-    )
-      ? invoice.contracts[0]
-      : invoice.contracts;
+  const contract = Array.isArray(invoice.contracts)
+    ? invoice.contracts[0]
+    : invoice.contracts;
 
   const clientName =
     client?.display_name ||
-    [
-      client?.first_name,
-      client?.last_name,
-    ]
+    [client?.first_name, client?.last_name]
       .filter(Boolean)
       .join(" ") ||
     "Unknown client";
 
-  const labourItems =
-    items.filter(
-      (item) =>
-        item.item_type !==
-        "Materials"
-    );
+  const labourItems = items.filter(
+    (item) => item.item_type !== "Materials"
+  );
 
-  const materialItems =
-    items.filter(
-      (item) =>
-        item.item_type ===
-        "Materials"
-    );
+  const materialItems = items.filter(
+    (item) => item.item_type === "Materials"
+  );
 
-  const invoiceTotal =
-    getInvoiceTotal(
-      invoice
-    );
+  /*
+   * Use the stored invoice amount where possible.
+   *
+   * Older invoices may have amount missing or set to zero,
+   * so fall back to subtotal + VAT.
+   */
+  const invoiceTotal = getInvoiceTotal(invoice);
 
-  const amountPaid =
-    Number(
-      invoice.amount_paid ?? 0
-    );
+  const amountPaid = Number(
+    invoice.amount_paid ?? 0
+  );
 
-  const balance =
-    Math.max(
-      invoiceTotal -
-        amountPaid,
-      0
-    );
+  const balance = Math.max(
+    invoiceTotal - amountPaid,
+    0
+  );
 
+  /*
+   * Financial figures are the source of truth for payment status.
+   */
   const fullyPaid =
     invoiceTotal > 0 &&
     balance <= 0.009;
 
-  const displayStatus =
-    fullyPaid
-      ? "Paid"
-      : amountPaid > 0
-        ? "Part Paid"
-        : invoice.status;
+  const displayStatus = fullyPaid
+    ? "Paid"
+    : amountPaid > 0
+      ? "Part Paid"
+      : invoice.status;
 
-  const sourceTotal =
-    quote?.id
-      ? Number(
-          quote.amount ?? 0
-        )
-      : contract?.id
-        ? Number(
-            contract.amount ?? 0
-          )
-        : 0;
-
-  const totalInvoiced =
-    relatedInvoices.reduce(
-      (sum, relatedInvoice) =>
-        sum +
-        getInvoiceTotal(
-          relatedInvoice
-        ),
-      0
-    );
-
-  const remainingToInvoice =
-    Math.max(
-      sourceTotal -
-        totalInvoiced,
-      0
-    );
-
-  const hasInvoiceProgress =
-    sourceTotal > 0 &&
-    Boolean(
-      quote?.id ||
-        contract?.id
-    );
-
-  const invoiceProgressStatus =
-    remainingToInvoice <=
-    0.009
-      ? "Fully Invoiced"
-      : totalInvoiced > 0
-        ? "Part Invoiced"
-        : "Not Yet Invoiced";
-
-  const nextInvoiceHref =
-    quote?.id
-      ? `/invoices/new?quote=${quote.id}`
-      : contract?.id
-        ? `/invoices/new?contract=${contract.id}`
-        : null;
-
-  const today =
-    new Date()
-      .toISOString()
-      .slice(0, 10);
+  const today = new Date()
+    .toISOString()
+    .slice(0, 10);
 
   return (
     <div className="flex min-h-screen bg-slate-100">
@@ -371,17 +205,17 @@ export default async function InvoicePage({
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
-          {query.sent ===
-            "1" && (
+
+          {/* SUCCESS / ERROR MESSAGES */}
+
+          {query.sent === "1" && (
             <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
               Invoice emailed successfully to{" "}
-              {invoice.sent_to ||
-                client?.email}.
+              {invoice.sent_to || client?.email}.
             </div>
           )}
 
-          {query.payment ===
-            "success" && (
+          {query.payment === "success" && (
             <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
               Payment recorded successfully.
             </div>
@@ -399,6 +233,8 @@ export default async function InvoicePage({
             </div>
           )}
 
+          {/* HEADER */}
+
           <div className="mb-8">
             <Link
               href="/invoices"
@@ -410,14 +246,11 @@ export default async function InvoicePage({
             <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-slate-500">
-                  {
-                    invoice.invoice_number
-                  }
+                  {invoice.invoice_number}
                 </p>
 
                 <h1 className="mt-1 text-3xl font-bold text-slate-900">
-                  {invoice.title ||
-                    "Invoice"}
+                  {invoice.title || "Invoice"}
                 </h1>
 
                 <p className="mt-2 text-slate-500">
@@ -427,22 +260,13 @@ export default async function InvoicePage({
 
               <div className="flex flex-wrap items-center gap-3">
                 <EmailInvoiceButton
-                  invoiceId={
-                    invoice.id
-                  }
-                  recipient={
-                    client?.email ||
-                    null
-                  }
-                  status={
-                    displayStatus
-                  }
+                  invoiceId={invoice.id}
+                  recipient={client?.email || null}
+                  status={displayStatus}
                 />
 
                 <StatusBadge
-                  status={
-                    displayStatus
-                  }
+                  status={displayStatus}
                 />
               </div>
             </div>
@@ -454,35 +278,31 @@ export default async function InvoicePage({
             )}
           </div>
 
+          {/* INVOICE SUMMARY */}
+
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             <SummaryCard
               title="Invoice Total"
-              value={formatCurrency(
-                invoiceTotal
-              )}
+              value={formatCurrency(invoiceTotal)}
             />
 
             <SummaryCard
               title="Amount Paid"
-              value={formatCurrency(
-                amountPaid
-              )}
+              value={formatCurrency(amountPaid)}
             />
 
             <SummaryCard
-              title="Balance"
-              value={formatCurrency(
-                balance
-              )}
+              title="Outstanding"
+              value={formatCurrency(balance)}
             />
 
             <SummaryCard
               title="Due Date"
-              value={formatDate(
-                invoice.due_date
-              )}
+              value={formatDate(invoice.due_date)}
             />
           </div>
+
+          {/* LINKS */}
 
           <div className="mt-8 grid gap-6 lg:grid-cols-4">
             <InfoCard
@@ -535,74 +355,13 @@ export default async function InvoicePage({
             />
           </div>
 
-          {hasInvoiceProgress && (
-            <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    Quote / Contract Progress
-                  </p>
-
-                  <h2 className="mt-1 text-xl font-semibold text-slate-900">
-                    {invoiceProgressStatus}
-                  </h2>
-
-                  <p className="mt-2 text-sm text-slate-500">
-                    This is separate from the balance due on this individual invoice.
-                  </p>
-                </div>
-
-                {nextInvoiceHref &&
-                  remainingToInvoice >
-                    0.009 && (
-                    <Link
-                      href={
-                        nextInvoiceHref
-                      }
-                      className="inline-flex rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
-                    >
-                      Create Next Invoice
-                    </Link>
-                  )}
-              </div>
-
-              <div className="mt-6 grid gap-5 md:grid-cols-3">
-                <ProgressCard
-                  title={
-                    quote?.id
-                      ? "Quote Total"
-                      : "Contract Total"
-                  }
-                  value={formatCurrency(
-                    sourceTotal
-                  )}
-                />
-
-                <ProgressCard
-                  title="Invoiced So Far"
-                  value={formatCurrency(
-                    totalInvoiced
-                  )}
-                />
-
-                <ProgressCard
-                  title="Remaining to Invoice"
-                  value={formatCurrency(
-                    remainingToInvoice
-                  )}
-                  strong
-                />
-              </div>
-            </section>
-          )}
+          {/* INVOICE DETAILS */}
 
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <div className="grid gap-5 md:grid-cols-3">
               <DetailRow
                 label="Invoice Type"
-                value={
-                  invoice.invoice_type
-                }
+                value={invoice.invoice_type}
               />
 
               <DetailRow
@@ -614,9 +373,7 @@ export default async function InvoicePage({
 
               <DetailRow
                 label="Status"
-                value={
-                  displayStatus
-                }
+                value={displayStatus}
               />
             </div>
 
@@ -632,19 +389,21 @@ export default async function InvoicePage({
             </div>
           </section>
 
+          {/* LABOUR */}
+
           <InvoiceItemsSection
             title="Labour"
-            items={
-              labourItems
-            }
+            items={labourItems}
           />
+
+          {/* MATERIALS */}
 
           <InvoiceItemsSection
             title="Materials"
-            items={
-              materialItems
-            }
+            items={materialItems}
           />
+
+          {/* TOTALS */}
 
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <div className="ml-auto max-w-md">
@@ -658,8 +417,7 @@ export default async function InvoicePage({
               {invoice.vat_enabled && (
                 <TotalRow
                   label={`VAT (${Number(
-                    invoice.vat_rate ??
-                      20
+                    invoice.vat_rate ?? 20
                   )}%)`}
                   value={formatCurrency(
                     invoice.vat_amount
@@ -670,12 +428,11 @@ export default async function InvoicePage({
               <TotalRow
                 label="Invoice Total"
                 value={formatCurrency(
-                  invoice.amount
+                  invoiceTotal
                 )}
               />
 
-              {amountPaid >
-                0 && (
+              {amountPaid > 0 && (
                 <TotalRow
                   label="Amount Paid"
                   value={formatCurrency(
@@ -686,19 +443,22 @@ export default async function InvoicePage({
 
               <div className="mt-4 flex items-center justify-between border-t-2 border-slate-900 pt-5">
                 <span className="text-xl font-bold text-slate-900">
-                  Balance
+                  Outstanding
                 </span>
 
                 <span className="text-2xl font-bold text-slate-900">
-                  {formatCurrency(
-                    balance
-                  )}
+                  {formatCurrency(balance)}
                 </span>
               </div>
             </div>
           </section>
 
+          {/* PAYMENT AREA */}
+
           <div className="mt-8 grid gap-6 xl:grid-cols-[1fr_1.4fr]">
+
+            {/* RECORD PAYMENT */}
+
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">
                 Record Payment
@@ -725,17 +485,13 @@ export default async function InvoicePage({
                 </div>
               ) : (
                 <form
-                  action={
-                    recordInvoicePayment
-                  }
+                  action={recordInvoicePayment}
                   className="mt-6"
                 >
                   <input
                     type="hidden"
                     name="invoice_id"
-                    value={
-                      invoice.id
-                    }
+                    value={invoice.id}
                   />
 
                   <div>
@@ -756,15 +512,11 @@ export default async function InvoicePage({
                         name="payment_amount"
                         type="number"
                         min="0.01"
-                        max={
-                          balance
-                        }
+                        max={balance}
                         step="0.01"
-                        defaultValue={
-                          balance.toFixed(
-                            2
-                          )
-                        }
+                        defaultValue={balance.toFixed(
+                          2
+                        )}
                         required
                         className="w-full rounded-lg border border-slate-300 py-2.5 pl-7 pr-3 text-slate-900 outline-none focus:border-slate-500"
                       />
@@ -772,9 +524,7 @@ export default async function InvoicePage({
 
                     <p className="mt-2 text-xs text-slate-500">
                       Outstanding balance:{" "}
-                      {formatCurrency(
-                        balance
-                      )}
+                      {formatCurrency(balance)}
                     </p>
                   </div>
 
@@ -790,9 +540,7 @@ export default async function InvoicePage({
                       id="payment_date"
                       name="payment_date"
                       type="date"
-                      defaultValue={
-                        today
-                      }
+                      defaultValue={today}
                       required
                       className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
                     />
@@ -878,6 +626,8 @@ export default async function InvoicePage({
               )}
             </section>
 
+            {/* PAYMENT HISTORY */}
+
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -891,18 +641,14 @@ export default async function InvoicePage({
                 </div>
 
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                  {
-                    payments.length
-                  }{" "}
-                  {payments.length ===
-                  1
+                  {payments.length}{" "}
+                  {payments.length === 1
                     ? "payment"
                     : "payments"}
                 </span>
               </div>
 
-              {payments.length ===
-              0 ? (
+              {payments.length === 0 ? (
                 <div className="mt-6 rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
                   No payments recorded yet.
                 </div>
@@ -931,14 +677,8 @@ export default async function InvoicePage({
 
                     <tbody className="divide-y divide-slate-100">
                       {payments.map(
-                        (
-                          payment
-                        ) => (
-                          <tr
-                            key={
-                              payment.id
-                            }
-                          >
+                        (payment) => (
+                          <tr key={payment.id}>
                             <td className="px-4 py-4 text-sm text-slate-700">
                               {formatDate(
                                 payment.payment_date
@@ -956,9 +696,7 @@ export default async function InvoicePage({
 
                               {payment.notes && (
                                 <p className="mt-1 text-xs text-slate-400">
-                                  {
-                                    payment.notes
-                                  }
+                                  {payment.notes}
                                 </p>
                               )}
                             </td>
@@ -977,6 +715,8 @@ export default async function InvoicePage({
               )}
             </section>
           </div>
+
+          {/* CUSTOMER MESSAGE / PAYMENT TERMS */}
 
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
             <section className="rounded-2xl bg-white p-6 shadow-sm">
@@ -1002,6 +742,8 @@ export default async function InvoicePage({
             </section>
           </div>
 
+          {/* INTERNAL NOTES */}
+
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">
               Internal Notes
@@ -1012,6 +754,8 @@ export default async function InvoicePage({
                 "No internal notes recorded."}
             </p>
           </section>
+
+          {/* ACTIVITY */}
 
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">
@@ -1050,6 +794,8 @@ export default async function InvoicePage({
             </div>
           </section>
 
+          {/* CUSTOMER INVOICE */}
+
           {invoice.public_token && (
             <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">
@@ -1070,6 +816,8 @@ export default async function InvoicePage({
             </section>
           )}
 
+          {/* LEGACY FINAL-INVOICE GUARANTEE OPTION */}
+
           {fullyPaid &&
             invoice.invoice_type ===
               "Final" && (
@@ -1083,7 +831,8 @@ export default async function InvoicePage({
                 </h2>
 
                 <p className="mt-2 text-sm leading-6 text-emerald-800">
-                  This final invoice has been paid in full, so a customer guarantee can now be generated.
+                  This final invoice has been paid in full, so a
+                  customer guarantee can now be generated.
                 </p>
 
                 <Link
@@ -1100,11 +849,16 @@ export default async function InvoicePage({
   );
 }
 
+/* =========================================================
+   INVOICE ITEMS TABLE
+   ========================================================= */
+
 function InvoiceItemsSection({
   title,
   items,
 }: {
   title: string;
+
   items: {
     id: string;
     description: string;
@@ -1153,57 +907,44 @@ function InvoiceItemsSection({
             </thead>
 
             <tbody className="divide-y divide-slate-100">
-              {items.map(
-                (item) => {
-                  const quantity =
-                    Number(
-                      item.quantity
-                    );
+              {items.map((item) => {
+                const quantity = Number(
+                  item.quantity
+                );
 
-                  const unitPrice =
-                    Number(
-                      item.unit_price
-                    );
+                const unitPrice = Number(
+                  item.unit_price
+                );
 
-                  return (
-                    <tr
-                      key={
-                        item.id
-                      }
-                    >
-                      <td className="px-6 py-5 text-sm font-medium text-slate-800">
-                        {
-                          item.description
-                        }
-                      </td>
+                return (
+                  <tr key={item.id}>
+                    <td className="px-6 py-5 text-sm font-medium text-slate-800">
+                      {item.description}
+                    </td>
 
-                      <td className="px-6 py-5 text-right text-sm text-slate-600">
-                        {
-                          quantity
-                        }
-                      </td>
+                    <td className="px-6 py-5 text-right text-sm text-slate-600">
+                      {quantity}
+                    </td>
 
-                      <td className="px-6 py-5 text-sm text-slate-600">
-                        {item.unit ||
-                          "—"}
-                      </td>
+                    <td className="px-6 py-5 text-sm text-slate-600">
+                      {item.unit || "—"}
+                    </td>
 
-                      <td className="px-6 py-5 text-right text-sm text-slate-600">
-                        {formatCurrency(
+                    <td className="px-6 py-5 text-right text-sm text-slate-600">
+                      {formatCurrency(
+                        unitPrice
+                      )}
+                    </td>
+
+                    <td className="px-6 py-5 text-right text-sm font-semibold text-slate-900">
+                      {formatCurrency(
+                        quantity *
                           unitPrice
-                        )}
-                      </td>
-
-                      <td className="px-6 py-5 text-right text-sm font-semibold text-slate-900">
-                        {formatCurrency(
-                          quantity *
-                            unitPrice
-                        )}
-                      </td>
-                    </tr>
-                  );
-                }
-              )}
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1211,6 +952,10 @@ function InvoiceItemsSection({
     </section>
   );
 }
+
+/* =========================================================
+   TABLE HEADING
+   ========================================================= */
 
 function Heading({
   children,
@@ -1232,6 +977,10 @@ function Heading({
   );
 }
 
+/* =========================================================
+   SUMMARY CARD
+   ========================================================= */
+
 function SummaryCard({
   title,
   value,
@@ -1252,45 +1001,9 @@ function SummaryCard({
   );
 }
 
-function ProgressCard({
-  title,
-  value,
-  strong = false,
-}: {
-  title: string;
-  value: string;
-  strong?: boolean;
-}) {
-  return (
-    <div
-      className={
-        strong
-          ? "rounded-xl bg-slate-900 p-5"
-          : "rounded-xl bg-slate-50 p-5"
-      }
-    >
-      <p
-        className={
-          strong
-            ? "text-xs font-semibold uppercase tracking-wide text-slate-300"
-            : "text-xs font-semibold uppercase tracking-wide text-slate-500"
-        }
-      >
-        {title}
-      </p>
-
-      <p
-        className={
-          strong
-            ? "mt-2 text-2xl font-bold text-white"
-            : "mt-2 text-2xl font-bold text-slate-900"
-        }
-      >
-        {value}
-      </p>
-    </div>
-  );
-}
+/* =========================================================
+   INFO CARD
+   ========================================================= */
 
 function InfoCard({
   title,
@@ -1323,6 +1036,10 @@ function InfoCard({
   );
 }
 
+/* =========================================================
+   DETAIL ROW
+   ========================================================= */
+
 function DetailRow({
   label,
   value,
@@ -1337,12 +1054,15 @@ function DetailRow({
       </p>
 
       <p className="mt-1 text-sm text-slate-700">
-        {value ||
-          "Not recorded"}
+        {value || "Not recorded"}
       </p>
     </div>
   );
 }
+
+/* =========================================================
+   TOTAL ROW
+   ========================================================= */
 
 function TotalRow({
   label,
@@ -1364,6 +1084,10 @@ function TotalRow({
   );
 }
 
+/* =========================================================
+   STATUS BADGE
+   ========================================================= */
+
 function StatusBadge({
   status,
 }: {
@@ -1372,16 +1096,22 @@ function StatusBadge({
   const classes =
     status === "Paid"
       ? "bg-emerald-100 text-emerald-800"
+
       : status === "Part Paid"
         ? "bg-amber-100 text-amber-800"
+
         : status === "Sent"
           ? "bg-blue-100 text-blue-800"
+
           : status === "Viewed"
             ? "bg-violet-100 text-violet-800"
+
             : status === "Overdue"
               ? "bg-red-100 text-red-800"
+
               : status === "Cancelled"
                 ? "bg-slate-200 text-slate-600"
+
                 : "bg-slate-100 text-slate-700";
 
   return (
@@ -1393,15 +1123,18 @@ function StatusBadge({
   );
 }
 
+/* =========================================================
+   INVOICE TOTAL
+   ========================================================= */
+
 function getInvoiceTotal(invoice: {
   amount?: number | string | null;
   subtotal?: number | string | null;
   vat_amount?: number | string | null;
 }) {
-  const amount =
-    Number(
-      invoice.amount ?? 0
-    );
+  const amount = Number(
+    invoice.amount ?? 0
+  );
 
   if (
     Number.isFinite(amount) &&
@@ -1410,15 +1143,13 @@ function getInvoiceTotal(invoice: {
     return amount;
   }
 
-  const subtotal =
-    Number(
-      invoice.subtotal ?? 0
-    );
+  const subtotal = Number(
+    invoice.subtotal ?? 0
+  );
 
-  const vatAmount =
-    Number(
-      invoice.vat_amount ?? 0
-    );
+  const vatAmount = Number(
+    invoice.vat_amount ?? 0
+  );
 
   return (
     (Number.isFinite(subtotal)
@@ -1429,6 +1160,10 @@ function getInvoiceTotal(invoice: {
       : 0)
   );
 }
+
+/* =========================================================
+   FORMAT CURRENCY
+   ========================================================= */
 
 function formatCurrency(
   value:
@@ -1447,6 +1182,10 @@ function formatCurrency(
   );
 }
 
+/* =========================================================
+   FORMAT DATE
+   ========================================================= */
+
 function formatDate(
   value: string | null
 ) {
@@ -1454,14 +1193,11 @@ function formatDate(
     return "Not set";
   }
 
-  const [
-    year,
-    month,
-    day,
-  ] = value
-    .slice(0, 10)
-    .split("-")
-    .map(Number);
+  const [year, month, day] =
+    value
+      .slice(0, 10)
+      .split("-")
+      .map(Number);
 
   return new Intl.DateTimeFormat(
     "en-GB",
@@ -1481,6 +1217,10 @@ function formatDate(
   );
 }
 
+/* =========================================================
+   FORMAT DATE & TIME
+   ========================================================= */
+
 function formatDateTime(
   value: string | null
 ) {
@@ -1493,9 +1233,11 @@ function formatDateTime(
     {
       timeZone:
         "Europe/London",
+
       day: "2-digit",
       month: "short",
       year: "numeric",
+
       hour: "2-digit",
       minute: "2-digit",
     }
