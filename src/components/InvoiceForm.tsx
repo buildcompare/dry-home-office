@@ -5,6 +5,16 @@ import {
   useState,
 } from "react";
 
+export type InvoiceDefaultItem = {
+  description: string;
+  quantity?: number;
+  unit?: string;
+  unit_price: number;
+  item_type?:
+    | "Labour"
+    | "Materials";
+};
+
 type InvoiceItem = {
   description: string;
   quantity: number;
@@ -19,13 +29,18 @@ type InvoiceFormProps = {
   defaultAmount?: number;
   defaultDescription?: string;
   maxAmount?: number;
+  defaultItems?: InvoiceDefaultItem[];
 };
 
-function money(value: number) {
+function money(
+  value: number
+) {
   return (
     Math.round(
-      (value +
-        Number.EPSILON) *
+      (
+        value +
+        Number.EPSILON
+      ) *
         100
     ) / 100
   );
@@ -37,10 +52,14 @@ function formatMoney(
   return new Intl.NumberFormat(
     "en-GB",
     {
-      style: "currency",
-      currency: "GBP",
+      style:
+        "currency",
+      currency:
+        "GBP",
     }
-  ).format(value);
+  ).format(
+    value
+  );
 }
 
 function makeItem(
@@ -54,8 +73,54 @@ function makeItem(
     description,
     quantity: 1,
     unit: "item",
-    unit_price: amount,
-    item_type: type,
+    unit_price:
+      money(amount),
+    item_type:
+      type,
+  };
+}
+
+function normaliseDefaultItem(
+  item: InvoiceDefaultItem
+): InvoiceItem {
+  return {
+    description:
+      String(
+        item.description ??
+          ""
+      ),
+
+    quantity:
+      Number.isFinite(
+        Number(
+          item.quantity
+        )
+      )
+        ? Number(
+            item.quantity
+          )
+        : 1,
+
+    unit:
+      String(
+        item.unit ??
+          ""
+      ).trim() ||
+      "item",
+
+    unit_price:
+      money(
+        Number(
+          item.unit_price ??
+            0
+        )
+      ),
+
+    item_type:
+      item.item_type ===
+      "Materials"
+        ? "Materials"
+        : "Labour",
   };
 }
 
@@ -63,41 +128,119 @@ export default function InvoiceForm({
   defaultAmount = 0,
   defaultDescription = "",
   maxAmount,
+  defaultItems = [],
 }: InvoiceFormProps) {
-  const [labourItems, setLabourItems] =
-    useState<InvoiceItem[]>([
-      makeItem(
-        "Labour",
-        defaultDescription,
-        defaultAmount
-      ),
-    ]);
+  const preparedDefaults =
+    defaultItems
+      .map(
+        normaliseDefaultItem
+      )
+      .filter(
+        (
+          item
+        ) =>
+          item.description
+            .trim() !==
+            "" ||
+          item.unit_price !==
+            0
+      );
+
+  const initialLabourItems =
+    preparedDefaults.filter(
+      (
+        item
+      ) =>
+        item.item_type ===
+        "Labour"
+    );
+
+  const initialMaterialItems =
+    preparedDefaults.filter(
+      (
+        item
+      ) =>
+        item.item_type ===
+        "Materials"
+    );
+
+  const [
+    labourItems,
+    setLabourItems,
+  ] =
+    useState<
+      InvoiceItem[]
+    >(
+      initialLabourItems.length >
+        0
+        ? initialLabourItems
+        : [
+            makeItem(
+              "Labour",
+              defaultDescription,
+              preparedDefaults.length ===
+                0
+                ? defaultAmount
+                : 0
+            ),
+          ]
+    );
 
   const [
     materialItems,
     setMaterialItems,
-  ] = useState<InvoiceItem[]>([
-    makeItem("Materials"),
-  ]);
+  ] =
+    useState<
+      InvoiceItem[]
+    >(
+      initialMaterialItems.length >
+        0
+        ? initialMaterialItems
+        : [
+            makeItem(
+              "Materials"
+            ),
+          ]
+    );
 
-  const [vatEnabled, setVatEnabled] =
-    useState(false);
+  const [
+    vatEnabled,
+    setVatEnabled,
+  ] =
+    useState(
+      false
+    );
 
-  const [vatRate, setVatRate] =
-    useState(20);
+  const [
+    vatRate,
+    setVatRate,
+  ] =
+    useState(
+      20
+    );
 
   function updateLabourItem(
     index: number,
-    field: keyof InvoiceItem,
-    value: string | number
+    field:
+      keyof InvoiceItem,
+    value:
+      | string
+      | number
   ) {
     setLabourItems(
-      (current) =>
+      (
+        current
+      ) =>
         current.map(
-          (item, itemIndex) =>
-            itemIndex === index
+          (
+            item,
+            itemIndex
+          ) =>
+            itemIndex ===
+            index
               ? {
                   ...item,
+
                   [field]:
                     field ===
                       "quantity" ||
@@ -115,16 +258,26 @@ export default function InvoiceForm({
 
   function updateMaterialItem(
     index: number,
-    field: keyof InvoiceItem,
-    value: string | number
+    field:
+      keyof InvoiceItem,
+    value:
+      | string
+      | number
   ) {
     setMaterialItems(
-      (current) =>
+      (
+        current
+      ) =>
         current.map(
-          (item, itemIndex) =>
-            itemIndex === index
+          (
+            item,
+            itemIndex
+          ) =>
+            itemIndex ===
+            index
               ? {
                   ...item,
+
                   [field]:
                     field ===
                       "quantity" ||
@@ -142,16 +295,22 @@ export default function InvoiceForm({
 
   function addLabourItem() {
     setLabourItems(
-      (current) => [
+      (
+        current
+      ) => [
         ...current,
-        makeItem("Labour"),
+        makeItem(
+          "Labour"
+        ),
       ]
     );
   }
 
   function addMaterialItem() {
     setMaterialItems(
-      (current) => [
+      (
+        current
+      ) => [
         ...current,
         makeItem(
           "Materials"
@@ -164,16 +323,23 @@ export default function InvoiceForm({
     index: number
   ) {
     setLabourItems(
-      (current) =>
-        current.length === 1
+      (
+        current
+      ) =>
+        current.length ===
+        1
           ? [
               makeItem(
                 "Labour"
               ),
             ]
           : current.filter(
-              (_, itemIndex) =>
-                itemIndex !== index
+              (
+                _,
+                itemIndex
+              ) =>
+                itemIndex !==
+                index
             )
     );
   }
@@ -182,95 +348,137 @@ export default function InvoiceForm({
     index: number
   ) {
     setMaterialItems(
-      (current) =>
-        current.length === 1
+      (
+        current
+      ) =>
+        current.length ===
+        1
           ? [
               makeItem(
                 "Materials"
               ),
             ]
           : current.filter(
-              (_, itemIndex) =>
-                itemIndex !== index
+              (
+                _,
+                itemIndex
+              ) =>
+                itemIndex !==
+                index
             )
     );
   }
 
   const allItems =
-    useMemo(() => {
-      return [
-        ...labourItems,
-        ...materialItems,
-      ].filter((item) => {
-        return (
-          item.description
-            .trim() !== "" ||
-          Number(
-            item.unit_price
-          ) !== 0
-        );
-      });
-    }, [
-      labourItems,
-      materialItems,
-    ]);
-
-  const subtotal =
-    useMemo(() => {
-      return money(
-        allItems.reduce(
-          (sum, item) => {
-            const quantity =
-              Number(
-                item.quantity
-              ) || 0;
-
-            const unitPrice =
+    useMemo(
+      () => {
+        return [
+          ...labourItems,
+          ...materialItems,
+        ].filter(
+          (
+            item
+          ) => {
+            return (
+              item.description
+                .trim() !==
+                "" ||
               Number(
                 item.unit_price
-              ) || 0;
-
-            return (
-              sum +
-              quantity *
-                unitPrice
+              ) !== 0
             );
-          },
-          0
-        )
-      );
-    }, [allItems]);
+          }
+        );
+      },
+      [
+        labourItems,
+        materialItems,
+      ]
+    );
+
+  const subtotal =
+    useMemo(
+      () => {
+        return money(
+          allItems.reduce(
+            (
+              sum,
+              item
+            ) => {
+              const quantity =
+                Number(
+                  item.quantity
+                ) ||
+                0;
+
+              const unitPrice =
+                Number(
+                  item.unit_price
+                ) ||
+                0;
+
+              return (
+                sum +
+                quantity *
+                  unitPrice
+              );
+            },
+            0
+          )
+        );
+      },
+      [
+        allItems,
+      ]
+    );
 
   const vatAmount =
-    useMemo(() => {
-      if (!vatEnabled) {
-        return 0;
-      }
+    useMemo(
+      () => {
+        if (
+          !vatEnabled
+        ) {
+          return 0;
+        }
 
-      return money(
-        subtotal *
-          (vatRate / 100)
-      );
-    }, [
-      subtotal,
-      vatEnabled,
-      vatRate,
-    ]);
+        return money(
+          subtotal *
+            (
+              vatRate /
+              100
+            )
+        );
+      },
+      [
+        subtotal,
+        vatEnabled,
+        vatRate,
+      ]
+    );
 
-  const total = money(
-    subtotal + vatAmount
-  );
+  const total =
+    money(
+      subtotal +
+        vatAmount
+    );
 
   const hasMaximum =
     typeof maxAmount ===
       "number" &&
-    Number.isFinite(maxAmount);
+    Number.isFinite(
+      maxAmount
+    );
 
   const overMaximum =
     hasMaximum &&
-    Math.round(total * 100) >
+    Math.round(
+      total *
+        100
+    ) >
       Math.round(
-        Number(maxAmount) *
+        Number(
+          maxAmount
+        ) *
           100
       );
 
@@ -297,7 +505,9 @@ export default function InvoiceForm({
       <input
         type="hidden"
         name="vat_rate"
-        value={vatRate}
+        value={
+          vatRate
+        }
       />
 
       {hasMaximum && (
@@ -308,9 +518,13 @@ export default function InvoiceForm({
           )}
           max={Number(
             maxAmount
-          ).toFixed(2)}
+          ).toFixed(
+            2
+          )}
           readOnly
-          tabIndex={-1}
+          tabIndex={
+            -1
+          }
           aria-hidden="true"
           className="absolute h-px w-px opacity-0"
         />
@@ -321,37 +535,54 @@ export default function InvoiceForm({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-medium text-blue-900">
-                Maximum available
-                to invoice
+                Maximum available to invoice
               </p>
 
               <p className="mt-1 text-xs text-blue-700">
-                You can invoice
-                all or part of
-                this amount.
+                You can invoice all or part of the remaining approved job value.
               </p>
             </div>
 
             <p className="text-xl font-semibold text-blue-950">
               {formatMoney(
-                Number(maxAmount)
+                Number(
+                  maxAmount
+                )
               )}
             </p>
           </div>
         </div>
       )}
 
+      {preparedDefaults.length >
+        1 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-semibold text-amber-900">
+            Approved works have been added as invoice lines
+          </p>
+
+          <p className="mt-1 text-xs leading-5 text-amber-800">
+            The original quotation and any accepted variations have been
+            brought into the invoice below. You can change the amounts,
+            remove lines or invoice only part of the remaining balance.
+          </p>
+        </div>
+      )}
+
+      {/* =====================================================
+          LABOUR
+          ===================================================== */}
+
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">
-              Labour
+              Labour / Works
             </h2>
 
             <p className="text-sm text-slate-500">
-              Add labour or
-              work-related invoice
-              lines.
+              Approved works and additional labour can be shown as separate
+              invoice lines.
             </p>
           </div>
 
@@ -368,9 +599,14 @@ export default function InvoiceForm({
 
         <div className="space-y-4">
           {labourItems.map(
-            (item, index) => (
+            (
+              item,
+              index
+            ) => (
               <div
-                key={index}
+                key={
+                  index
+                }
                 className="grid gap-3 rounded-lg border border-slate-200 p-4 md:grid-cols-[minmax(0,1fr)_100px_120px_140px_auto]"
               >
                 <div>
@@ -500,6 +736,10 @@ export default function InvoiceForm({
         </div>
       </section>
 
+      {/* =====================================================
+          MATERIALS
+          ===================================================== */}
+
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between gap-4">
           <div>
@@ -508,9 +748,7 @@ export default function InvoiceForm({
             </h2>
 
             <p className="text-sm text-slate-500">
-              Add any materials
-              being charged on this
-              invoice.
+              Add any materials being charged on this invoice.
             </p>
           </div>
 
@@ -527,9 +765,14 @@ export default function InvoiceForm({
 
         <div className="space-y-4">
           {materialItems.map(
-            (item, index) => (
+            (
+              item,
+              index
+            ) => (
               <div
-                key={index}
+                key={
+                  index
+                }
                 className="grid gap-3 rounded-lg border border-slate-200 p-4 md:grid-cols-[minmax(0,1fr)_100px_120px_140px_auto]"
               >
                 <div>
@@ -659,6 +902,10 @@ export default function InvoiceForm({
         </div>
       </section>
 
+      {/* =====================================================
+          TOTAL
+          ===================================================== */}
+
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
           <div>
@@ -694,7 +941,9 @@ export default function InvoiceForm({
                   type="number"
                   min="0"
                   step="0.01"
-                  value={vatRate}
+                  value={
+                    vatRate
+                  }
                   onChange={(
                     event
                   ) =>
@@ -702,7 +951,8 @@ export default function InvoiceForm({
                       Number(
                         event.target
                           .value
-                      ) || 0
+                      ) ||
+                        0
                     )
                   }
                   className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -731,7 +981,10 @@ export default function InvoiceForm({
             {vatEnabled && (
               <div className="flex justify-between text-slate-600">
                 <span>
-                  VAT ({vatRate}
+                  VAT (
+                  {
+                    vatRate
+                  }
                   %)
                 </span>
 
@@ -760,8 +1013,7 @@ export default function InvoiceForm({
             {hasMaximum && (
               <div className="flex justify-between text-sm text-slate-600">
                 <span>
-                  Remaining
-                  available
+                  Remaining approved value
                 </span>
 
                 <span>
@@ -779,20 +1031,17 @@ export default function InvoiceForm({
         {overMaximum && (
           <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4">
             <p className="font-medium text-red-800">
-              Invoice amount is
-              too high
+              Invoice amount is too high
             </p>
 
             <p className="mt-1 text-sm text-red-700">
-              The invoice total
-              cannot exceed{" "}
+              The invoice total cannot exceed{" "}
               {formatMoney(
-                Number(maxAmount)
+                Number(
+                  maxAmount
+                )
               )}
-              , which is the
-              remaining balance
-              available on this
-              quote.
+              , which is the remaining approved value for this job.
             </p>
           </div>
         )}

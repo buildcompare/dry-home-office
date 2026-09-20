@@ -315,8 +315,6 @@ export default async function JobPage({
     acceptedQuote
       ? invoices.filter(
           (invoice) =>
-            invoice.quote_id ===
-              acceptedQuote.id &&
             invoice.status !==
               "Cancelled"
         )
@@ -345,7 +343,7 @@ export default async function JobPage({
   const remainingToInvoice =
     money(
       Math.max(
-        acceptedQuoteValue -
+        approvedJobValue -
           invoicedTotal,
         0
       )
@@ -376,7 +374,7 @@ export default async function JobPage({
     );
 
   const fullyInvoiced =
-    acceptedQuoteValue > 0 &&
+    approvedJobValue > 0 &&
     remainingToInvoice <= 0.009;
 
   const everyInvoicePaid =
@@ -535,7 +533,7 @@ export default async function JobPage({
       nextActionDescription =
         `${formatCurrency(
           remainingToInvoice
-        )} remains available to invoice against the accepted quotation.`;
+        )} remains available to invoice against the approved job value.`;
 
       nextActionHref =
         createInvoiceHref;
@@ -976,7 +974,7 @@ export default async function JobPage({
                 />
 
                 <WorkflowStat
-                  title="Quote Remaining"
+                  title="Remaining to Invoice"
                   value={formatCurrency(
                     remainingToInvoice
                   )}
@@ -1065,7 +1063,7 @@ export default async function JobPage({
                         </h3>
 
                         <p className="mt-1 max-w-2xl text-sm leading-6 text-emerald-800">
-                          The accepted quote has been fully invoiced and every linked invoice has been paid in full.
+                          The approved job value has been fully invoiced and every linked invoice has been paid in full.
                         </p>
                       </div>
 
