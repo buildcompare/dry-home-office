@@ -4,14 +4,11 @@ import Sidebar from "@/components/Sidebar";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function DashboardPage() {
-  const supabase =
-    await createClient();
+  const supabase = await createClient();
 
-  /*
-   * -------------------------------------------------------
-   * DATE RANGE
-   * -------------------------------------------------------
-   */
+  /* =========================================================
+     DATE RANGE
+     ========================================================= */
 
   const today =
     getLondonDateKey(
@@ -31,11 +28,9 @@ export default async function DashboardPage() {
     today
   );
 
-  /*
-   * -------------------------------------------------------
-   * DASHBOARD DATA
-   * -------------------------------------------------------
-   */
+  /* =========================================================
+     DASHBOARD DATA
+     ========================================================= */
 
   const [
     scheduleResult,
@@ -47,6 +42,7 @@ export default async function DashboardPage() {
     /*
      * TODAY + TOMORROW
      */
+
     supabase
       .from("schedule_events")
       .select(`
@@ -103,7 +99,11 @@ export default async function DashboardPage() {
 
     /*
      * ACTIVE JOBS
+     *
+     * Active now means:
+     * status = In Progress
      */
+
     supabase
       .from("jobs")
       .select(
@@ -130,10 +130,9 @@ export default async function DashboardPage() {
           count: "exact",
         }
       )
-      .not(
+      .eq(
         "status",
-        "in",
-        '("Complete","Completed","Cancelled")'
+        "In Progress"
       )
       .order(
         "created_at",
@@ -146,6 +145,7 @@ export default async function DashboardPage() {
     /*
      * INVOICED THIS MONTH
      */
+
     supabase
       .from("invoices")
       .select(`
@@ -172,6 +172,7 @@ export default async function DashboardPage() {
     /*
      * QUOTED THIS MONTH
      */
+
     supabase
       .from("quotes")
       .select(`
@@ -199,11 +200,8 @@ export default async function DashboardPage() {
 
     /*
      * POSSIBLE OVERDUE INVOICES
-     *
-     * Final outstanding calculation is done
-     * below so fully-paid invoices are ignored
-     * even if their stored status is old.
      */
+
     supabase
       .from("invoices")
       .select(`
@@ -243,15 +241,12 @@ export default async function DashboardPage() {
       ),
   ]);
 
-  /*
-   * -------------------------------------------------------
-   * NORMALISE DATA
-   * -------------------------------------------------------
-   */
+  /* =========================================================
+     NORMALISE DATA
+     ========================================================= */
 
   const scheduleEvents =
-    scheduleResult.data ??
-    [];
+    scheduleResult.data ?? [];
 
   const todayEvents =
     scheduleEvents.filter(
@@ -268,26 +263,21 @@ export default async function DashboardPage() {
     );
 
   const activeJobs =
-    activeJobsResult.data ??
-    [];
+    activeJobsResult.data ?? [];
 
   const activeJobCount =
     activeJobsResult.count ??
     activeJobs.length;
 
   const monthlyInvoices =
-    invoicesResult.data ??
-    [];
+    invoicesResult.data ?? [];
 
   const monthlyQuotes =
-    quotesResult.data ??
-    [];
+    quotesResult.data ?? [];
 
-  /*
-   * -------------------------------------------------------
-   * MONTHLY VALUES
-   * -------------------------------------------------------
-   */
+  /* =========================================================
+     MONTHLY VALUES
+     ========================================================= */
 
   const invoicedThisMonth =
     money(
@@ -313,8 +303,7 @@ export default async function DashboardPage() {
         ) =>
           total +
           Number(
-            quote.amount ??
-              0
+            quote.amount ?? 0
           ),
         0
       )
@@ -325,19 +314,9 @@ export default async function DashboardPage() {
       monthStart
     );
 
-  /*
-   * -------------------------------------------------------
-   * OVERDUE INVOICES
-   * -------------------------------------------------------
-   *
-   * Do not trust invoice.status alone.
-   *
-   * An invoice is overdue when:
-   *
-   * - Due date is before today
-   * - It is not cancelled
-   * - It still has money outstanding
-   */
+  /* =========================================================
+     OVERDUE INVOICES
+     ========================================================= */
 
   const overdueInvoices =
     (
@@ -393,11 +372,9 @@ export default async function DashboardPage() {
       )
     );
 
-  /*
-   * -------------------------------------------------------
-   * SCHEDULE PANEL
-   * -------------------------------------------------------
-   */
+  /* =========================================================
+     SCHEDULE PANEL
+     ========================================================= */
 
   const renderSchedulePanel = (
     title: string,
@@ -588,7 +565,9 @@ export default async function DashboardPage() {
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
 
-          {/* HEADER */}
+          {/* =================================================
+              HEADER
+              ================================================= */}
 
           <div className="mb-8">
             <p className="text-sm font-medium text-slate-500">
@@ -626,7 +605,9 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-          {/* TOP CARDS */}
+          {/* =================================================
+              TOP CARDS
+              ================================================= */}
 
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
             <DashboardCard
@@ -656,8 +637,8 @@ export default async function DashboardPage() {
               value={String(
                 activeJobCount
               )}
-              description="Open jobs"
-              href="/jobs"
+              description="Currently in progress"
+              href="/jobs?view=active"
             />
 
             <DashboardCard
@@ -693,7 +674,9 @@ export default async function DashboardPage() {
             />
           </div>
 
-          {/* TODAY / TOMORROW */}
+          {/* =================================================
+              TODAY / TOMORROW
+              ================================================= */}
 
           <div className="mt-8 grid gap-6 xl:grid-cols-2">
             {renderSchedulePanel(
@@ -715,7 +698,9 @@ export default async function DashboardPage() {
             )}
           </div>
 
-          {/* OVERDUE INVOICES */}
+          {/* =================================================
+              OVERDUE INVOICES
+              ================================================= */}
 
           <section className="mt-8 overflow-hidden rounded-2xl bg-white shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-6 py-5">
@@ -902,7 +887,9 @@ export default async function DashboardPage() {
             )}
           </section>
 
-          {/* ACTIVE JOBS */}
+          {/* =================================================
+              ACTIVE JOBS
+              ================================================= */}
 
           <section className="mt-8 overflow-hidden rounded-2xl bg-white shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-6 py-5">
@@ -912,15 +899,15 @@ export default async function DashboardPage() {
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  Jobs currently moving through the DryHome workflow.
+                  Jobs where work is currently in progress.
                 </p>
               </div>
 
               <Link
-                href="/jobs"
+                href="/jobs?view=active"
                 className="text-sm font-semibold text-slate-700 hover:underline"
               >
-                View all jobs →
+                View all active jobs →
               </Link>
             </div>
 
@@ -932,15 +919,8 @@ export default async function DashboardPage() {
                 </p>
 
                 <p className="mt-2 text-sm text-slate-500">
-                  Your active work will appear here.
+                  Jobs will appear here when their status is changed to In Progress.
                 </p>
-
-                <Link
-                  href="/jobs/new"
-                  className="mt-5 inline-flex rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700"
-                >
-                  + Add Job
-                </Link>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1058,19 +1038,15 @@ export default async function DashboardPage() {
                                 ? formatShortDate(
                                     job.start_date
                                   )
-                                : job.survey_date
-                                  ? `Survey ${formatShortDate(
-                                      job.survey_date
-                                    )}`
-                                  : "Not set"}
+                                : "Not set"}
                             </TableCell>
 
                             <TableCell right>
                               <Link
                                 href={`/jobs/${job.id}`}
-                                className="inline-flex rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-700"
+                                className="inline-flex rounded-lg bg-emerald-700 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-800"
                               >
-                                View
+                                Open Job Hub
                               </Link>
                             </TableCell>
                           </tr>
@@ -1276,14 +1252,12 @@ function invoiceRowTotal(invoice: {
 
   const subtotal =
     Number(
-      invoice.subtotal ??
-        0
+      invoice.subtotal ?? 0
     );
 
   const vatAmount =
     Number(
-      invoice.vat_amount ??
-        0
+      invoice.vat_amount ?? 0
     );
 
   return money(
