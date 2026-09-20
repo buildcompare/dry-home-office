@@ -15,11 +15,48 @@ type RouteProps = {
   }>;
 };
 
+type TemplateValues = {
+  client_name: string;
+  job_title: string;
+  quote_number: string;
+  quote_total: string;
+  view_link: string;
+};
+
+const fallbackQuoteTemplate = {
+  subject:
+    "Quotation {{quote_number}} from Dry Home Damp Proofing Solutions",
+
+  body: `Hi {{client_name}},
+
+Thank you for giving us the opportunity to quote for the works at your property.
+
+Please find quotation {{quote_number}} for {{job_title}}.
+
+Quote total: {{quote_total}}
+
+You can view the quotation and accept or decline it using the link below:
+
+{{view_link}}
+
+If you have any questions regarding the quotation or proposed works, simply reply to this email.
+
+Kind regards,
+
+James
+Dry Home Damp Proofing Solutions`,
+};
+
+/* =========================================================
+   SEND QUOTE
+   ========================================================= */
+
 export async function POST(
   _request: Request,
   { params }: RouteProps
 ) {
-  const { id } = await params;
+  const { id } =
+    await params;
 
   const apiKey =
     process.env.RESEND_API_KEY;
@@ -29,6 +66,10 @@ export async function POST(
       /\/$/,
       ""
     );
+
+  /* =========================================================
+     CONFIG
+     ========================================================= */
 
   if (!apiKey) {
     console.error(
@@ -57,6 +98,10 @@ export async function POST(
   const supabase =
     await createClient();
 
+  /* =========================================================
+     QUOTE
+     ========================================================= */
+
   const {
     data: quote,
     error: quoteError,
@@ -78,6 +123,7 @@ export async function POST(
       amount,
       customer_message,
       terms,
+
       clients (
         id,
         display_name,
@@ -91,16 +137,23 @@ export async function POST(
         county,
         postcode
       ),
+
       jobs (
         id,
         job_number,
         title
       )
     `)
-    .eq("id", id)
+    .eq(
+      "id",
+      id
+    )
     .single();
 
-  if (quoteError || !quote) {
+  if (
+    quoteError ||
+    !quote
+  ) {
     console.error(
       "Unable to load quote:",
       quoteError
@@ -113,7 +166,9 @@ export async function POST(
     );
   }
 
-  if (!quote.public_token) {
+  if (
+    !quote.public_token
+  ) {
     console.error(
       "Quote public token missing"
     );
@@ -125,29 +180,55 @@ export async function POST(
     );
   }
 
-  const {
-    data: quoteItems,
-    error: itemsError,
-  } = await supabase
-    .from("quote_items")
-    .select(`
-      id,
-      description,
-      quantity,
-      unit,
-      unit_price,
-      item_type,
-      sort_order
-    `)
-    .eq("quote_id", id)
-    .order("sort_order", {
-      ascending: true,
-    });
+  /* =========================================================
+     QUOTE ITEMS + EMAIL TEMPLATE
+     ========================================================= */
 
-  if (itemsError) {
+  const [
+    itemsResult,
+    templateResult,
+  ] = await Promise.all([
+    supabase
+      .from("quote_items")
+      .select(`
+        id,
+        description,
+        quantity,
+        unit,
+        unit_price,
+        item_type,
+        sort_order
+      `)
+      .eq(
+        "quote_id",
+        id
+      )
+      .order(
+        "sort_order",
+        {
+          ascending: true,
+        }
+      ),
+
+    supabase
+      .from("email_templates")
+      .select(`
+        subject,
+        body
+      `)
+      .eq(
+        "template_key",
+        "quote"
+      )
+      .maybeSingle(),
+  ]);
+
+  if (
+    itemsResult.error
+  ) {
     console.error(
       "Unable to load quote items:",
-      itemsError
+      itemsResult.error
     );
 
     return redirectToQuote(
@@ -157,13 +238,51 @@ export async function POST(
     );
   }
 
+  /*
+   * Email templates deliberately have a fallback.
+   *
+   * If the database template ever disappears or cannot
+   * be read, quote emails can still be sent.
+   */
+
+  if (
+    templateResult.error
+  ) {
+    console.error(
+      "Unable to load quote email template. Using fallback:",
+      templateResult.error
+    );
+  }
+
+  const emailTemplate = {
+    subject:
+      templateResult.data?.subject?.trim() ||
+      fallbackQuoteTemplate.subject,
+
+    body:
+      templateResult.data?.body?.trim() ||
+      fallbackQuoteTemplate.body,
+  };
+
+  const quoteItems =
+    itemsResult.data ??
+    [];
+
+  /* =========================================================
+     CLIENT / JOB
+     ========================================================= */
+
   const client =
-    Array.isArray(quote.clients)
+    Array.isArray(
+      quote.clients
+    )
       ? quote.clients[0]
       : quote.clients;
 
   const job =
-    Array.isArray(quote.jobs)
+    Array.isArray(
+      quote.jobs
+    )
       ? quote.jobs[0]
       : quote.jobs;
 
@@ -188,6 +307,11 @@ export async function POST(
       .join(" ") ||
     "Customer";
 
+  const jobTitle =
+    job?.title ||
+    quote.title ||
+    "your job";
+
   const clientAddressLines = [
     client?.address_line_1,
     client?.address_line_2,
@@ -195,49 +319,79 @@ export async function POST(
     client?.county,
     client?.postcode,
   ].filter(
-    (value): value is string =>
+    (
+      value
+    ): value is string =>
       Boolean(value)
   );
 
+  /* =========================================================
+     QUOTE ITEMS
+     ========================================================= */
+
   const labourItems =
     quoteItems
-      ?.filter(
+      .filter(
         (item) =>
           item.item_type !==
           "Materials"
       )
-      .map((item) => ({
-        id: item.id,
-        description:
-          item.description,
-        quantity: Number(
-          item.quantity
-        ),
-        unit: item.unit,
-        unit_price: Number(
-          item.unit_price
-        ),
-      })) ?? [];
+      .map(
+        (item) => ({
+          id:
+            item.id,
+
+          description:
+            item.description,
+
+          quantity:
+            Number(
+              item.quantity
+            ),
+
+          unit:
+            item.unit,
+
+          unit_price:
+            Number(
+              item.unit_price
+            ),
+        })
+      );
 
   const materialItems =
     quoteItems
-      ?.filter(
+      .filter(
         (item) =>
           item.item_type ===
           "Materials"
       )
-      .map((item) => ({
-        id: item.id,
-        description:
-          item.description,
-        quantity: Number(
-          item.quantity
-        ),
-        unit: item.unit,
-        unit_price: Number(
-          item.unit_price
-        ),
-      })) ?? [];
+      .map(
+        (item) => ({
+          id:
+            item.id,
+
+          description:
+            item.description,
+
+          quantity:
+            Number(
+              item.quantity
+            ),
+
+          unit:
+            item.unit,
+
+          unit_price:
+            Number(
+              item.unit_price
+            ),
+        })
+      );
+
+  /* =========================================================
+     PDF
+     ========================================================= */
 
   const logoDataUri =
     await loadLogoFromDisk();
@@ -287,27 +441,37 @@ export async function POST(
             null,
 
           labourItems,
+
           materialItems,
 
-          subtotal: Number(
-            quote.subtotal ?? 0
-          ),
+          subtotal:
+            Number(
+              quote.subtotal ??
+                0
+            ),
 
-          vatEnabled: Boolean(
-            quote.vat_enabled
-          ),
+          vatEnabled:
+            Boolean(
+              quote.vat_enabled
+            ),
 
-          vatRate: Number(
-            quote.vat_rate ?? 20
-          ),
+          vatRate:
+            Number(
+              quote.vat_rate ??
+                20
+            ),
 
-          vatAmount: Number(
-            quote.vat_amount ?? 0
-          ),
+          vatAmount:
+            Number(
+              quote.vat_amount ??
+                0
+            ),
 
-          total: Number(
-            quote.amount ?? 0
-          ),
+          total:
+            Number(
+              quote.amount ??
+                0
+            ),
 
           customerMessage:
             quote.customer_message,
@@ -321,7 +485,9 @@ export async function POST(
       await renderToBuffer(
         pdfDocument
       );
-  } catch (pdfError) {
+  } catch (
+    pdfError
+  ) {
     console.error(
       "Unable to generate email PDF:",
       pdfError
@@ -334,16 +500,89 @@ export async function POST(
     );
   }
 
-  const filename =
-    `${quote.quote_number}-${quote.title}`
-      .replace(
-        /[^a-zA-Z0-9-_ ]/g,
-        ""
-      )
-      .replace(/\s+/g, "-");
+  /* =========================================================
+     CUSTOMER URL
+     ========================================================= */
 
   const customerQuoteUrl =
     `${appUrl}/q/${quote.public_token}`;
+
+  /* =========================================================
+     TEMPLATE VALUES
+     ========================================================= */
+
+  const templateValues: TemplateValues = {
+    client_name:
+      clientName,
+
+    job_title:
+      jobTitle,
+
+    quote_number:
+      quote.quote_number,
+
+    quote_total:
+      formatCurrency(
+        Number(
+          quote.amount ??
+            0
+        )
+      ),
+
+    view_link:
+      customerQuoteUrl,
+  };
+
+  /* =========================================================
+     SUBJECT
+     ========================================================= */
+
+  const subject =
+    replaceTemplatePlaceholders(
+      emailTemplate.subject,
+      templateValues
+    );
+
+  /* =========================================================
+     TEXT EMAIL
+     ========================================================= */
+
+  const text =
+    replaceTemplatePlaceholders(
+      emailTemplate.body,
+      templateValues
+    );
+
+  /* =========================================================
+     HTML EMAIL
+     ========================================================= */
+
+  const html =
+    buildTemplateEmailHtml({
+      templateBody:
+        emailTemplate.body,
+
+      values:
+        templateValues,
+
+      customerQuoteUrl,
+
+      quoteNumber:
+        quote.quote_number,
+
+      quoteTitle:
+        quote.title,
+
+      quoteTotal:
+        Number(
+          quote.amount ??
+            0
+        ),
+    });
+
+  /* =========================================================
+     EMAIL CONFIG
+     ========================================================= */
 
   const fromAddress =
     process.env.RESEND_FROM_EMAIL?.trim() ||
@@ -353,67 +592,64 @@ export async function POST(
     process.env.DRYHOME_REPLY_TO_EMAIL?.trim();
 
   const resend =
-    new Resend(apiKey);
+    new Resend(
+      apiKey
+    );
 
-  const subject =
-    `Quotation ${quote.quote_number} – ${quote.title}`;
+  const filename =
+    `${quote.quote_number}-${quote.title}`
+      .replace(
+        /[^a-zA-Z0-9-_ ]/g,
+        ""
+      )
+      .replace(
+        /\s+/g,
+        "-"
+      );
 
-  const html =
-    buildEmailHtml({
-      clientName,
-      quoteNumber:
-        quote.quote_number,
-      title:
-        quote.title,
-      total: Number(
-        quote.amount ?? 0
-      ),
-      customerQuoteUrl,
-    });
-
-  const text =
-    buildEmailText({
-      clientName,
-      quoteNumber:
-        quote.quote_number,
-      title:
-        quote.title,
-      total: Number(
-        quote.amount ?? 0
-      ),
-      customerQuoteUrl,
-    });
+  /* =========================================================
+     SEND
+     ========================================================= */
 
   const {
     data: emailData,
     error: sendError,
-  } = await resend.emails.send({
-    from: fromAddress,
-    to: recipient,
-    subject,
-    html,
-    text,
+  } =
+    await resend.emails.send({
+      from:
+        fromAddress,
 
-    ...(replyTo
-      ? {
-          replyTo,
-        }
-      : {}),
+      to:
+        recipient,
 
-    attachments: [
-      {
-        content:
-          pdfBuffer.toString(
-            "base64"
-          ),
+      subject,
 
-        filename:
-          `${filename}.pdf`,
-      },
-    ],
-  });
+      html,
 
-  if (sendError) {
+      text,
+
+      ...(replyTo
+        ? {
+            replyTo,
+          }
+        : {}),
+
+      attachments: [
+        {
+          content:
+            pdfBuffer.toString(
+              "base64"
+            ),
+
+          filename:
+            `${filename}.pdf`,
+        },
+      ],
+    });
+
+  if (
+    sendError
+  ) {
     console.error(
       "Resend email error:",
       sendError
@@ -431,6 +667,10 @@ export async function POST(
     emailData?.id
   );
 
+  /* =========================================================
+     UPDATE QUOTE
+     ========================================================= */
+
   const sentAt =
     new Date().toISOString();
 
@@ -447,12 +687,20 @@ export async function POST(
           ? quote.status
           : "Sent",
 
-      sent_to: recipient,
-      sent_at: sentAt,
-    })
-    .eq("id", id);
+      sent_to:
+        recipient,
 
-  if (updateError) {
+      sent_at:
+        sentAt,
+    })
+    .eq(
+      "id",
+      id
+    );
+
+  if (
+    updateError
+  ) {
     console.error(
       "Email sent but quote status update failed:",
       updateError
@@ -472,6 +720,434 @@ export async function POST(
   );
 }
 
+/* =========================================================
+   TEMPLATE PLACEHOLDERS
+   ========================================================= */
+
+function replaceTemplatePlaceholders(
+  template: string,
+  values: TemplateValues
+) {
+  let result =
+    template;
+
+  for (
+    const [
+      key,
+      value,
+    ] of Object.entries(
+      values
+    )
+  ) {
+    result =
+      result.replaceAll(
+        `{{${key}}}`,
+        value
+      );
+  }
+
+  return result;
+}
+
+/* =========================================================
+   HTML EMAIL
+   ========================================================= */
+
+function buildTemplateEmailHtml({
+  templateBody,
+  values,
+  customerQuoteUrl,
+  quoteNumber,
+  quoteTitle,
+  quoteTotal,
+}: {
+  templateBody: string;
+
+  values:
+    TemplateValues;
+
+  customerQuoteUrl:
+    string;
+
+  quoteNumber:
+    string;
+
+  quoteTitle:
+    string;
+
+  quoteTotal:
+    number;
+}) {
+  const bodyHtml =
+    renderTemplateBodyHtml(
+      templateBody,
+      values,
+      customerQuoteUrl
+    );
+
+  return `
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8">
+
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    >
+  </head>
+
+  <body style="
+    margin:0;
+    padding:0;
+    background:#f1f5f9;
+    font-family:Arial,Helvetica,sans-serif;
+    color:#334155;
+  ">
+    <div style="
+      max-width:640px;
+      margin:0 auto;
+      padding:32px 20px;
+    ">
+
+      <div style="
+        background:#ffffff;
+        border-radius:12px;
+        overflow:hidden;
+        border:1px solid #e2e8f0;
+      ">
+
+        <!-- HEADER -->
+
+        <div style="
+          background:#0f172a;
+          padding:28px 32px;
+        ">
+          <div style="
+            color:#ffffff;
+            font-size:22px;
+            font-weight:700;
+          ">
+            Dry Home Damp Proofing Solutions
+          </div>
+
+          <div style="
+            margin-top:6px;
+            color:#cbd5e1;
+            font-size:13px;
+          ">
+            Professional Damp Proofing &amp; Property Solutions
+          </div>
+        </div>
+
+        <!-- TEMPLATE CONTENT -->
+
+        <div style="
+          padding:32px;
+          font-size:15px;
+          line-height:1.7;
+          color:#334155;
+        ">
+
+          ${bodyHtml}
+
+        </div>
+
+        <!-- QUOTE SUMMARY -->
+
+        <div style="
+          margin:0 32px 32px 32px;
+          padding:20px;
+          background:#f8fafc;
+          border:1px solid #e2e8f0;
+          border-radius:8px;
+        ">
+
+          <div style="
+            font-size:11px;
+            text-transform:uppercase;
+            letter-spacing:0.06em;
+            color:#94a3b8;
+          ">
+            Quotation
+          </div>
+
+          <div style="
+            margin-top:5px;
+            color:#0f172a;
+            font-size:18px;
+            font-weight:700;
+          ">
+            ${escapeHtml(
+              quoteNumber
+            )}
+          </div>
+
+          <div style="
+            margin-top:7px;
+            color:#475569;
+            font-size:14px;
+          ">
+            ${escapeHtml(
+              quoteTitle
+            )}
+          </div>
+
+          <div style="
+            margin-top:18px;
+            font-size:11px;
+            text-transform:uppercase;
+            letter-spacing:0.06em;
+            color:#94a3b8;
+          ">
+            Total
+          </div>
+
+          <div style="
+            margin-top:4px;
+            color:#0f172a;
+            font-size:24px;
+            font-weight:700;
+          ">
+            ${escapeHtml(
+              formatCurrency(
+                quoteTotal
+              )
+            )}
+          </div>
+        </div>
+
+        <!-- FOOTER -->
+
+        <div style="
+          border-top:1px solid #e2e8f0;
+          padding:22px 32px;
+          font-size:12px;
+          line-height:1.6;
+          color:#94a3b8;
+          background:#f8fafc;
+        ">
+          Dry Home Damp Proofing Solutions LTD<br>
+          dryhomedampproofing.co.uk
+        </div>
+
+      </div>
+    </div>
+  </body>
+</html>
+`;
+}
+
+/* =========================================================
+   TEMPLATE BODY → HTML
+   ========================================================= */
+
+function renderTemplateBodyHtml(
+  templateBody: string,
+  values: TemplateValues,
+  customerQuoteUrl: string
+) {
+  /*
+   * We handle {{view_link}} separately because in
+   * the HTML version it becomes a proper button.
+   */
+
+  const viewLinkMarker =
+    "__DRYHOME_VIEW_QUOTE_BUTTON__";
+
+  let body =
+    templateBody.replaceAll(
+      "{{view_link}}",
+      viewLinkMarker
+    );
+
+  const htmlValues: Omit<
+    TemplateValues,
+    "view_link"
+  > = {
+    client_name:
+      values.client_name,
+
+    job_title:
+      values.job_title,
+
+    quote_number:
+      values.quote_number,
+
+    quote_total:
+      values.quote_total,
+  };
+
+  for (
+    const [
+      key,
+      value,
+    ] of Object.entries(
+      htmlValues
+    )
+  ) {
+    body =
+      body.replaceAll(
+        `{{${key}}}`,
+        value
+      );
+  }
+
+  const escaped =
+    escapeHtml(
+      body
+    );
+
+  const paragraphs =
+    escaped
+      .split(
+        /\n\s*\n/
+      )
+      .map(
+        (
+          paragraph
+        ) =>
+          paragraph.trim()
+      )
+      .filter(Boolean);
+
+  return paragraphs
+    .map(
+      (
+        paragraph
+      ) => {
+        if (
+          paragraph ===
+          viewLinkMarker
+        ) {
+          return buildQuoteButton(
+            customerQuoteUrl
+          );
+        }
+
+        /*
+         * If the marker appears inside a paragraph,
+         * split the paragraph around the button.
+         */
+
+        if (
+          paragraph.includes(
+            viewLinkMarker
+          )
+        ) {
+          const parts =
+            paragraph.split(
+              viewLinkMarker
+            );
+
+          return parts
+            .map(
+              (
+                part,
+                index
+              ) => {
+                const blocks: string[] =
+                  [];
+
+                if (
+                  part.trim()
+                ) {
+                  blocks.push(
+                    buildParagraph(
+                      part
+                    )
+                  );
+                }
+
+                if (
+                  index <
+                  parts.length -
+                    1
+                ) {
+                  blocks.push(
+                    buildQuoteButton(
+                      customerQuoteUrl
+                    )
+                  );
+                }
+
+                return blocks.join(
+                  ""
+                );
+              }
+            )
+            .join("");
+        }
+
+        return buildParagraph(
+          paragraph
+        );
+      }
+    )
+    .join("");
+}
+
+/* =========================================================
+   HTML PARAGRAPH
+   ========================================================= */
+
+function buildParagraph(
+  value: string
+) {
+  const withBreaks =
+    value.replace(
+      /\n/g,
+      "<br>"
+    );
+
+  return `
+    <p style="
+      margin:0 0 18px 0;
+      line-height:1.7;
+    ">
+      ${withBreaks}
+    </p>
+  `;
+}
+
+/* =========================================================
+   VIEW QUOTE BUTTON
+   ========================================================= */
+
+function buildQuoteButton(
+  customerQuoteUrl: string
+) {
+  return `
+    <div style="
+      text-align:center;
+      margin:28px 0;
+    ">
+      <a
+        href="${escapeHtml(
+          customerQuoteUrl
+        )}"
+        style="
+          display:inline-block;
+          background:#0f172a;
+          color:#ffffff;
+          text-decoration:none;
+          padding:14px 28px;
+          border-radius:8px;
+          font-size:16px;
+          font-weight:700;
+        "
+      >
+        View Quote
+      </a>
+    </div>
+  `;
+}
+
+/* =========================================================
+   PDF LOGO
+   ========================================================= */
+
 async function loadLogoFromDisk():
   Promise<string | null> {
   try {
@@ -490,7 +1166,9 @@ async function loadLogoFromDisk():
     return `data:image/png;base64,${logoBuffer.toString(
       "base64"
     )}`;
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
       "Unable to load PDF logo:",
       error
@@ -500,235 +1178,9 @@ async function loadLogoFromDisk():
   }
 }
 
-function buildEmailHtml({
-  clientName,
-  quoteNumber,
-  title,
-  total,
-  customerQuoteUrl,
-}: {
-  clientName: string;
-  quoteNumber: string;
-  title: string;
-  total: number;
-  customerQuoteUrl: string;
-}) {
-  return `
-<!DOCTYPE html>
-<html>
-  <body style="
-    margin:0;
-    padding:0;
-    background:#f1f5f9;
-    font-family:Arial,Helvetica,sans-serif;
-    color:#334155;
-  ">
-    <div style="
-      max-width:640px;
-      margin:0 auto;
-      padding:32px 20px;
-    ">
-      <div style="
-        background:#ffffff;
-        border-radius:12px;
-        overflow:hidden;
-      ">
-        <div style="
-          background:#0f172a;
-          padding:28px 32px;
-        ">
-          <div style="
-            color:#ffffff;
-            font-size:22px;
-            font-weight:700;
-          ">
-            Dry Home Damp Proofing Solutions
-          </div>
-
-          <div style="
-            margin-top:6px;
-            color:#cbd5e1;
-            font-size:13px;
-          ">
-            Professional Damp Proofing & Property Solutions
-          </div>
-        </div>
-
-        <div style="
-          padding:32px;
-        ">
-          <p style="
-            margin:0 0 18px 0;
-            font-size:16px;
-          ">
-            Dear ${escapeHtml(
-              clientName
-            )},
-          </p>
-
-          <p style="
-            margin:0 0 18px 0;
-            line-height:1.6;
-          ">
-            Thank you for the opportunity to provide a quotation for the proposed works.
-          </p>
-
-          <p style="
-            margin:0 0 22px 0;
-            line-height:1.6;
-          ">
-            You can view your quotation online using the button below. A PDF copy is also attached for your records.
-          </p>
-
-          <div style="
-            background:#f8fafc;
-            border:1px solid #e2e8f0;
-            border-radius:8px;
-            padding:20px;
-            margin:24px 0;
-          ">
-            <div style="
-              font-size:12px;
-              text-transform:uppercase;
-              color:#94a3b8;
-              margin-bottom:5px;
-            ">
-              Quotation
-            </div>
-
-            <div style="
-              color:#0f172a;
-              font-size:18px;
-              font-weight:700;
-            ">
-              ${escapeHtml(
-                quoteNumber
-              )}
-            </div>
-
-            <div style="
-              margin-top:8px;
-              color:#475569;
-            ">
-              ${escapeHtml(title)}
-            </div>
-
-            <div style="
-              margin-top:18px;
-              font-size:12px;
-              text-transform:uppercase;
-              color:#94a3b8;
-            ">
-              Total
-            </div>
-
-            <div style="
-              margin-top:4px;
-              color:#0f172a;
-              font-size:24px;
-              font-weight:700;
-            ">
-              ${formatCurrency(
-                total
-              )}
-            </div>
-          </div>
-
-          <div style="
-            text-align:center;
-            margin:30px 0;
-          ">
-            <a
-              href="${escapeHtml(
-                customerQuoteUrl
-              )}"
-              style="
-                display:inline-block;
-                background:#0f172a;
-                color:#ffffff;
-                text-decoration:none;
-                padding:14px 28px;
-                border-radius:8px;
-                font-size:16px;
-                font-weight:700;
-              "
-            >
-              View Quote
-            </a>
-          </div>
-
-          <p style="
-            margin:0 0 18px 0;
-            line-height:1.6;
-            font-size:14px;
-            color:#64748b;
-          ">
-            From the online quotation you can review the works and accept or decline the quotation.
-          </p>
-
-          <p style="
-            margin:0 0 18px 0;
-            line-height:1.6;
-          ">
-            If you have any questions, please get in touch and we will be happy to help.
-          </p>
-
-          <p style="
-            margin:28px 0 0 0;
-            line-height:1.6;
-          ">
-            Kind regards,<br>
-            <strong>
-              Dry Home Damp Proofing Solutions LTD
-            </strong><br>
-            dryhomedampproofing.co.uk
-          </p>
-        </div>
-      </div>
-    </div>
-  </body>
-</html>
-`;
-}
-
-function buildEmailText({
-  clientName,
-  quoteNumber,
-  title,
-  total,
-  customerQuoteUrl,
-}: {
-  clientName: string;
-  quoteNumber: string;
-  title: string;
-  total: number;
-  customerQuoteUrl: string;
-}) {
-  return [
-    `Dear ${clientName},`,
-    "",
-    "Thank you for the opportunity to provide a quotation for the proposed works.",
-    "",
-    `Quotation: ${quoteNumber}`,
-    `Title: ${title}`,
-    `Total: ${formatCurrency(
-      total
-    )}`,
-    "",
-    "View your quotation online:",
-    customerQuoteUrl,
-    "",
-    "You can review and accept or decline the quotation using the secure link above.",
-    "",
-    "A PDF copy is also attached for your records.",
-    "",
-    "If you have any questions, please get in touch and we will be happy to help.",
-    "",
-    "Kind regards,",
-    "Dry Home Damp Proofing Solutions LTD",
-    "dryhomedampproofing.co.uk",
-  ].join("\n");
-}
+/* =========================================================
+   CURRENCY
+   ========================================================= */
 
 function formatCurrency(
   value: number
@@ -736,19 +1188,37 @@ function formatCurrency(
   return new Intl.NumberFormat(
     "en-GB",
     {
-      style: "currency",
-      currency: "GBP",
+      style:
+        "currency",
+
+      currency:
+        "GBP",
     }
-  ).format(value);
+  ).format(
+    value
+  );
 }
+
+/* =========================================================
+   ESCAPE HTML
+   ========================================================= */
 
 function escapeHtml(
   value: string
 ) {
   return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
+    .replaceAll(
+      "&",
+      "&amp;"
+    )
+    .replaceAll(
+      "<",
+      "&lt;"
+    )
+    .replaceAll(
+      ">",
+      "&gt;"
+    )
     .replaceAll(
       '"',
       "&quot;"
@@ -758,6 +1228,10 @@ function escapeHtml(
       "&#039;"
     );
 }
+
+/* =========================================================
+   REDIRECT
+   ========================================================= */
 
 function redirectToQuote(
   id: string,
@@ -772,12 +1246,16 @@ function redirectToQuote(
     value
   );
 
-  return new Response(null, {
-    status: 303,
+  return new Response(
+    null,
+    {
+      status:
+        303,
 
-    headers: {
-      Location:
-        `/quotes/${id}?${params.toString()}`,
-    },
-  });
+      headers: {
+        Location:
+          `/quotes/${id}?${params.toString()}`,
+      },
+    }
+  );
 }
