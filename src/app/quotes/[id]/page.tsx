@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+
 import Sidebar from "@/components/Sidebar";
 import EmailQuoteButton from "@/components/EmailQuoteButton";
 import { createClient } from "@/lib/supabase/server";
@@ -22,11 +23,18 @@ export default async function QuotePage({
   params,
   searchParams,
 }: QuotePageProps) {
-  const { id } = await params;
-  const query = await searchParams;
+  const { id } =
+    await params;
+
+  const query =
+    await searchParams;
 
   const supabase =
     await createClient();
+
+  /* =========================================================
+     QUOTE
+     ========================================================= */
 
   const {
     data: quote,
@@ -57,6 +65,7 @@ export default async function QuotePage({
       accepted_at,
       declined_at,
       created_at,
+
       clients (
         id,
         display_name,
@@ -70,6 +79,7 @@ export default async function QuotePage({
         county,
         postcode
       ),
+
       jobs (
         id,
         job_number,
@@ -78,7 +88,10 @@ export default async function QuotePage({
         status
       )
     `)
-    .eq("id", id)
+    .eq(
+      "id",
+      id
+    )
     .single();
 
   if (
@@ -88,9 +101,12 @@ export default async function QuotePage({
     notFound();
   }
 
+  /* =========================================================
+     RELATED DATA
+     ========================================================= */
+
   const [
     itemsResult,
-    contractResult,
     invoicesResult,
   ] = await Promise.all([
     supabase
@@ -114,32 +130,6 @@ export default async function QuotePage({
           ascending: true,
         }
       ),
-
-    supabase
-      .from("contracts")
-      .select(`
-        id,
-        contract_number,
-        title,
-        status,
-        signed_at,
-        created_at
-      `)
-      .eq(
-        "quote_id",
-        id
-      )
-      .neq(
-        "status",
-        "Cancelled"
-      )
-      .order(
-        "created_at",
-        {
-          ascending: false,
-        }
-      )
-      .limit(1),
 
     supabase
       .from("invoices")
@@ -174,16 +164,16 @@ export default async function QuotePage({
   ]);
 
   const items =
-    itemsResult.data ?? [];
+    itemsResult.data ??
+    [];
 
   const linkedInvoices =
-    invoicesResult.data ?? [];
+    invoicesResult.data ??
+    [];
 
-  const linkedContract =
-    contractResult.data &&
-    contractResult.data.length > 0
-      ? contractResult.data[0]
-      : null;
+  /* =========================================================
+     CLIENT / JOB
+     ========================================================= */
 
   const clientData =
     Array.isArray(
@@ -209,6 +199,10 @@ export default async function QuotePage({
       .join(" ") ||
     "Unknown client";
 
+  /* =========================================================
+     ITEMS
+     ========================================================= */
+
   const labourItems =
     items.filter(
       (item) =>
@@ -223,6 +217,10 @@ export default async function QuotePage({
         "Materials"
     );
 
+  /* =========================================================
+     ACCEPTANCE
+     ========================================================= */
+
   const canManuallyAccept =
     quote.status !==
       "Accepted" &&
@@ -233,74 +231,93 @@ export default async function QuotePage({
     quote.status ===
     "Accepted";
 
+  /* =========================================================
+     INVOICE PROGRESS
+     ========================================================= */
+
   const quoteTotal =
-    Number(
-      quote.amount ?? 0
+    money(
+      Number(
+        quote.amount ?? 0
+      )
     );
 
   const invoicedTotal =
-    linkedInvoices.reduce(
-      (
-        total,
-        invoice
-      ) =>
-        total +
-        getInvoiceValue(
+    money(
+      linkedInvoices.reduce(
+        (
+          total,
           invoice
-        ),
-      0
+        ) =>
+          total +
+          getInvoiceValue(
+            invoice
+          ),
+        0
+      )
     );
 
   const paidTotal =
-    linkedInvoices.reduce(
-      (
-        total,
-        invoice
-      ) =>
-        total +
-        Number(
-          invoice.amount_paid ??
-            0
-        ),
-      0
+    money(
+      linkedInvoices.reduce(
+        (
+          total,
+          invoice
+        ) =>
+          total +
+          Number(
+            invoice.amount_paid ??
+              0
+          ),
+        0
+      )
     );
 
   const remainingToInvoice =
-    Math.max(
-      quoteTotal -
-        invoicedTotal,
-      0
+    money(
+      Math.max(
+        quoteTotal -
+          invoicedTotal,
+        0
+      )
     );
 
   const fullyInvoiced =
-    quoteTotal > 0 &&
+    quoteTotal >
+      0 &&
     remainingToInvoice <=
       0.009;
 
-  const fullyPaidQuote =
-    fullyInvoiced &&
-    paidTotal >=
-      quoteTotal - 0.009;
+  const outstanding =
+    money(
+      linkedInvoices.reduce(
+        (
+          total,
+          invoice
+        ) => {
+          const invoiceTotal =
+            getInvoiceValue(
+              invoice
+            );
 
-  /*
-   * Guarantees now belong to the completed quote/job workflow
-   * rather than depending on an invoice having been manually
-   * marked as "Final".
-   *
-   * linkedInvoices are ordered newest first, so once the full
-   * quote has been invoiced and paid we can use the latest
-   * invoice as the source for the existing guarantee creator.
-   */
-  const guaranteeSourceInvoice =
-    fullyPaidQuote &&
-    linkedInvoices.length > 0
-      ? linkedInvoices[0]
-      : null;
+          const amountPaid =
+            Number(
+              invoice.amount_paid ??
+                0
+            );
 
-  const scheduleWorkHref =
-    jobData?.id
-      ? `/schedule/new?job=${jobData.id}&type=Work`
-      : `/schedule/new?client=${quote.client_id}&type=Work`;
+          return (
+            total +
+            Math.max(
+              invoiceTotal -
+                amountPaid,
+              0
+            )
+          );
+        },
+        0
+      )
+    );
 
   return (
     <div className="flex min-h-screen bg-slate-100">
@@ -308,6 +325,11 @@ export default async function QuotePage({
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
+
+          {/* =================================================
+              MESSAGES
+              ================================================= */}
+
           {query.sent ===
             "1" && (
             <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
@@ -320,9 +342,7 @@ export default async function QuotePage({
           {query.accepted ===
             "manual" && (
             <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
-              Quote manually accepted successfully.
-              The quote and linked job have been
-              updated to Accepted.
+              Quote manually accepted successfully. The quote and linked job have been updated to Accepted.
             </div>
           )}
 
@@ -337,6 +357,10 @@ export default async function QuotePage({
               {query.warning}
             </div>
           )}
+
+          {/* =================================================
+              HEADER
+              ================================================= */}
 
           <div className="mb-8">
             <Link
@@ -394,12 +418,14 @@ export default async function QuotePage({
 
             {!clientData?.email && (
               <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                This client does not have an email address
-                saved. Add an email to the client record
-                before emailing the quote.
+                This client does not have an email address saved. Add an email to the client record before emailing the quote.
               </div>
             )}
           </div>
+
+          {/* =================================================
+              MANUAL ACCEPTANCE
+              ================================================= */}
 
           {canManuallyAccept && (
             <section className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-6">
@@ -414,10 +440,7 @@ export default async function QuotePage({
                   </h2>
 
                   <p className="mt-2 text-sm leading-6 text-amber-800">
-                    If approval came by email, phone or purchase
-                    order — for example from a council — record it
-                    here. Once accepted, all of the job actions will
-                    be available from this quote.
+                    If approval came by email, phone or purchase order — for example from a council — record it here. Once accepted, the job can be managed from the Job Hub.
                   </p>
                 </div>
 
@@ -445,6 +468,10 @@ export default async function QuotePage({
             </section>
           )}
 
+          {/* =================================================
+              ACCEPTED QUOTE — NATURAL NEXT STEP
+              ================================================= */}
+
           {quoteAccepted && (
             <section className="mb-8 overflow-hidden rounded-2xl bg-white shadow-sm">
               <div className="border-b border-slate-200 p-6">
@@ -455,14 +482,11 @@ export default async function QuotePage({
                     </p>
 
                     <h2 className="mt-2 text-2xl font-bold text-slate-900">
-                      What would you like to do next?
+                      Ready to Progress
                     </h2>
 
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                      Everything for this accepted quote starts here.
-                      A contract is optional, so you can invoice,
-                      schedule the work or create a contract in
-                      whichever order suits the job.
+                      This quote has been accepted. You can create an invoice directly from here, or open the Job Hub to manage scheduling, contracts, payments and guarantees.
                     </p>
                   </div>
 
@@ -474,63 +498,34 @@ export default async function QuotePage({
                 </div>
 
                 <div className="mt-6 flex flex-wrap gap-3">
+                  {jobData?.id && (
+                    <Link
+                      href={`/jobs/${jobData.id}`}
+                      className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700"
+                    >
+                      Open Job Hub
+                    </Link>
+                  )}
+
                   {!fullyInvoiced ? (
                     <Link
                       href={`/invoices/new?quote=${quote.id}`}
                       className="rounded-lg bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800"
                     >
-                      Create Invoice
+                      {linkedInvoices.length >
+                      0
+                        ? "Create Another Invoice"
+                        : "Create Invoice"}
                     </Link>
                   ) : (
                     <span className="rounded-lg bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-800">
                       Fully Invoiced
                     </span>
                   )}
-
-                  {linkedContract ? (
-                    <Link
-                      href={`/contracts/${linkedContract.id}`}
-                      className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      View Contract
-                    </Link>
-                  ) : (
-                    <Link
-                      href={`/contracts/new?quote=${quote.id}`}
-                      className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      Create Contract
-                    </Link>
-                  )}
-
-                  <Link
-                    href={
-                      scheduleWorkHref
-                    }
-                    className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    Schedule Work
-                  </Link>
-
-                  {guaranteeSourceInvoice && (
-                    <Link
-                      href={`/guarantees/new?invoice=${guaranteeSourceInvoice.id}`}
-                      className="rounded-lg bg-blue-700 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-800"
-                    >
-                      Generate Guarantee
-                    </Link>
-                  )}
-
-                  {jobData?.id && (
-                    <Link
-                      href={`/jobs/${jobData.id}`}
-                      className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      View Job
-                    </Link>
-                  )}
                 </div>
               </div>
+
+              {/* FINANCIAL PROGRESS */}
 
               <div className="grid gap-px bg-slate-200 md:grid-cols-4">
                 <WorkflowStat
@@ -559,9 +554,14 @@ export default async function QuotePage({
                   value={formatCurrency(
                     remainingToInvoice
                   )}
-                  strong
+                  strong={
+                    remainingToInvoice >
+                    0.009
+                  }
                 />
               </div>
+
+              {/* INVOICE HISTORY */}
 
               <div className="border-t border-slate-200 p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -571,7 +571,7 @@ export default async function QuotePage({
                     </h3>
 
                     <p className="mt-1 text-sm text-slate-500">
-                      All invoices raised from this quote.
+                      Invoices raised from this quotation.
                     </p>
                   </div>
 
@@ -614,6 +614,10 @@ export default async function QuotePage({
                             Paid
                           </Heading>
 
+                          <Heading right>
+                            Outstanding
+                          </Heading>
+
                           <Heading>
                             Status
                           </Heading>
@@ -626,61 +630,99 @@ export default async function QuotePage({
 
                       <tbody className="divide-y divide-slate-100">
                         {linkedInvoices.map(
-                          (
-                            invoice
-                          ) => (
-                            <tr
-                              key={
-                                invoice.id
-                              }
-                            >
-                              <td className="px-6 py-4 text-sm font-semibold text-slate-900">
-                                {invoice.invoice_number}
-                              </td>
+                          (invoice) => {
+                            const invoiceTotal =
+                              getInvoiceValue(
+                                invoice
+                              );
 
-                              <td className="px-6 py-4 text-sm text-slate-600">
-                                {invoice.invoice_type ||
-                                  "Invoice"}
-                              </td>
+                            const amountPaid =
+                              Number(
+                                invoice.amount_paid ??
+                                  0
+                              );
 
-                              <td className="px-6 py-4 text-sm text-slate-600">
-                                {formatDate(
-                                  invoice.invoice_date
-                                )}
-                              </td>
+                            const invoiceOutstanding =
+                              money(
+                                Math.max(
+                                  invoiceTotal -
+                                    amountPaid,
+                                  0
+                                )
+                              );
 
-                              <td className="px-6 py-4 text-right text-sm font-semibold text-slate-900">
-                                {formatCurrency(
-                                  getInvoiceValue(
-                                    invoice
-                                  )
-                                )}
-                              </td>
+                            const derivedStatus =
+                              invoiceTotal >
+                                    0 &&
+                                  amountPaid >=
+                                    invoiceTotal -
+                                      0.009
+                                ? "Paid"
+                                : amountPaid >
+                                    0
+                                  ? "Part Paid"
+                                  : invoice.status;
 
-                              <td className="px-6 py-4 text-right text-sm text-slate-600">
-                                {formatCurrency(
-                                  invoice.amount_paid
-                                )}
-                              </td>
-
-                              <td className="px-6 py-4">
-                                <InvoiceStatusBadge
-                                  status={
-                                    invoice.status
+                            return (
+                              <tr
+                                key={
+                                  invoice.id
+                                }
+                              >
+                                <td className="px-6 py-4 text-sm font-semibold text-slate-900">
+                                  {
+                                    invoice.invoice_number
                                   }
-                                />
-                              </td>
+                                </td>
 
-                              <td className="px-6 py-4 text-right">
-                                <Link
-                                  href={`/invoices/${invoice.id}`}
-                                  className="text-sm font-semibold text-slate-700 hover:underline"
-                                >
-                                  View →
-                                </Link>
-                              </td>
-                            </tr>
-                          )
+                                <td className="px-6 py-4 text-sm text-slate-600">
+                                  {invoice.invoice_type ||
+                                    "Invoice"}
+                                </td>
+
+                                <td className="px-6 py-4 text-sm text-slate-600">
+                                  {formatDate(
+                                    invoice.invoice_date
+                                  )}
+                                </td>
+
+                                <td className="px-6 py-4 text-right text-sm font-semibold text-slate-900">
+                                  {formatCurrency(
+                                    invoiceTotal
+                                  )}
+                                </td>
+
+                                <td className="px-6 py-4 text-right text-sm text-slate-600">
+                                  {formatCurrency(
+                                    amountPaid
+                                  )}
+                                </td>
+
+                                <td className="px-6 py-4 text-right text-sm font-semibold text-slate-700">
+                                  {formatCurrency(
+                                    invoiceOutstanding
+                                  )}
+                                </td>
+
+                                <td className="px-6 py-4">
+                                  <InvoiceStatusBadge
+                                    status={
+                                      derivedStatus
+                                    }
+                                  />
+                                </td>
+
+                                <td className="px-6 py-4 text-right">
+                                  <Link
+                                    href={`/invoices/${invoice.id}`}
+                                    className="text-sm font-semibold text-slate-700 hover:underline"
+                                  >
+                                    View →
+                                  </Link>
+                                </td>
+                              </tr>
+                            );
+                          }
                         )}
                       </tbody>
                     </table>
@@ -688,72 +730,34 @@ export default async function QuotePage({
                 )}
               </div>
 
-              {guaranteeSourceInvoice && (
-                <div className="border-t border-emerald-200 bg-emerald-50 p-6">
-                  <div className="flex flex-wrap items-center justify-between gap-4">
+              {outstanding >
+                0.009 && (
+                <div className="border-t border-slate-200 bg-slate-50 px-6 py-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                        Job Financially Complete
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Outstanding Across Invoices
                       </p>
 
-                      <h3 className="mt-1 text-lg font-bold text-emerald-950">
-                        Guarantee Available
-                      </h3>
-
-                      <p className="mt-1 max-w-2xl text-sm leading-6 text-emerald-800">
-                        The full quote has been invoiced and all invoice balances have been paid.
-                        You can now generate the customer guarantee.
+                      <p className="mt-1 text-sm text-slate-600">
+                        Amount still awaiting payment.
                       </p>
                     </div>
 
-                    <Link
-                      href={`/guarantees/new?invoice=${guaranteeSourceInvoice.id}`}
-                      className="rounded-lg bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800"
-                    >
-                      Generate Guarantee
-                    </Link>
+                    <p className="text-xl font-bold text-slate-900">
+                      {formatCurrency(
+                        outstanding
+                      )}
+                    </p>
                   </div>
                 </div>
               )}
-
-              <div className="border-t border-slate-200 bg-slate-50 p-6">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                      Contract
-                    </p>
-
-                    {linkedContract ? (
-                      <p className="mt-1 text-sm font-semibold text-slate-800">
-                        {linkedContract.contract_number} ·{" "}
-                        {linkedContract.status}
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-sm text-slate-600">
-                        No contract created — this is optional.
-                      </p>
-                    )}
-                  </div>
-
-                  {linkedContract ? (
-                    <Link
-                      href={`/contracts/${linkedContract.id}`}
-                      className="text-sm font-semibold text-slate-700 hover:underline"
-                    >
-                      View Contract →
-                    </Link>
-                  ) : (
-                    <Link
-                      href={`/contracts/new?quote=${quote.id}`}
-                      className="text-sm font-semibold text-slate-700 hover:underline"
-                    >
-                      Create Contract →
-                    </Link>
-                  )}
-                </div>
-              </div>
             </section>
           )}
+
+          {/* =================================================
+              QUOTE SUMMARY
+              ================================================= */}
 
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             <SummaryCard
@@ -785,6 +789,10 @@ export default async function QuotePage({
             />
           </div>
 
+          {/* =================================================
+              TITLE / SCOPE
+              ================================================= */}
+
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
               Title
@@ -805,6 +813,10 @@ export default async function QuotePage({
               </p>
             </div>
           </section>
+
+          {/* =================================================
+              CLIENT / JOB
+              ================================================= */}
 
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
             <section className="rounded-2xl bg-white p-6 shadow-sm">
@@ -858,7 +870,7 @@ export default async function QuotePage({
                     href={`/jobs/${jobData.id}`}
                     className="text-sm font-semibold text-slate-700 hover:underline"
                   >
-                    View Job →
+                    Open Job Hub →
                   </Link>
                 )}
               </div>
@@ -901,6 +913,10 @@ export default async function QuotePage({
             </section>
           </div>
 
+          {/* =================================================
+              LABOUR
+              ================================================= */}
+
           <QuoteSection
             title="Labour"
             description="Labour included within this quotation."
@@ -909,6 +925,10 @@ export default async function QuotePage({
             }
           />
 
+          {/* =================================================
+              MATERIALS
+              ================================================= */}
+
           <QuoteSection
             title="Materials"
             description="Materials included within this quotation."
@@ -916,6 +936,10 @@ export default async function QuotePage({
               materialItems
             }
           />
+
+          {/* =================================================
+              TOTALS
+              ================================================= */}
 
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <div className="ml-auto max-w-md">
@@ -957,6 +981,10 @@ export default async function QuotePage({
             </div>
           </section>
 
+          {/* =================================================
+              CUSTOMER MESSAGE / TERMS
+              ================================================= */}
+
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">
@@ -981,6 +1009,10 @@ export default async function QuotePage({
             </section>
           </div>
 
+          {/* =================================================
+              INTERNAL NOTES
+              ================================================= */}
+
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">
               Internal Notes
@@ -992,10 +1024,13 @@ export default async function QuotePage({
             </p>
 
             <p className="mt-4 text-xs text-slate-400">
-              Internal notes are not included on the
-              customer PDF or email.
+              Internal notes are not included on the customer PDF or email.
             </p>
           </section>
+
+          {/* =================================================
+              QUOTE ACTIVITY
+              ================================================= */}
 
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">
@@ -1047,6 +1082,10 @@ export default async function QuotePage({
   );
 }
 
+/* =========================================================
+   QUOTE SECTION
+   ========================================================= */
+
 function QuoteSection({
   title,
   description,
@@ -1054,13 +1093,19 @@ function QuoteSection({
 }: {
   title: string;
   description: string;
+
   items: {
     id: string;
     description: string;
+
     quantity:
       | number
       | string;
-    unit: string | null;
+
+    unit:
+      | string
+      | null;
+
     unit_price:
       | number
       | string;
@@ -1175,6 +1220,10 @@ function QuoteSection({
   );
 }
 
+/* =========================================================
+   TOTAL ROW
+   ========================================================= */
+
 function TotalRow({
   label,
   value,
@@ -1194,6 +1243,10 @@ function TotalRow({
     </div>
   );
 }
+
+/* =========================================================
+   WORKFLOW STAT
+   ========================================================= */
 
 function WorkflowStat({
   title,
@@ -1235,6 +1288,10 @@ function WorkflowStat({
   );
 }
 
+/* =========================================================
+   SUMMARY CARD
+   ========================================================= */
+
 function SummaryCard({
   title,
   value,
@@ -1254,6 +1311,10 @@ function SummaryCard({
     </div>
   );
 }
+
+/* =========================================================
+   DETAIL ROW
+   ========================================================= */
 
 function DetailRow({
   label,
@@ -1276,26 +1337,36 @@ function DetailRow({
   );
 }
 
+/* =========================================================
+   QUOTE STATUS
+   ========================================================= */
+
 function StatusBadge({
   status,
 }: {
   status: string;
 }) {
   const classes =
-    status === "Accepted"
+    status ===
+    "Accepted"
       ? "bg-emerald-100 text-emerald-800"
+
       : status ===
           "Declined"
         ? "bg-red-100 text-red-800"
+
         : status ===
             "Sent"
           ? "bg-blue-100 text-blue-800"
+
           : status ===
               "Viewed"
             ? "bg-violet-100 text-violet-800"
+
             : status ===
                 "Expired"
               ? "bg-amber-100 text-amber-800"
+
               : "bg-slate-100 text-slate-700";
 
   return (
@@ -1307,22 +1378,36 @@ function StatusBadge({
   );
 }
 
+/* =========================================================
+   INVOICE STATUS
+   ========================================================= */
+
 function InvoiceStatusBadge({
   status,
 }: {
   status: string;
 }) {
   const classes =
-    status === "Paid"
+    status ===
+    "Paid"
       ? "bg-emerald-100 text-emerald-800"
-      : status === "Part Paid"
+
+      : status ===
+          "Part Paid"
         ? "bg-amber-100 text-amber-800"
-        : status === "Sent"
+
+        : status ===
+            "Sent"
           ? "bg-blue-100 text-blue-800"
-          : status === "Viewed"
+
+          : status ===
+              "Viewed"
             ? "bg-violet-100 text-violet-800"
-            : status === "Overdue"
+
+            : status ===
+                "Overdue"
               ? "bg-red-100 text-red-800"
+
               : "bg-slate-100 text-slate-700";
 
   return (
@@ -1333,6 +1418,10 @@ function InvoiceStatusBadge({
     </span>
   );
 }
+
+/* =========================================================
+   TABLE HEADING
+   ========================================================= */
 
 function Heading({
   children,
@@ -1354,10 +1443,25 @@ function Heading({
   );
 }
 
+/* =========================================================
+   INVOICE VALUE
+   ========================================================= */
+
 function getInvoiceValue(invoice: {
-  amount?: number | string | null;
-  subtotal?: number | string | null;
-  vat_amount?: number | string | null;
+  amount?:
+    | number
+    | string
+    | null;
+
+  subtotal?:
+    | number
+    | string
+    | null;
+
+  vat_amount?:
+    | number
+    | string
+    | null;
 }) {
   const amount =
     Number(
@@ -1365,10 +1469,15 @@ function getInvoiceValue(invoice: {
     );
 
   if (
-    Number.isFinite(amount) &&
-    amount > 0
+    Number.isFinite(
+      amount
+    ) &&
+    amount >
+      0
   ) {
-    return amount;
+    return money(
+      amount
+    );
   }
 
   const subtotal =
@@ -1381,15 +1490,43 @@ function getInvoiceValue(invoice: {
       invoice.vat_amount ?? 0
     );
 
-  return (
-    (Number.isFinite(subtotal)
-      ? subtotal
-      : 0) +
-    (Number.isFinite(vatAmount)
-      ? vatAmount
-      : 0)
+  return money(
+    (
+      Number.isFinite(
+        subtotal
+      )
+        ? subtotal
+        : 0
+    ) +
+      (
+        Number.isFinite(
+          vatAmount
+        )
+          ? vatAmount
+          : 0
+      )
   );
 }
+
+/* =========================================================
+   MONEY
+   ========================================================= */
+
+function money(
+  value: number
+) {
+  return Math.round(
+    (
+      value +
+      Number.EPSILON
+    ) *
+      100
+  ) / 100;
+}
+
+/* =========================================================
+   CURRENCY
+   ========================================================= */
 
 function formatCurrency(
   value:
@@ -1400,15 +1537,24 @@ function formatCurrency(
   return new Intl.NumberFormat(
     "en-GB",
     {
-      style: "currency",
-      currency: "GBP",
+      style:
+        "currency",
+
+      currency:
+        "GBP",
     }
   ).format(
-    Number(
-      value ?? 0
+    money(
+      Number(
+        value ?? 0
+      )
     )
   );
 }
+
+/* =========================================================
+   QUANTITY
+   ========================================================= */
 
 function formatQuantity(
   value: number
@@ -1416,12 +1562,17 @@ function formatQuantity(
   return new Intl.NumberFormat(
     "en-GB",
     {
-      maximumFractionDigits: 2,
+      maximumFractionDigits:
+        2,
     }
   ).format(
     value
   );
 }
+
+/* =========================================================
+   VAT RATE
+   ========================================================= */
 
 function formatVatRate(
   value:
@@ -1434,13 +1585,20 @@ function formatVatRate(
   ).toLocaleString(
     "en-GB",
     {
-      maximumFractionDigits: 2,
+      maximumFractionDigits:
+        2,
     }
   );
 }
 
+/* =========================================================
+   DATE
+   ========================================================= */
+
 function formatDate(
-  value: string | null
+  value:
+    | string
+    | null
 ) {
   if (!value) {
     return "Not set";
@@ -1451,16 +1609,27 @@ function formatDate(
     month,
     day,
   ] = value
-    .slice(0, 10)
+    .slice(
+      0,
+      10
+    )
     .split("-")
     .map(Number);
 
   return new Intl.DateTimeFormat(
     "en-GB",
     {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
+      day:
+        "2-digit",
+
+      month:
+        "short",
+
+      year:
+        "numeric",
+
+      timeZone:
+        "UTC",
     }
   ).format(
     new Date(
@@ -1473,8 +1642,14 @@ function formatDate(
   );
 }
 
+/* =========================================================
+   DATE + TIME
+   ========================================================= */
+
 function formatDateTime(
-  value: string | null
+  value:
+    | string
+    | null
 ) {
   if (!value) {
     return "—";
@@ -1485,13 +1660,25 @@ function formatDateTime(
     {
       timeZone:
         "Europe/London",
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
+
+      day:
+        "2-digit",
+
+      month:
+        "short",
+
+      year:
+        "numeric",
+
+      hour:
+        "2-digit",
+
+      minute:
+        "2-digit",
     }
   ).format(
-    new Date(value)
+    new Date(
+      value
+    )
   );
 }
