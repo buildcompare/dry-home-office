@@ -3,7 +3,19 @@ import { Resend } from "resend";
 
 import { createClient } from "@/lib/supabase/server";
 
-export const runtime = "nodejs";
+export const runtime =
+  "nodejs";
+
+const MAX_ATTACHMENTS = 5;
+
+const MAX_TOTAL_ATTACHMENT_SIZE =
+  4 * 1024 * 1024;
+
+type RouteProps = {
+  params: Promise<{
+    id: string;
+  }>;
+};
 
 type TemplateValues = {
   client_name: string;
@@ -39,122 +51,15 @@ Dry Home Damp Proofing Solutions`,
 };
 
 /* =========================================================
-   SEND INVOICE
+   LOAD COMPOSER
    ========================================================= */
 
-export async function POST(
-  _request: NextRequest,
-  context: {
-    params: Promise<{
-      id: string;
-    }>;
-  }
+export async function GET(
+  _request: Request,
+  { params }: RouteProps
 ) {
   const { id } =
-    await context.params;
-
-  const supabase =
-    await createClient();
-
-  /* =========================================================
-     INVOICE
-     ========================================================= */
-
-  const {
-    data: invoice,
-    error,
-  } = await supabase
-    .from("invoices")
-    .select(`
-      id,
-      invoice_number,
-      title,
-      invoice_type,
-      status,
-      amount,
-      subtotal,
-      vat_amount,
-      amount_paid,
-      due_date,
-      public_token,
-      job_id,
-
-      clients (
-        id,
-        display_name,
-        first_name,
-        last_name,
-        email
-      )
-    `)
-    .eq(
-      "id",
-      id
-    )
-    .single();
-
-  if (
-    error ||
-    !invoice
-  ) {
-    console.error(
-      "Unable to load invoice:",
-      error
-    );
-
-    return redirectToInvoice(
-      id,
-      "error",
-      "Invoice could not be found."
-    );
-  }
-
-  /* =========================================================
-     CLIENT
-     ========================================================= */
-
-  const client =
-    Array.isArray(
-      invoice.clients
-    )
-      ? invoice.clients[0]
-      : invoice.clients;
-
-  const recipient =
-    client?.email?.trim();
-
-  if (!recipient) {
-    return redirectToInvoice(
-      id,
-      "error",
-      "The client does not have an email address."
-    );
-  }
-
-  if (
-    !invoice.public_token
-  ) {
-    return redirectToInvoice(
-      id,
-      "error",
-      "This invoice does not have a secure customer link."
-    );
-  }
-
-  /* =========================================================
-     EMAIL CONFIG
-     ========================================================= */
-
-  const resendApiKey =
-    process.env.RESEND_API_KEY;
-
-  if (!resendApiKey) {
-    return redirectToInvoice(
-      id,
-      "error",
-      "RESEND_API_KEY is missing."
-    );
-  }
+    await params;
 
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL?.replace(
@@ -163,95 +68,84 @@ export async function POST(
     );
 
   if (!appUrl) {
-    return redirectToInvoice(
-      id,
-      "error",
-      "NEXT_PUBLIC_APP_URL is missing."
+    return Response.json(
+      {
+        error:
+          "NEXT_PUBLIC_APP_URL is missing.",
+      },
+      {
+        status: 500,
+      }
     );
   }
 
-  /* =========================================================
-     EMAIL TEMPLATE + JOB
-     ========================================================= */
+  const supabase =
+    await createClient();
 
-  const [
-    templateResult,
-    jobResult,
-  ] = await Promise.all([
-    supabase
-      .from("email_templates")
-      .select(`
-        subject,
-        body
-      `)
-      .eq(
-        "template_key",
-        "invoice"
-      )
-      .maybeSingle(),
-
-    invoice.job_id
-      ? supabase
-          .from("jobs")
-          .select(`
-            id,
-            title
-          `)
-          .eq(
-            "id",
-            invoice.job_id
-          )
-          .maybeSingle()
-      : Promise.resolve({
-          data: null,
-          error: null,
-        }),
-  ]);
+  const context =
+    await loadInvoiceContext(
+      supabase,
+      id
+    );
 
   if (
-    templateResult.error
+    !context.success
   ) {
-    console.error(
-      "Unable to load invoice email template. Using fallback:",
-      templateResult.error
+    return Response.json(
+      {
+        error:
+          context.error,
+      },
+      {
+        status:
+          context.status,
+      }
+    );
+  }
+
+  const {
+    invoice,
+    client,
+    job,
+    template,
+  } = context;
+
+  const recipient =
+    client?.email?.trim();
+
+  if (!recipient) {
+    return Response.json(
+      {
+        error:
+          "The client does not have an email address.",
+      },
+      {
+        status: 400,
+      }
     );
   }
 
   if (
-    jobResult.error
+    !invoice.public_token
   ) {
-    console.error(
-      "Unable to load invoice job:",
-      jobResult.error
+    return Response.json(
+      {
+        error:
+          "This invoice does not have a secure customer link.",
+      },
+      {
+        status: 400,
+      }
     );
   }
-
-  const emailTemplate = {
-    subject:
-      templateResult.data?.subject?.trim() ||
-      fallbackInvoiceTemplate.subject,
-
-    body:
-      templateResult.data?.body?.trim() ||
-      fallbackInvoiceTemplate.body,
-  };
-
-  /* =========================================================
-     VALUES
-     ========================================================= */
 
   const clientName =
-    client?.display_name ||
-    [
-      client?.first_name,
-      client?.last_name,
-    ]
-      .filter(Boolean)
-      .join(" ") ||
-    "Customer";
+    getClientName(
+      client
+    );
 
   const jobTitle =
-    jobResult.data?.title ||
+    job?.title ||
     invoice.title ||
     invoice.invoice_type ||
     "your works";
@@ -276,17 +170,10 @@ export async function POST(
       )
     );
 
-  const dueDate =
-    invoice.due_date
-      ? formatDate(
-          invoice.due_date
-        )
-      : "Not set";
-
   const customerUrl =
     `${appUrl}/i/${invoice.public_token}`;
 
-  const templateValues: TemplateValues = {
+  const values: TemplateValues = {
     client_name:
       clientName,
 
@@ -310,47 +197,389 @@ export async function POST(
       customerUrl,
   };
 
-  /* =========================================================
-     SUBJECT
-     ========================================================= */
-
   const subject =
     replaceTemplatePlaceholders(
-      emailTemplate.subject,
-      templateValues
+      template.subject,
+      values
     );
 
-  /* =========================================================
-     TEXT EMAIL
-     ========================================================= */
+  const body =
+    cleanComposerBody(
+      replaceTemplatePlaceholders(
+        template.body,
+        {
+          ...values,
+          view_link: "",
+        }
+      )
+    );
 
-  const text =
+  return Response.json({
+    recipient,
+    subject,
+    body,
+  });
+}
+
+/* =========================================================
+   SEND
+   ========================================================= */
+
+export async function POST(
+  request: NextRequest,
+  { params }: RouteProps
+) {
+  const { id } =
+    await params;
+
+  const wantsJson =
+    request.headers.get(
+      "x-dryhome-composer"
+    ) === "1";
+
+  const resendApiKey =
+    process.env.RESEND_API_KEY;
+
+  if (!resendApiKey) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "RESEND_API_KEY is missing."
+    );
+  }
+
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(
+      /\/$/,
+      ""
+    );
+
+  if (!appUrl) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "NEXT_PUBLIC_APP_URL is missing."
+    );
+  }
+
+  const supabase =
+    await createClient();
+
+  const context =
+    await loadInvoiceContext(
+      supabase,
+      id
+    );
+
+  if (
+    !context.success
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      context.error,
+      context.status
+    );
+  }
+
+  const {
+    invoice,
+    client,
+    job,
+    template,
+  } = context;
+
+  if (
+    !invoice.public_token
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "This invoice does not have a secure customer link.",
+      400
+    );
+  }
+
+  let formData:
+    FormData | null =
+    null;
+
+  try {
+    formData =
+      await request.formData();
+  } catch {
+    formData =
+      null;
+  }
+
+  const defaultRecipient =
+    client?.email?.trim() ||
+    "";
+
+  const recipient =
+    String(
+      formData?.get(
+        "recipient"
+      ) ??
+        defaultRecipient
+    ).trim();
+
+  if (
+    !recipient ||
+    !isValidEmail(
+      recipient
+    )
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "Please enter a valid recipient email address.",
+      400
+    );
+  }
+
+  const clientName =
+    getClientName(
+      client
+    );
+
+  const jobTitle =
+    job?.title ||
+    invoice.title ||
+    invoice.invoice_type ||
+    "your works";
+
+  const invoiceTotal =
+    getInvoiceValue(
+      invoice
+    );
+
+  const amountPaid =
+    Number(
+      invoice.amount_paid ??
+        0
+    );
+
+  const amountOutstanding =
+    money(
+      Math.max(
+        invoiceTotal -
+          amountPaid,
+        0
+      )
+    );
+
+  const customerUrl =
+    `${appUrl}/i/${invoice.public_token}`;
+
+  const values: TemplateValues = {
+    client_name:
+      clientName,
+
+    job_title:
+      jobTitle,
+
+    invoice_number:
+      invoice.invoice_number,
+
+    invoice_total:
+      formatCurrency(
+        invoiceTotal
+      ),
+
+    amount_outstanding:
+      formatCurrency(
+        amountOutstanding
+      ),
+
+    view_link:
+      customerUrl,
+  };
+
+  const defaultSubject =
     replaceTemplatePlaceholders(
-      emailTemplate.body,
-      templateValues
+      template.subject,
+      values
     );
 
+  const defaultBody =
+    cleanComposerBody(
+      replaceTemplatePlaceholders(
+        template.body,
+        {
+          ...values,
+          view_link: "",
+        }
+      )
+    );
+
+  const subject =
+    String(
+      formData?.get(
+        "subject"
+      ) ??
+        defaultSubject
+    ).trim();
+
+  const body =
+    String(
+      formData?.get(
+        "body"
+      ) ??
+        defaultBody
+    ).trim();
+
+  if (!subject) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "Please enter an email subject.",
+      400
+    );
+  }
+
+  if (!body) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "Please enter an email message.",
+      400
+    );
+  }
+
+  if (
+    subject.length >
+    250
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "The email subject is too long.",
+      400
+    );
+  }
+
+  if (
+    body.length >
+    20000
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "The email message is too long.",
+      400
+    );
+  }
+
   /* =========================================================
-     HTML EMAIL
+     ATTACHMENTS
      ========================================================= */
+
+  const extraFiles =
+    formData
+      ? formData
+          .getAll(
+            "attachments"
+          )
+          .filter(
+            (
+              value
+            ): value is File =>
+              value instanceof
+                File &&
+              value.size >
+                0
+          )
+      : [];
+
+  if (
+    extraFiles.length >
+    MAX_ATTACHMENTS
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      `You can add up to ${MAX_ATTACHMENTS} extra attachments.`,
+      400
+    );
+  }
+
+  const totalExtraSize =
+    extraFiles.reduce(
+      (
+        total,
+        file
+      ) =>
+        total +
+        file.size,
+      0
+    );
+
+  if (
+    totalExtraSize >
+    MAX_TOTAL_ATTACHMENT_SIZE
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "Extra attachments must be under 4 MB in total.",
+      400
+    );
+  }
+
+  const extraAttachments: {
+    filename: string;
+    content: string;
+  }[] = [];
+
+  for (
+    const file of
+      extraFiles
+  ) {
+    const fileBuffer =
+      Buffer.from(
+        await file.arrayBuffer()
+      );
+
+    extraAttachments.push({
+      filename:
+        sanitiseAttachmentFilename(
+          file.name
+        ),
+
+      content:
+        fileBuffer.toString(
+          "base64"
+        ),
+    });
+  }
+
+  /* =========================================================
+     DISPLAY DATA
+     ========================================================= */
+
+  const dueDate =
+    invoice.due_date
+      ? formatDate(
+          invoice.due_date
+        )
+      : "Not set";
+
+  const invoiceTitle =
+    invoice.title ||
+    invoice.invoice_type ||
+    "Invoice";
 
   const html =
-    buildTemplateEmailHtml({
-      templateBody:
-        emailTemplate.body,
-
-      values:
-        templateValues,
+    buildComposerEmailHtml({
+      body,
 
       customerUrl,
 
       invoiceNumber:
         invoice.invoice_number,
 
-      invoiceTitle:
-        invoice.title ||
-        invoice.invoice_type ||
-        "Invoice",
+      invoiceTitle,
 
       invoiceTotal,
 
@@ -358,6 +587,16 @@ export async function POST(
 
       dueDate,
     });
+
+  const text = [
+    body,
+
+    "",
+
+    "View your invoice securely online:",
+
+    customerUrl,
+  ].join("\n");
 
   /* =========================================================
      RESEND
@@ -394,6 +633,14 @@ export async function POST(
       text,
 
       html,
+
+      ...(extraAttachments.length >
+      0
+        ? {
+            attachments:
+              extraAttachments,
+          }
+        : {}),
     });
 
   if (
@@ -404,15 +651,15 @@ export async function POST(
       result.error
     );
 
-    return redirectToInvoice(
+    return sendErrorResponse(
+      wantsJson,
       id,
-      "error",
       "The invoice email could not be sent."
     );
   }
 
   /* =========================================================
-     UPDATE INVOICE STATUS
+     UPDATE STATUS
      ========================================================= */
 
   const sentAt =
@@ -429,11 +676,6 @@ export async function POST(
     sent_at:
       sentAt,
   };
-
-  /*
-   * Don't overwrite the financial status if the
-   * invoice has already been part-paid or paid.
-   */
 
   if (
     invoice.status !==
@@ -465,11 +707,31 @@ export async function POST(
       updateError
     );
 
+    if (
+      wantsJson
+    ) {
+      return Response.json({
+        success:
+          true,
+
+        warning:
+          "The email was sent, but the invoice status could not be updated.",
+      });
+    }
+
     return redirectToInvoice(
       id,
       "warning",
       "The email was sent, but the invoice status could not be updated."
     );
+  }
+
+  if (
+    wantsJson
+  ) {
+    return Response.json({
+      success: true,
+    });
   }
 
   return redirectToInvoice(
@@ -480,7 +742,174 @@ export async function POST(
 }
 
 /* =========================================================
-   TEMPLATE PLACEHOLDERS
+   LOAD INVOICE CONTEXT
+   ========================================================= */
+
+async function loadInvoiceContext(
+  supabase: Awaited<
+    ReturnType<
+      typeof createClient
+    >
+  >,
+  id: string
+) {
+  const [
+    invoiceResult,
+    templateResult,
+  ] = await Promise.all([
+    supabase
+      .from("invoices")
+      .select(`
+        id,
+        invoice_number,
+        title,
+        invoice_type,
+        status,
+        amount,
+        subtotal,
+        vat_amount,
+        amount_paid,
+        due_date,
+        public_token,
+
+        clients (
+          id,
+          display_name,
+          first_name,
+          last_name,
+          email
+        ),
+
+        jobs (
+          id,
+          title
+        )
+      `)
+      .eq(
+        "id",
+        id
+      )
+      .single(),
+
+    supabase
+      .from(
+        "email_templates"
+      )
+      .select(`
+        subject,
+        body
+      `)
+      .eq(
+        "template_key",
+        "invoice"
+      )
+      .maybeSingle(),
+  ]);
+
+  if (
+    invoiceResult.error ||
+    !invoiceResult.data
+  ) {
+    console.error(
+      "Unable to load invoice:",
+      invoiceResult.error
+    );
+
+    return {
+      success:
+        false as const,
+
+      error:
+        "Invoice could not be found.",
+
+      status:
+        404,
+    };
+  }
+
+  if (
+    templateResult.error
+  ) {
+    console.error(
+      "Unable to load invoice email template. Using fallback:",
+      templateResult.error
+    );
+  }
+
+  const invoice =
+    invoiceResult.data;
+
+  const client =
+    Array.isArray(
+      invoice.clients
+    )
+      ? invoice.clients[0]
+      : invoice.clients;
+
+  const job =
+    Array.isArray(
+      invoice.jobs
+    )
+      ? invoice.jobs[0]
+      : invoice.jobs;
+
+  const template = {
+    subject:
+      templateResult.data?.subject?.trim() ||
+      fallbackInvoiceTemplate.subject,
+
+    body:
+      templateResult.data?.body?.trim() ||
+      fallbackInvoiceTemplate.body,
+  };
+
+  return {
+    success:
+      true as const,
+
+    invoice,
+    client,
+    job,
+    template,
+  };
+}
+
+/* =========================================================
+   CLIENT NAME
+   ========================================================= */
+
+function getClientName(
+  client:
+    | {
+        display_name?:
+          | string
+          | null;
+
+        first_name?:
+          | string
+          | null;
+
+        last_name?:
+          | string
+          | null;
+      }
+    | null
+    | undefined
+) {
+  return (
+    client?.display_name ||
+    [
+      client?.first_name,
+      client?.last_name,
+    ]
+      .filter(Boolean)
+      .join(" ") ||
+    "Customer"
+  );
+}
+
+/* =========================================================
+   TEMPLATE
    ========================================================= */
 
 function replaceTemplatePlaceholders(
@@ -508,13 +937,23 @@ function replaceTemplatePlaceholders(
   return result;
 }
 
+function cleanComposerBody(
+  value: string
+) {
+  return value
+    .replace(
+      /\n{3,}/g,
+      "\n\n"
+    )
+    .trim();
+}
+
 /* =========================================================
-   HTML EMAIL
+   HTML
    ========================================================= */
 
-function buildTemplateEmailHtml({
-  templateBody,
-  values,
+function buildComposerEmailHtml({
+  body,
   customerUrl,
   invoiceNumber,
   invoiceTitle,
@@ -522,10 +961,7 @@ function buildTemplateEmailHtml({
   amountOutstanding,
   dueDate,
 }: {
-  templateBody: string;
-
-  values:
-    TemplateValues;
+  body: string;
 
   customerUrl:
     string;
@@ -545,13 +981,6 @@ function buildTemplateEmailHtml({
   dueDate:
     string;
 }) {
-  const bodyHtml =
-    renderTemplateBodyHtml(
-      templateBody,
-      values,
-      customerUrl
-    );
-
   return `
 <!DOCTYPE html>
 
@@ -572,6 +1001,7 @@ function buildTemplateEmailHtml({
     font-family:Arial,Helvetica,sans-serif;
     color:#334155;
   ">
+
     <div style="
       max-width:640px;
       margin:0 auto;
@@ -585,12 +1015,11 @@ function buildTemplateEmailHtml({
         border:1px solid #e2e8f0;
       ">
 
-        <!-- HEADER -->
-
         <div style="
           background:#0f172a;
           padding:28px 32px;
         ">
+
           <div style="
             color:#ffffff;
             font-size:22px;
@@ -606,9 +1035,8 @@ function buildTemplateEmailHtml({
           ">
             Customer Invoice
           </div>
-        </div>
 
-        <!-- TEMPLATE CONTENT -->
+        </div>
 
         <div style="
           padding:32px 32px 10px 32px;
@@ -616,13 +1044,13 @@ function buildTemplateEmailHtml({
           line-height:1.7;
           color:#334155;
         ">
-          ${bodyHtml}
+          ${renderMessageHtml(
+            body
+          )}
         </div>
 
-        <!-- INVOICE SUMMARY -->
-
         <div style="
-          margin:10px 32px 32px 32px;
+          margin:10px 32px 28px 32px;
           padding:20px;
           background:#f8fafc;
           border:1px solid #e2e8f0;
@@ -667,13 +1095,14 @@ function buildTemplateEmailHtml({
               border-collapse:collapse;
             "
           >
+
             <tr>
               <td style="
                 padding:6px 0;
                 color:#64748b;
                 font-size:13px;
               ">
-                Invoice total
+                Invoice Total
               </td>
 
               <td style="
@@ -697,7 +1126,7 @@ function buildTemplateEmailHtml({
                 color:#64748b;
                 font-size:13px;
               ">
-                Amount outstanding
+                Outstanding
               </td>
 
               <td style="
@@ -721,7 +1150,7 @@ function buildTemplateEmailHtml({
                 color:#64748b;
                 font-size:13px;
               ">
-                Due date
+                Due Date
               </td>
 
               <td style="
@@ -736,10 +1165,34 @@ function buildTemplateEmailHtml({
                 )}
               </td>
             </tr>
+
           </table>
         </div>
 
-        <!-- FOOTER -->
+        <div style="
+          text-align:center;
+          margin:28px 32px 36px 32px;
+        ">
+
+          <a
+            href="${escapeHtml(
+              customerUrl
+            )}"
+            style="
+              display:inline-block;
+              background:#0f172a;
+              color:#ffffff;
+              text-decoration:none;
+              padding:14px 28px;
+              border-radius:8px;
+              font-size:16px;
+              font-weight:700;
+            "
+          >
+            View Invoice
+          </a>
+
+        </div>
 
         <div style="
           border-top:1px solid #e2e8f0;
@@ -760,227 +1213,82 @@ function buildTemplateEmailHtml({
 `;
 }
 
-/* =========================================================
-   TEMPLATE BODY → HTML
-   ========================================================= */
-
-function renderTemplateBodyHtml(
-  templateBody: string,
-  values: TemplateValues,
-  customerUrl: string
+function renderMessageHtml(
+  value: string
 ) {
-  const viewLinkMarker =
-    "__DRYHOME_VIEW_INVOICE_BUTTON__";
-
-  let body =
-    templateBody.replaceAll(
-      "{{view_link}}",
-      viewLinkMarker
-    );
-
-  const htmlValues: Omit<
-    TemplateValues,
-    "view_link"
-  > = {
-    client_name:
-      values.client_name,
-
-    job_title:
-      values.job_title,
-
-    invoice_number:
-      values.invoice_number,
-
-    invoice_total:
-      values.invoice_total,
-
-    amount_outstanding:
-      values.amount_outstanding,
-  };
-
-  for (
-    const [
-      key,
-      value,
-    ] of Object.entries(
-      htmlValues
-    )
-  ) {
-    body =
-      body.replaceAll(
-        `{{${key}}}`,
-        value
-      );
-  }
-
-  /*
-   * Escape the editable template before rendering it
-   * into the HTML email.
-   */
-
   const escaped =
     escapeHtml(
-      body
+      value
     );
 
-  const paragraphs =
-    escaped
-      .split(
-        /\n\s*\n/
-      )
-      .map(
-        (paragraph) =>
-          paragraph.trim()
-      )
-      .filter(
-        Boolean
-      );
-
-  return paragraphs
+  return escaped
+    .split(
+      /\n\s*\n/
+    )
     .map(
-      (paragraph) => {
-        if (
-          paragraph ===
-          viewLinkMarker
-        ) {
-          return buildInvoiceButton(
-            customerUrl
-          );
-        }
-
-        if (
-          paragraph.includes(
-            viewLinkMarker
-          )
-        ) {
-          const parts =
-            paragraph.split(
-              viewLinkMarker
-            );
-
-          return parts
-            .map(
-              (
-                part,
-                index
-              ) => {
-                const blocks: string[] =
-                  [];
-
-                if (
-                  part.trim()
-                ) {
-                  blocks.push(
-                    buildParagraph(
-                      part
-                    )
-                  );
-                }
-
-                if (
-                  index <
-                  parts.length -
-                    1
-                ) {
-                  blocks.push(
-                    buildInvoiceButton(
-                      customerUrl
-                    )
-                  );
-                }
-
-                return blocks.join(
-                  ""
-                );
-              }
-            )
-            .join("");
-        }
-
-        return buildParagraph(
-          paragraph
-        );
-      }
+      (paragraph) =>
+        paragraph.trim()
+    )
+    .filter(Boolean)
+    .map(
+      (paragraph) => `
+        <p style="
+          margin:0 0 18px 0;
+          line-height:1.7;
+        ">
+          ${paragraph.replace(
+            /\n/g,
+            "<br>"
+          )}
+        </p>
+      `
     )
     .join("");
 }
 
 /* =========================================================
-   PARAGRAPH
+   ATTACHMENTS
    ========================================================= */
 
-function buildParagraph(
-  value: string
+function sanitiseAttachmentFilename(
+  filename: string
 ) {
-  const withBreaks =
-    value.replace(
-      /\n/g,
-      "<br>"
-    );
+  const cleaned =
+    filename
+      .replace(
+        /[\r\n]/g,
+        ""
+      )
+      .trim();
 
-  return `
-    <p style="
-      margin:0 0 18px 0;
-      line-height:1.7;
-    ">
-      ${withBreaks}
-    </p>
-  `;
+  return (
+    cleaned ||
+    "attachment"
+  );
 }
 
 /* =========================================================
-   VIEW INVOICE BUTTON
+   INVOICE TOTAL
    ========================================================= */
 
-function buildInvoiceButton(
-  customerUrl: string
+function getInvoiceValue(
+  invoice: {
+    amount?:
+      | number
+      | string
+      | null;
+
+    subtotal?:
+      | number
+      | string
+      | null;
+
+    vat_amount?:
+      | number
+      | string
+      | null;
+  }
 ) {
-  return `
-    <div style="
-      text-align:center;
-      margin:28px 0;
-    ">
-      <a
-        href="${escapeHtml(
-          customerUrl
-        )}"
-        style="
-          display:inline-block;
-          background:#0f172a;
-          color:#ffffff;
-          text-decoration:none;
-          padding:14px 28px;
-          border-radius:8px;
-          font-size:16px;
-          font-weight:700;
-        "
-      >
-        View Invoice
-      </a>
-    </div>
-  `;
-}
-
-/* =========================================================
-   INVOICE VALUE
-   ========================================================= */
-
-function getInvoiceValue(invoice: {
-  amount?:
-    | number
-    | string
-    | null;
-
-  subtotal?:
-    | number
-    | string
-    | null;
-
-  vat_amount?:
-    | number
-    | string
-    | null;
-}) {
   const amount =
     Number(
       invoice.amount ??
@@ -1029,10 +1337,6 @@ function getInvoiceValue(invoice: {
   );
 }
 
-/* =========================================================
-   MONEY
-   ========================================================= */
-
 function money(
   value: number
 ) {
@@ -1044,10 +1348,6 @@ function money(
       100
   ) / 100;
 }
-
-/* =========================================================
-   CURRENCY
-   ========================================================= */
 
 function formatCurrency(
   value: number
@@ -1116,8 +1416,16 @@ function formatDate(
 }
 
 /* =========================================================
-   ESCAPE HTML
+   VALIDATION
    ========================================================= */
+
+function isValidEmail(
+  value: string
+) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    value
+  );
+}
 
 function escapeHtml(
   value: string
@@ -1146,8 +1454,35 @@ function escapeHtml(
 }
 
 /* =========================================================
-   REDIRECT
+   RESPONSES
    ========================================================= */
+
+function sendErrorResponse(
+  wantsJson: boolean,
+  id: string,
+  message: string,
+  status = 500
+) {
+  if (
+    wantsJson
+  ) {
+    return Response.json(
+      {
+        error:
+          message,
+      },
+      {
+        status,
+      }
+    );
+  }
+
+  return redirectToInvoice(
+    id,
+    "error",
+    message
+  );
+}
 
 function redirectToInvoice(
   id: string,

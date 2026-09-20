@@ -3,7 +3,19 @@ import { Resend } from "resend";
 
 import { createClient } from "@/lib/supabase/server";
 
-export const runtime = "nodejs";
+export const runtime =
+  "nodejs";
+
+const MAX_ATTACHMENTS = 5;
+
+const MAX_TOTAL_ATTACHMENT_SIZE =
+  4 * 1024 * 1024;
+
+type RouteProps = {
+  params: Promise<{
+    id: string;
+  }>;
+};
 
 type TemplateValues = {
   client_name: string;
@@ -33,118 +45,15 @@ Dry Home Damp Proofing Solutions`,
 };
 
 /* =========================================================
-   SEND CONTRACT
+   LOAD COMPOSER
    ========================================================= */
 
-export async function POST(
-  _request: NextRequest,
-  context: {
-    params: Promise<{
-      id: string;
-    }>;
-  }
+export async function GET(
+  _request: Request,
+  { params }: RouteProps
 ) {
   const { id } =
-    await context.params;
-
-  const supabase =
-    await createClient();
-
-  /* =========================================================
-     CONTRACT
-     ========================================================= */
-
-  const {
-    data: contract,
-    error,
-  } = await supabase
-    .from("contracts")
-    .select(`
-      id,
-      contract_number,
-      title,
-      status,
-      amount,
-      public_token,
-      client_id,
-      job_id,
-
-      clients (
-        id,
-        display_name,
-        first_name,
-        last_name,
-        email
-      )
-    `)
-    .eq(
-      "id",
-      id
-    )
-    .single();
-
-  if (
-    error ||
-    !contract
-  ) {
-    console.error(
-      "Unable to load contract:",
-      error
-    );
-
-    return redirectToContract(
-      id,
-      "error",
-      "Contract could not be found."
-    );
-  }
-
-  /* =========================================================
-     CLIENT
-     ========================================================= */
-
-  const client =
-    Array.isArray(
-      contract.clients
-    )
-      ? contract.clients[0]
-      : contract.clients;
-
-  const recipient =
-    client?.email?.trim();
-
-  if (!recipient) {
-    return redirectToContract(
-      id,
-      "error",
-      "The client does not have an email address."
-    );
-  }
-
-  if (
-    !contract.public_token
-  ) {
-    return redirectToContract(
-      id,
-      "error",
-      "This contract does not have a secure customer link."
-    );
-  }
-
-  /* =========================================================
-     EMAIL CONFIG
-     ========================================================= */
-
-  const resendApiKey =
-    process.env.RESEND_API_KEY;
-
-  if (!resendApiKey) {
-    return redirectToContract(
-      id,
-      "error",
-      "RESEND_API_KEY is missing."
-    );
-  }
+    await params;
 
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL?.replace(
@@ -153,108 +62,91 @@ export async function POST(
     );
 
   if (!appUrl) {
-    return redirectToContract(
-      id,
-      "error",
-      "NEXT_PUBLIC_APP_URL is missing."
+    return Response.json(
+      {
+        error:
+          "NEXT_PUBLIC_APP_URL is missing.",
+      },
+      {
+        status: 500,
+      }
     );
   }
 
-  /* =========================================================
-     EMAIL TEMPLATE + JOB
-     ========================================================= */
+  const supabase =
+    await createClient();
 
-  const [
-    templateResult,
-    jobResult,
-  ] = await Promise.all([
-    supabase
-      .from("email_templates")
-      .select(`
-        subject,
-        body
-      `)
-      .eq(
-        "template_key",
-        "contract"
-      )
-      .maybeSingle(),
-
-    contract.job_id
-      ? supabase
-          .from("jobs")
-          .select(`
-            id,
-            title
-          `)
-          .eq(
-            "id",
-            contract.job_id
-          )
-          .maybeSingle()
-      : Promise.resolve({
-          data: null,
-          error: null,
-        }),
-  ]);
+  const context =
+    await loadContractContext(
+      supabase,
+      id
+    );
 
   if (
-    templateResult.error
+    !context.success
   ) {
-    console.error(
-      "Unable to load contract email template. Using fallback:",
-      templateResult.error
+    return Response.json(
+      {
+        error:
+          context.error,
+      },
+      {
+        status:
+          context.status,
+      }
+    );
+  }
+
+  const {
+    contract,
+    client,
+    job,
+    template,
+  } = context;
+
+  const recipient =
+    client?.email?.trim();
+
+  if (!recipient) {
+    return Response.json(
+      {
+        error:
+          "The client does not have an email address.",
+      },
+      {
+        status: 400,
+      }
     );
   }
 
   if (
-    jobResult.error
+    !contract.public_token
   ) {
-    console.error(
-      "Unable to load contract job:",
-      jobResult.error
+    return Response.json(
+      {
+        error:
+          "This contract does not have a secure customer link.",
+      },
+      {
+        status: 400,
+      }
     );
   }
-
-  const emailTemplate = {
-    subject:
-      templateResult.data?.subject?.trim() ||
-      fallbackContractTemplate.subject,
-
-    body:
-      templateResult.data?.body?.trim() ||
-      fallbackContractTemplate.body,
-  };
-
-  /* =========================================================
-     VALUES
-     ========================================================= */
 
   const clientName =
-    client?.display_name ||
-    [
-      client?.first_name,
-      client?.last_name,
-    ]
-      .filter(Boolean)
-      .join(" ") ||
-    "Customer";
+    getClientName(
+      client
+    );
 
   const jobTitle =
-    jobResult.data?.title ||
+    job?.title ||
     contract.title ||
     "your works";
-
-  const contractTotal =
-    Number(
-      contract.amount ??
-        0
-    );
 
   const customerUrl =
     `${appUrl}/c/${contract.public_token}`;
 
-  const templateValues: TemplateValues = {
+  const values: TemplateValues = {
     client_name:
       clientName,
 
@@ -268,49 +160,369 @@ export async function POST(
       customerUrl,
   };
 
-  /* =========================================================
-     SUBJECT
-     ========================================================= */
-
   const subject =
     replaceTemplatePlaceholders(
-      emailTemplate.subject,
-      templateValues
+      template.subject,
+      values
     );
 
-  /* =========================================================
-     TEXT EMAIL
-     ========================================================= */
+  const body =
+    cleanComposerBody(
+      replaceTemplatePlaceholders(
+        template.body,
+        {
+          ...values,
+          view_link: "",
+        }
+      )
+    );
 
-  const text =
+  return Response.json({
+    recipient,
+    subject,
+    body,
+  });
+}
+
+/* =========================================================
+   SEND CONTRACT
+   ========================================================= */
+
+export async function POST(
+  request: NextRequest,
+  { params }: RouteProps
+) {
+  const { id } =
+    await params;
+
+  const wantsJson =
+    request.headers.get(
+      "x-dryhome-composer"
+    ) === "1";
+
+  const resendApiKey =
+    process.env.RESEND_API_KEY;
+
+  if (!resendApiKey) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "RESEND_API_KEY is missing."
+    );
+  }
+
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(
+      /\/$/,
+      ""
+    );
+
+  if (!appUrl) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "NEXT_PUBLIC_APP_URL is missing."
+    );
+  }
+
+  const supabase =
+    await createClient();
+
+  const context =
+    await loadContractContext(
+      supabase,
+      id
+    );
+
+  if (
+    !context.success
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      context.error,
+      context.status
+    );
+  }
+
+  const {
+    contract,
+    client,
+    job,
+    template,
+  } = context;
+
+  if (
+    !contract.public_token
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "This contract does not have a secure customer link.",
+      400
+    );
+  }
+
+  let formData:
+    FormData | null =
+    null;
+
+  try {
+    formData =
+      await request.formData();
+  } catch {
+    formData =
+      null;
+  }
+
+  const defaultRecipient =
+    client?.email?.trim() ||
+    "";
+
+  const recipient =
+    String(
+      formData?.get(
+        "recipient"
+      ) ??
+        defaultRecipient
+    ).trim();
+
+  if (
+    !recipient ||
+    !isValidEmail(
+      recipient
+    )
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "Please enter a valid recipient email address.",
+      400
+    );
+  }
+
+  const clientName =
+    getClientName(
+      client
+    );
+
+  const jobTitle =
+    job?.title ||
+    contract.title ||
+    "your works";
+
+  const customerUrl =
+    `${appUrl}/c/${contract.public_token}`;
+
+  const values: TemplateValues = {
+    client_name:
+      clientName,
+
+    job_title:
+      jobTitle,
+
+    contract_number:
+      contract.contract_number,
+
+    view_link:
+      customerUrl,
+  };
+
+  const defaultSubject =
     replaceTemplatePlaceholders(
-      emailTemplate.body,
-      templateValues
+      template.subject,
+      values
     );
 
+  const defaultBody =
+    cleanComposerBody(
+      replaceTemplatePlaceholders(
+        template.body,
+        {
+          ...values,
+          view_link: "",
+        }
+      )
+    );
+
+  const subject =
+    String(
+      formData?.get(
+        "subject"
+      ) ??
+        defaultSubject
+    ).trim();
+
+  const body =
+    String(
+      formData?.get(
+        "body"
+      ) ??
+        defaultBody
+    ).trim();
+
+  if (!subject) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "Please enter an email subject.",
+      400
+    );
+  }
+
+  if (!body) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "Please enter an email message.",
+      400
+    );
+  }
+
+  if (
+    subject.length >
+    250
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "The email subject is too long.",
+      400
+    );
+  }
+
+  if (
+    body.length >
+    20000
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "The email message is too long.",
+      400
+    );
+  }
+
   /* =========================================================
-     HTML EMAIL
+     EXTRA ATTACHMENTS
      ========================================================= */
+
+  const extraFiles =
+    formData
+      ? formData
+          .getAll(
+            "attachments"
+          )
+          .filter(
+            (
+              value
+            ): value is File =>
+              value instanceof
+                File &&
+              value.size >
+                0
+          )
+      : [];
+
+  if (
+    extraFiles.length >
+    MAX_ATTACHMENTS
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      `You can add up to ${MAX_ATTACHMENTS} extra attachments.`,
+      400
+    );
+  }
+
+  const totalExtraSize =
+    extraFiles.reduce(
+      (
+        total,
+        file
+      ) =>
+        total +
+        file.size,
+      0
+    );
+
+  if (
+    totalExtraSize >
+    MAX_TOTAL_ATTACHMENT_SIZE
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "Extra attachments must be under 4 MB in total.",
+      400
+    );
+  }
+
+  const extraAttachments: {
+    filename: string;
+    content: string;
+  }[] = [];
+
+  for (
+    const file of
+      extraFiles
+  ) {
+    const fileBuffer =
+      Buffer.from(
+        await file.arrayBuffer()
+      );
+
+    extraAttachments.push({
+      filename:
+        sanitiseAttachmentFilename(
+          file.name
+        ),
+
+      content:
+        fileBuffer.toString(
+          "base64"
+        ),
+    });
+  }
+
+  /* =========================================================
+     EMAIL HTML
+     ========================================================= */
+
+  const contractTotal =
+    Number(
+      contract.amount ??
+        0
+    );
+
+  const contractTitle =
+    contract.title ||
+    "Contract";
 
   const html =
-    buildTemplateEmailHtml({
-      templateBody:
-        emailTemplate.body,
-
-      values:
-        templateValues,
+    buildComposerEmailHtml({
+      body,
 
       customerUrl,
 
       contractNumber:
         contract.contract_number,
 
-      contractTitle:
-        contract.title ||
-        "Contract",
+      contractTitle,
 
       contractTotal,
     });
+
+  const text = [
+    body,
+
+    "",
+
+    "View and sign your contract securely online:",
+
+    customerUrl,
+  ].join("\n");
 
   /* =========================================================
      RESEND
@@ -347,6 +559,14 @@ export async function POST(
       text,
 
       html,
+
+      ...(extraAttachments.length >
+      0
+        ? {
+            attachments:
+              extraAttachments,
+          }
+        : {}),
     });
 
   if (
@@ -357,9 +577,9 @@ export async function POST(
       result.error
     );
 
-    return redirectToContract(
+    return sendErrorResponse(
+      wantsJson,
       id,
-      "error",
       "The contract email could not be sent."
     );
   }
@@ -384,7 +604,7 @@ export async function POST(
   };
 
   /*
-   * Never overwrite Signed with Sent.
+   * Never move a signed contract back to Sent.
    */
 
   if (
@@ -415,11 +635,31 @@ export async function POST(
       updateError
     );
 
+    if (
+      wantsJson
+    ) {
+      return Response.json({
+        success:
+          true,
+
+        warning:
+          "The email was sent, but the contract status could not be updated.",
+      });
+    }
+
     return redirectToContract(
       id,
       "warning",
       "The email was sent, but the contract status could not be updated."
     );
+  }
+
+  if (
+    wantsJson
+  ) {
+    return Response.json({
+      success: true,
+    });
   }
 
   return redirectToContract(
@@ -430,7 +670,200 @@ export async function POST(
 }
 
 /* =========================================================
-   TEMPLATE PLACEHOLDERS
+   LOAD CONTRACT
+   ========================================================= */
+
+async function loadContractContext(
+  supabase: Awaited<
+    ReturnType<
+      typeof createClient
+    >
+  >,
+  id: string
+) {
+  const [
+    contractResult,
+    templateResult,
+  ] = await Promise.all([
+    supabase
+      .from("contracts")
+      .select(`
+        id,
+        contract_number,
+        title,
+        status,
+        amount,
+        public_token,
+        client_id,
+        job_id,
+
+        clients (
+          id,
+          display_name,
+          first_name,
+          last_name,
+          email
+        )
+      `)
+      .eq(
+        "id",
+        id
+      )
+      .single(),
+
+    supabase
+      .from(
+        "email_templates"
+      )
+      .select(`
+        subject,
+        body
+      `)
+      .eq(
+        "template_key",
+        "contract"
+      )
+      .maybeSingle(),
+  ]);
+
+  if (
+    contractResult.error ||
+    !contractResult.data
+  ) {
+    console.error(
+      "Unable to load contract:",
+      contractResult.error
+    );
+
+    return {
+      success:
+        false as const,
+
+      error:
+        "Contract could not be found.",
+
+      status:
+        404,
+    };
+  }
+
+  if (
+    templateResult.error
+  ) {
+    console.error(
+      "Unable to load contract email template. Using fallback:",
+      templateResult.error
+    );
+  }
+
+  const contract =
+    contractResult.data;
+
+  const client =
+    Array.isArray(
+      contract.clients
+    )
+      ? contract.clients[0]
+      : contract.clients;
+
+  let job:
+    | {
+        id: string;
+        title:
+          | string
+          | null;
+      }
+    | null = null;
+
+  if (
+    contract.job_id
+  ) {
+    const {
+      data: jobData,
+      error: jobError,
+    } = await supabase
+      .from("jobs")
+      .select(`
+        id,
+        title
+      `)
+      .eq(
+        "id",
+        contract.job_id
+      )
+      .maybeSingle();
+
+    if (
+      jobError
+    ) {
+      console.error(
+        "Unable to load contract job:",
+        jobError
+      );
+    }
+
+    job =
+      jobData ||
+      null;
+  }
+
+  const template = {
+    subject:
+      templateResult.data?.subject?.trim() ||
+      fallbackContractTemplate.subject,
+
+    body:
+      templateResult.data?.body?.trim() ||
+      fallbackContractTemplate.body,
+  };
+
+  return {
+    success:
+      true as const,
+
+    contract,
+    client,
+    job,
+    template,
+  };
+}
+
+/* =========================================================
+   CLIENT NAME
+   ========================================================= */
+
+function getClientName(
+  client:
+    | {
+        display_name?:
+          | string
+          | null;
+
+        first_name?:
+          | string
+          | null;
+
+        last_name?:
+          | string
+          | null;
+      }
+    | null
+    | undefined
+) {
+  return (
+    client?.display_name ||
+    [
+      client?.first_name,
+      client?.last_name,
+    ]
+      .filter(Boolean)
+      .join(" ") ||
+    "Customer"
+  );
+}
+
+/* =========================================================
+   TEMPLATE
    ========================================================= */
 
 function replaceTemplatePlaceholders(
@@ -458,22 +891,29 @@ function replaceTemplatePlaceholders(
   return result;
 }
 
+function cleanComposerBody(
+  value: string
+) {
+  return value
+    .replace(
+      /\n{3,}/g,
+      "\n\n"
+    )
+    .trim();
+}
+
 /* =========================================================
    HTML EMAIL
    ========================================================= */
 
-function buildTemplateEmailHtml({
-  templateBody,
-  values,
+function buildComposerEmailHtml({
+  body,
   customerUrl,
   contractNumber,
   contractTitle,
   contractTotal,
 }: {
-  templateBody: string;
-
-  values:
-    TemplateValues;
+  body: string;
 
   customerUrl:
     string;
@@ -487,13 +927,6 @@ function buildTemplateEmailHtml({
   contractTotal:
     number;
 }) {
-  const bodyHtml =
-    renderTemplateBodyHtml(
-      templateBody,
-      values,
-      customerUrl
-    );
-
   return `
 <!DOCTYPE html>
 
@@ -514,6 +947,7 @@ function buildTemplateEmailHtml({
     font-family:Arial,Helvetica,sans-serif;
     color:#334155;
   ">
+
     <div style="
       max-width:640px;
       margin:0 auto;
@@ -527,12 +961,11 @@ function buildTemplateEmailHtml({
         border:1px solid #e2e8f0;
       ">
 
-        <!-- HEADER -->
-
         <div style="
           background:#0f172a;
           padding:28px 32px;
         ">
+
           <div style="
             color:#ffffff;
             font-size:22px;
@@ -548,9 +981,8 @@ function buildTemplateEmailHtml({
           ">
             Customer Contract
           </div>
-        </div>
 
-        <!-- TEMPLATE CONTENT -->
+        </div>
 
         <div style="
           padding:32px 32px 10px 32px;
@@ -558,13 +990,13 @@ function buildTemplateEmailHtml({
           line-height:1.7;
           color:#334155;
         ">
-          ${bodyHtml}
+          ${renderMessageHtml(
+            body
+          )}
         </div>
 
-        <!-- CONTRACT SUMMARY -->
-
         <div style="
-          margin:10px 32px 32px 32px;
+          margin:10px 32px 28px 32px;
           padding:20px;
           background:#f8fafc;
           border:1px solid #e2e8f0;
@@ -630,9 +1062,33 @@ function buildTemplateEmailHtml({
               `
               : ""
           }
+
         </div>
 
-        <!-- NOTE -->
+        <div style="
+          text-align:center;
+          margin:28px 32px 36px 32px;
+        ">
+
+          <a
+            href="${escapeHtml(
+              customerUrl
+            )}"
+            style="
+              display:inline-block;
+              background:#0f172a;
+              color:#ffffff;
+              text-decoration:none;
+              padding:14px 28px;
+              border-radius:8px;
+              font-size:16px;
+              font-weight:700;
+            "
+          >
+            View &amp; Sign Contract
+          </a>
+
+        </div>
 
         <div style="
           margin:0 32px 32px 32px;
@@ -645,8 +1101,6 @@ function buildTemplateEmailHtml({
         ">
           Please review the scope of works and terms carefully before confirming your agreement.
         </div>
-
-        <!-- FOOTER -->
 
         <div style="
           border-top:1px solid #e2e8f0;
@@ -667,204 +1121,58 @@ function buildTemplateEmailHtml({
 `;
 }
 
-/* =========================================================
-   TEMPLATE BODY → HTML
-   ========================================================= */
-
-function renderTemplateBodyHtml(
-  templateBody: string,
-  values: TemplateValues,
-  customerUrl: string
+function renderMessageHtml(
+  value: string
 ) {
-  /*
-   * In the HTML email, {{view_link}} becomes
-   * a proper View & Sign Contract button.
-   */
-
-  const viewLinkMarker =
-    "__DRYHOME_VIEW_CONTRACT_BUTTON__";
-
-  let body =
-    templateBody.replaceAll(
-      "{{view_link}}",
-      viewLinkMarker
-    );
-
-  const htmlValues: Omit<
-    TemplateValues,
-    "view_link"
-  > = {
-    client_name:
-      values.client_name,
-
-    job_title:
-      values.job_title,
-
-    contract_number:
-      values.contract_number,
-  };
-
-  for (
-    const [
-      key,
-      value,
-    ] of Object.entries(
-      htmlValues
-    )
-  ) {
-    body =
-      body.replaceAll(
-        `{{${key}}}`,
-        value
-      );
-  }
-
-  /*
-   * Escape editable customer content before
-   * inserting it into the HTML email.
-   */
-
   const escaped =
     escapeHtml(
-      body
+      value
     );
 
-  const paragraphs =
-    escaped
-      .split(
-        /\n\s*\n/
-      )
-      .map(
-        (paragraph) =>
-          paragraph.trim()
-      )
-      .filter(
-        Boolean
-      );
-
-  return paragraphs
+  return escaped
+    .split(
+      /\n\s*\n/
+    )
     .map(
-      (paragraph) => {
-        if (
-          paragraph ===
-          viewLinkMarker
-        ) {
-          return buildContractButton(
-            customerUrl
-          );
-        }
-
-        if (
-          paragraph.includes(
-            viewLinkMarker
-          )
-        ) {
-          const parts =
-            paragraph.split(
-              viewLinkMarker
-            );
-
-          return parts
-            .map(
-              (
-                part,
-                index
-              ) => {
-                const blocks: string[] =
-                  [];
-
-                if (
-                  part.trim()
-                ) {
-                  blocks.push(
-                    buildParagraph(
-                      part
-                    )
-                  );
-                }
-
-                if (
-                  index <
-                  parts.length -
-                    1
-                ) {
-                  blocks.push(
-                    buildContractButton(
-                      customerUrl
-                    )
-                  );
-                }
-
-                return blocks.join(
-                  ""
-                );
-              }
-            )
-            .join("");
-        }
-
-        return buildParagraph(
-          paragraph
-        );
-      }
+      (paragraph) =>
+        paragraph.trim()
+    )
+    .filter(Boolean)
+    .map(
+      (paragraph) => `
+        <p style="
+          margin:0 0 18px 0;
+          line-height:1.7;
+        ">
+          ${paragraph.replace(
+            /\n/g,
+            "<br>"
+          )}
+        </p>
+      `
     )
     .join("");
 }
 
 /* =========================================================
-   PARAGRAPH
+   ATTACHMENTS
    ========================================================= */
 
-function buildParagraph(
-  value: string
+function sanitiseAttachmentFilename(
+  filename: string
 ) {
-  const withBreaks =
-    value.replace(
-      /\n/g,
-      "<br>"
-    );
+  const cleaned =
+    filename
+      .replace(
+        /[\r\n]/g,
+        ""
+      )
+      .trim();
 
-  return `
-    <p style="
-      margin:0 0 18px 0;
-      line-height:1.7;
-    ">
-      ${withBreaks}
-    </p>
-  `;
-}
-
-/* =========================================================
-   VIEW CONTRACT BUTTON
-   ========================================================= */
-
-function buildContractButton(
-  customerUrl: string
-) {
-  return `
-    <div style="
-      text-align:center;
-      margin:28px 0;
-    ">
-      <a
-        href="${escapeHtml(
-          customerUrl
-        )}"
-        style="
-          display:inline-block;
-          background:#0f172a;
-          color:#ffffff;
-          text-decoration:none;
-          padding:14px 28px;
-          border-radius:8px;
-          font-size:16px;
-          font-weight:700;
-        "
-      >
-        View &amp; Sign Contract
-      </a>
-    </div>
-  `;
+  return (
+    cleaned ||
+    "attachment"
+  );
 }
 
 /* =========================================================
@@ -884,31 +1192,21 @@ function formatCurrency(
         "GBP",
     }
   ).format(
-    money(
-      value
-    )
+    value
   );
 }
 
 /* =========================================================
-   MONEY
+   VALIDATION
    ========================================================= */
 
-function money(
-  value: number
+function isValidEmail(
+  value: string
 ) {
-  return Math.round(
-    (
-      value +
-      Number.EPSILON
-    ) *
-      100
-  ) / 100;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    value
+  );
 }
-
-/* =========================================================
-   ESCAPE HTML
-   ========================================================= */
 
 function escapeHtml(
   value: string
@@ -937,8 +1235,35 @@ function escapeHtml(
 }
 
 /* =========================================================
-   REDIRECT
+   RESPONSES
    ========================================================= */
+
+function sendErrorResponse(
+  wantsJson: boolean,
+  id: string,
+  message: string,
+  status = 500
+) {
+  if (
+    wantsJson
+  ) {
+    return Response.json(
+      {
+        error:
+          message,
+      },
+      {
+        status,
+      }
+    );
+  }
+
+  return redirectToContract(
+    id,
+    "error",
+    message
+  );
+}
 
 function redirectToContract(
   id: string,

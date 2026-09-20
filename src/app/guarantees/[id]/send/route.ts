@@ -1,9 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { Resend } from "resend";
 
 import { createClient } from "@/lib/supabase/server";
 
-export const runtime = "nodejs";
+export const runtime =
+  "nodejs";
+
+const MAX_ATTACHMENTS = 5;
+
+const MAX_TOTAL_ATTACHMENT_SIZE =
+  4 * 1024 * 1024;
 
 type RouteProps = {
   params: Promise<{
@@ -41,15 +47,201 @@ Dry Home Damp Proofing Solutions`,
 };
 
 /* =========================================================
-   SEND GUARANTEE
+   LOAD COMPOSER
    ========================================================= */
 
-export async function POST(
+export async function GET(
   _request: Request,
   { params }: RouteProps
 ) {
   const { id } =
     await params;
+
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(
+      /\/$/,
+      ""
+    );
+
+  if (!appUrl) {
+    return Response.json(
+      {
+        error:
+          "NEXT_PUBLIC_APP_URL is missing.",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+
+  const supabase =
+    await createClient();
+
+  const {
+    data: authData,
+  } =
+    await supabase.auth.getUser();
+
+  if (!authData.user) {
+    return Response.json(
+      {
+        error:
+          "You must be signed in to send a guarantee.",
+      },
+      {
+        status: 401,
+      }
+    );
+  }
+
+  const context =
+    await loadGuaranteeContext(
+      supabase,
+      id
+    );
+
+  if (
+    !context.success
+  ) {
+    return Response.json(
+      {
+        error:
+          context.error,
+      },
+      {
+        status:
+          context.status,
+      }
+    );
+  }
+
+  const {
+    guarantee,
+    client,
+    job,
+    template,
+  } = context;
+
+  const recipient =
+    client?.email?.trim();
+
+  if (!recipient) {
+    return Response.json(
+      {
+        error:
+          "This client does not have an email address saved.",
+      },
+      {
+        status: 400,
+      }
+    );
+  }
+
+  if (
+    !guarantee.public_token
+  ) {
+    return Response.json(
+      {
+        error:
+          "This guarantee does not have a secure customer link.",
+      },
+      {
+        status: 400,
+      }
+    );
+  }
+
+  const clientName =
+    client?.display_name ||
+    "Customer";
+
+  const jobTitle =
+    job?.title ||
+    guarantee.title ||
+    "your works";
+
+  const customerUrl =
+    `${appUrl}/g/${guarantee.public_token}`;
+
+  const values: TemplateValues = {
+    client_name:
+      clientName,
+
+    job_title:
+      jobTitle,
+
+    guarantee_number:
+      guarantee.guarantee_number,
+
+    view_link:
+      customerUrl,
+  };
+
+  const subject =
+    replaceTemplatePlaceholders(
+      template.subject,
+      values
+    );
+
+  const body =
+    cleanComposerBody(
+      replaceTemplatePlaceholders(
+        template.body,
+        {
+          ...values,
+          view_link: "",
+        }
+      )
+    );
+
+  return Response.json({
+    recipient,
+    subject,
+    body,
+  });
+}
+
+/* =========================================================
+   SEND GUARANTEE
+   ========================================================= */
+
+export async function POST(
+  request: NextRequest,
+  { params }: RouteProps
+) {
+  const { id } =
+    await params;
+
+  const wantsJson =
+    request.headers.get(
+      "x-dryhome-composer"
+    ) === "1";
+
+  const resendApiKey =
+    process.env.RESEND_API_KEY;
+
+  if (!resendApiKey) {
+    return sendErrorResponse(
+      wantsJson,
+      "RESEND_API_KEY is missing.",
+      500
+    );
+  }
+
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(
+      /\/$/,
+      ""
+    );
+
+  if (!appUrl) {
+    return sendErrorResponse(
+      wantsJson,
+      "NEXT_PUBLIC_APP_URL is missing.",
+      500
+    );
+  }
 
   const supabase =
     await createClient();
@@ -64,245 +256,102 @@ export async function POST(
     await supabase.auth.getUser();
 
   if (!authData.user) {
-    return NextResponse.json(
-      {
-        error:
-          "You must be signed in to send a guarantee.",
-      },
-      {
-        status: 401,
-      }
+    return sendErrorResponse(
+      wantsJson,
+      "You must be signed in to send a guarantee.",
+      401
     );
   }
 
-  /* =========================================================
-     GUARANTEE
-     ========================================================= */
-
-  const {
-    data: guarantee,
-    error: guaranteeError,
-  } = await supabase
-    .from("guarantees")
-    .select(`
-      id,
-      guarantee_number,
-      title,
-      guarantee_type,
-      status,
-      issue_date,
-      expiry_date,
-      public_token,
-      client_id,
-      job_id,
-
-      clients (
-        display_name,
-        email
-      )
-    `)
-    .eq(
-      "id",
+  const context =
+    await loadGuaranteeContext(
+      supabase,
       id
-    )
-    .single();
+    );
 
   if (
-    guaranteeError ||
-    !guarantee
+    !context.success
   ) {
-    console.error(
-      "Unable to load guarantee:",
-      guaranteeError
-    );
-
-    return NextResponse.json(
-      {
-        error:
-          "Guarantee could not be found.",
-      },
-      {
-        status: 404,
-      }
+    return sendErrorResponse(
+      wantsJson,
+      context.error,
+      context.status
     );
   }
 
-  /* =========================================================
-     CLIENT
-     ========================================================= */
-
-  const client =
-    Array.isArray(
-      guarantee.clients
-    )
-      ? guarantee.clients[0]
-      : guarantee.clients;
-
-  const recipient =
-    client?.email?.trim();
-
-  if (!recipient) {
-    return NextResponse.json(
-      {
-        error:
-          "This client does not have an email address saved.",
-      },
-      {
-        status: 400,
-      }
-    );
-  }
+  const {
+    guarantee,
+    client,
+    job,
+    template,
+  } = context;
 
   if (
     !guarantee.public_token
   ) {
-    return NextResponse.json(
-      {
-        error:
-          "This guarantee does not have a secure customer link.",
-      },
-      {
-        status: 400,
-      }
+    return sendErrorResponse(
+      wantsJson,
+      "This guarantee does not have a secure customer link.",
+      400
     );
   }
 
   /* =========================================================
-     EMAIL CONFIG
+     FORM DATA
      ========================================================= */
 
-  const resendApiKey =
-    process.env.RESEND_API_KEY;
+  let formData:
+    FormData | null =
+    null;
 
-  if (!resendApiKey) {
-    return NextResponse.json(
-      {
-        error:
-          "RESEND_API_KEY is missing.",
-      },
-      {
-        status: 500,
-      }
-    );
+  try {
+    formData =
+      await request.formData();
+  } catch {
+    formData =
+      null;
   }
 
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL?.replace(
-      /\/$/,
-      ""
-    );
+  const defaultRecipient =
+    client?.email?.trim() ||
+    "";
 
-  if (!appUrl) {
-    return NextResponse.json(
-      {
-        error:
-          "NEXT_PUBLIC_APP_URL is missing.",
-      },
-      {
-        status: 500,
-      }
-    );
-  }
-
-  /* =========================================================
-     EMAIL TEMPLATE + JOB
-     ========================================================= */
-
-  const [
-    templateResult,
-    jobResult,
-  ] = await Promise.all([
-    supabase
-      .from("email_templates")
-      .select(`
-        subject,
-        body
-      `)
-      .eq(
-        "template_key",
-        "guarantee"
-      )
-      .maybeSingle(),
-
-    guarantee.job_id
-      ? supabase
-          .from("jobs")
-          .select(`
-            id,
-            title
-          `)
-          .eq(
-            "id",
-            guarantee.job_id
-          )
-          .maybeSingle()
-      : Promise.resolve({
-          data: null,
-          error: null,
-        }),
-  ]);
+  const recipient =
+    String(
+      formData?.get(
+        "recipient"
+      ) ??
+        defaultRecipient
+    ).trim();
 
   if (
-    templateResult.error
+    !recipient ||
+    !isValidEmail(
+      recipient
+    )
   ) {
-    console.error(
-      "Unable to load guarantee email template. Using fallback:",
-      templateResult.error
+    return sendErrorResponse(
+      wantsJson,
+      "Please enter a valid recipient email address.",
+      400
     );
   }
 
-  if (
-    jobResult.error
-  ) {
-    console.error(
-      "Unable to load guarantee job:",
-      jobResult.error
-    );
-  }
-
-  const emailTemplate = {
-    subject:
-      templateResult.data?.subject?.trim() ||
-      fallbackGuaranteeTemplate.subject,
-
-    body:
-      templateResult.data?.body?.trim() ||
-      fallbackGuaranteeTemplate.body,
-  };
-
-  /* =========================================================
-     VALUES
-     ========================================================= */
-
-  const customerName =
+  const clientName =
     client?.display_name ||
     "Customer";
 
   const jobTitle =
-    jobResult.data?.title ||
+    job?.title ||
     guarantee.title ||
     "your works";
 
   const customerUrl =
     `${appUrl}/g/${guarantee.public_token}`;
 
-  const formattedIssueDate =
-    formatDate(
-      guarantee.issue_date
-    );
-
-  const formattedExpiryDate =
-    formatDate(
-      guarantee.expiry_date
-    );
-
-  const guaranteeType =
-    guarantee.guarantee_type ||
-    "Works Guarantee";
-
-  const templateValues: TemplateValues = {
+  const values: TemplateValues = {
     client_name:
-      customerName,
+      clientName,
 
     job_title:
       jobTitle,
@@ -314,37 +363,179 @@ export async function POST(
       customerUrl,
   };
 
-  /* =========================================================
-     SUBJECT
-     ========================================================= */
+  const defaultSubject =
+    replaceTemplatePlaceholders(
+      template.subject,
+      values
+    );
+
+  const defaultBody =
+    cleanComposerBody(
+      replaceTemplatePlaceholders(
+        template.body,
+        {
+          ...values,
+          view_link: "",
+        }
+      )
+    );
 
   const subject =
-    replaceTemplatePlaceholders(
-      emailTemplate.subject,
-      templateValues
+    String(
+      formData?.get(
+        "subject"
+      ) ??
+        defaultSubject
+    ).trim();
+
+  const body =
+    String(
+      formData?.get(
+        "body"
+      ) ??
+        defaultBody
+    ).trim();
+
+  if (!subject) {
+    return sendErrorResponse(
+      wantsJson,
+      "Please enter an email subject.",
+      400
     );
+  }
+
+  if (!body) {
+    return sendErrorResponse(
+      wantsJson,
+      "Please enter an email message.",
+      400
+    );
+  }
+
+  if (
+    subject.length >
+    250
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      "The email subject is too long.",
+      400
+    );
+  }
+
+  if (
+    body.length >
+    20000
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      "The email message is too long.",
+      400
+    );
+  }
 
   /* =========================================================
-     TEXT
+     EXTRA ATTACHMENTS
      ========================================================= */
 
-  const text =
-    replaceTemplatePlaceholders(
-      emailTemplate.body,
-      templateValues
+  const extraFiles =
+    formData
+      ? formData
+          .getAll(
+            "attachments"
+          )
+          .filter(
+            (
+              value
+            ): value is File =>
+              value instanceof
+                File &&
+              value.size >
+                0
+          )
+      : [];
+
+  if (
+    extraFiles.length >
+    MAX_ATTACHMENTS
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      `You can add up to ${MAX_ATTACHMENTS} extra attachments.`,
+      400
+    );
+  }
+
+  const totalExtraSize =
+    extraFiles.reduce(
+      (
+        total,
+        file
+      ) =>
+        total +
+        file.size,
+      0
     );
 
+  if (
+    totalExtraSize >
+    MAX_TOTAL_ATTACHMENT_SIZE
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      "Extra attachments must be under 4 MB in total.",
+      400
+    );
+  }
+
+  const extraAttachments: {
+    filename: string;
+    content: string;
+  }[] = [];
+
+  for (
+    const file of
+      extraFiles
+  ) {
+    const fileBuffer =
+      Buffer.from(
+        await file.arrayBuffer()
+      );
+
+    extraAttachments.push({
+      filename:
+        sanitiseAttachmentFilename(
+          file.name
+        ),
+
+      content:
+        fileBuffer.toString(
+          "base64"
+        ),
+    });
+  }
+
   /* =========================================================
-     HTML
+     GUARANTEE DETAILS
      ========================================================= */
+
+  const guaranteeType =
+    guarantee.guarantee_type ||
+    "Works Guarantee";
+
+  const issueDate =
+    formatDate(
+      guarantee.issue_date
+    );
+
+  const expiryDate =
+    formatDate(
+      guarantee.expiry_date
+    );
 
   const html =
-    buildTemplateEmailHtml({
-      templateBody:
-        emailTemplate.body,
-
-      values:
-        templateValues,
+    buildComposerEmailHtml({
+      body,
 
       customerUrl,
 
@@ -353,12 +544,20 @@ export async function POST(
 
       guaranteeType,
 
-      issueDate:
-        formattedIssueDate,
+      issueDate,
 
-      expiryDate:
-        formattedExpiryDate,
+      expiryDate,
     });
+
+  const text = [
+    body,
+
+    "",
+
+    "View your guarantee securely online:",
+
+    customerUrl,
+  ].join("\n");
 
   /* =========================================================
      RESEND
@@ -397,6 +596,14 @@ export async function POST(
             replyTo,
           }
         : {}),
+
+      ...(extraAttachments.length >
+      0
+        ? {
+            attachments:
+              extraAttachments,
+          }
+        : {}),
     });
 
   if (
@@ -407,14 +614,10 @@ export async function POST(
       sendError
     );
 
-    return NextResponse.json(
-      {
-        error:
-          "Guarantee email could not be sent.",
-      },
-      {
-        status: 500,
-      }
+    return sendErrorResponse(
+      wantsJson,
+      "Guarantee email could not be sent.",
+      500
     );
   }
 
@@ -437,8 +640,8 @@ export async function POST(
         sentAt,
 
       /*
-       * If the customer has already viewed the
-       * guarantee, don't move it backwards to Issued.
+       * Never move a Viewed guarantee
+       * backwards to Issued.
        */
 
       status:
@@ -463,7 +666,19 @@ export async function POST(
       updateError
     );
 
-    return NextResponse.json(
+    if (
+      wantsJson
+    ) {
+      return Response.json({
+        success:
+          true,
+
+        warning:
+          "The email was sent, but the guarantee activity could not be updated.",
+      });
+    }
+
+    return Response.json(
       {
         error:
           "The email was sent, but the guarantee activity could not be updated.",
@@ -474,13 +689,171 @@ export async function POST(
     );
   }
 
-  return NextResponse.json({
+  return Response.json({
     success: true,
   });
 }
 
 /* =========================================================
-   TEMPLATE PLACEHOLDERS
+   LOAD GUARANTEE
+   ========================================================= */
+
+async function loadGuaranteeContext(
+  supabase: Awaited<
+    ReturnType<
+      typeof createClient
+    >
+  >,
+  id: string
+) {
+  const [
+    guaranteeResult,
+    templateResult,
+  ] = await Promise.all([
+    supabase
+      .from("guarantees")
+      .select(`
+        id,
+        guarantee_number,
+        title,
+        guarantee_type,
+        status,
+        issue_date,
+        expiry_date,
+        public_token,
+        client_id,
+        job_id,
+
+        clients (
+          display_name,
+          email
+        )
+      `)
+      .eq(
+        "id",
+        id
+      )
+      .single(),
+
+    supabase
+      .from(
+        "email_templates"
+      )
+      .select(`
+        subject,
+        body
+      `)
+      .eq(
+        "template_key",
+        "guarantee"
+      )
+      .maybeSingle(),
+  ]);
+
+  if (
+    guaranteeResult.error ||
+    !guaranteeResult.data
+  ) {
+    console.error(
+      "Unable to load guarantee:",
+      guaranteeResult.error
+    );
+
+    return {
+      success:
+        false as const,
+
+      error:
+        "Guarantee could not be found.",
+
+      status:
+        404,
+    };
+  }
+
+  if (
+    templateResult.error
+  ) {
+    console.error(
+      "Unable to load guarantee email template. Using fallback:",
+      templateResult.error
+    );
+  }
+
+  const guarantee =
+    guaranteeResult.data;
+
+  const client =
+    Array.isArray(
+      guarantee.clients
+    )
+      ? guarantee.clients[0]
+      : guarantee.clients;
+
+  let job:
+    | {
+        id: string;
+        title:
+          | string
+          | null;
+      }
+    | null = null;
+
+  if (
+    guarantee.job_id
+  ) {
+    const {
+      data: jobData,
+      error: jobError,
+    } = await supabase
+      .from("jobs")
+      .select(`
+        id,
+        title
+      `)
+      .eq(
+        "id",
+        guarantee.job_id
+      )
+      .maybeSingle();
+
+    if (
+      jobError
+    ) {
+      console.error(
+        "Unable to load guarantee job:",
+        jobError
+      );
+    }
+
+    job =
+      jobData ||
+      null;
+  }
+
+  const template = {
+    subject:
+      templateResult.data?.subject?.trim() ||
+      fallbackGuaranteeTemplate.subject,
+
+    body:
+      templateResult.data?.body?.trim() ||
+      fallbackGuaranteeTemplate.body,
+  };
+
+  return {
+    success:
+      true as const,
+
+    guarantee,
+    client,
+    job,
+    template,
+  };
+}
+
+/* =========================================================
+   TEMPLATE
    ========================================================= */
 
 function replaceTemplatePlaceholders(
@@ -508,23 +881,30 @@ function replaceTemplatePlaceholders(
   return result;
 }
 
+function cleanComposerBody(
+  value: string
+) {
+  return value
+    .replace(
+      /\n{3,}/g,
+      "\n\n"
+    )
+    .trim();
+}
+
 /* =========================================================
-   HTML EMAIL
+   EMAIL HTML
    ========================================================= */
 
-function buildTemplateEmailHtml({
-  templateBody,
-  values,
+function buildComposerEmailHtml({
+  body,
   customerUrl,
   guaranteeNumber,
   guaranteeType,
   issueDate,
   expiryDate,
 }: {
-  templateBody: string;
-
-  values:
-    TemplateValues;
+  body: string;
 
   customerUrl:
     string;
@@ -541,13 +921,6 @@ function buildTemplateEmailHtml({
   expiryDate:
     string;
 }) {
-  const bodyHtml =
-    renderTemplateBodyHtml(
-      templateBody,
-      values,
-      customerUrl
-    );
-
   return `
 <!DOCTYPE html>
 
@@ -582,8 +955,6 @@ function buildTemplateEmailHtml({
         border:1px solid #e2e8f0;
       ">
 
-        <!-- HEADER -->
-
         <div style="
           background:#0f172a;
           padding:28px 32px;
@@ -607,23 +978,19 @@ function buildTemplateEmailHtml({
 
         </div>
 
-        <!-- TEMPLATE CONTENT -->
-
         <div style="
           padding:32px 32px 10px 32px;
           font-size:15px;
           line-height:1.7;
           color:#334155;
         ">
-
-          ${bodyHtml}
-
+          ${renderMessageHtml(
+            body
+          )}
         </div>
 
-        <!-- GUARANTEE SUMMARY -->
-
         <div style="
-          margin:10px 32px 32px 32px;
+          margin:10px 32px 28px 32px;
           padding:20px;
           background:#f8fafc;
           border:1px solid #e2e8f0;
@@ -728,7 +1095,30 @@ function buildTemplateEmailHtml({
           </table>
         </div>
 
-        <!-- RETAIN NOTICE -->
+        <div style="
+          text-align:center;
+          margin:28px 32px 36px 32px;
+        ">
+
+          <a
+            href="${escapeHtml(
+              customerUrl
+            )}"
+            style="
+              display:inline-block;
+              background:#047857;
+              color:#ffffff;
+              text-decoration:none;
+              padding:14px 28px;
+              border-radius:8px;
+              font-size:16px;
+              font-weight:700;
+            "
+          >
+            View Guarantee
+          </a>
+
+        </div>
 
         <div style="
           margin:0 32px 32px 32px;
@@ -741,8 +1131,6 @@ function buildTemplateEmailHtml({
         ">
           Please retain this guarantee with your property records.
         </div>
-
-        <!-- FOOTER -->
 
         <div style="
           border-top:1px solid #e2e8f0;
@@ -763,201 +1151,58 @@ function buildTemplateEmailHtml({
 `;
 }
 
-/* =========================================================
-   TEMPLATE BODY → HTML
-   ========================================================= */
-
-function renderTemplateBodyHtml(
-  templateBody: string,
-  values: TemplateValues,
-  customerUrl: string
+function renderMessageHtml(
+  value: string
 ) {
-  /*
-   * {{view_link}} becomes the customer-facing
-   * View Guarantee button in HTML emails.
-   */
-
-  const viewLinkMarker =
-    "__DRYHOME_VIEW_GUARANTEE_BUTTON__";
-
-  let body =
-    templateBody.replaceAll(
-      "{{view_link}}",
-      viewLinkMarker
-    );
-
-  const htmlValues: Omit<
-    TemplateValues,
-    "view_link"
-  > = {
-    client_name:
-      values.client_name,
-
-    job_title:
-      values.job_title,
-
-    guarantee_number:
-      values.guarantee_number,
-  };
-
-  for (
-    const [
-      key,
-      value,
-    ] of Object.entries(
-      htmlValues
-    )
-  ) {
-    body =
-      body.replaceAll(
-        `{{${key}}}`,
-        value
-      );
-  }
-
   const escaped =
     escapeHtml(
-      body
+      value
     );
 
-  const paragraphs =
-    escaped
-      .split(
-        /\n\s*\n/
-      )
-      .map(
-        (paragraph) =>
-          paragraph.trim()
-      )
-      .filter(
-        Boolean
-      );
-
-  return paragraphs
+  return escaped
+    .split(
+      /\n\s*\n/
+    )
     .map(
-      (paragraph) => {
-        if (
-          paragraph ===
-          viewLinkMarker
-        ) {
-          return buildGuaranteeButton(
-            customerUrl
-          );
-        }
-
-        if (
-          paragraph.includes(
-            viewLinkMarker
-          )
-        ) {
-          const parts =
-            paragraph.split(
-              viewLinkMarker
-            );
-
-          return parts
-            .map(
-              (
-                part,
-                index
-              ) => {
-                const blocks: string[] =
-                  [];
-
-                if (
-                  part.trim()
-                ) {
-                  blocks.push(
-                    buildParagraph(
-                      part
-                    )
-                  );
-                }
-
-                if (
-                  index <
-                  parts.length -
-                    1
-                ) {
-                  blocks.push(
-                    buildGuaranteeButton(
-                      customerUrl
-                    )
-                  );
-                }
-
-                return blocks.join(
-                  ""
-                );
-              }
-            )
-            .join("");
-        }
-
-        return buildParagraph(
-          paragraph
-        );
-      }
+      (paragraph) =>
+        paragraph.trim()
+    )
+    .filter(Boolean)
+    .map(
+      (paragraph) => `
+        <p style="
+          margin:0 0 18px 0;
+          line-height:1.7;
+        ">
+          ${paragraph.replace(
+            /\n/g,
+            "<br>"
+          )}
+        </p>
+      `
     )
     .join("");
 }
 
 /* =========================================================
-   PARAGRAPH
+   ATTACHMENTS
    ========================================================= */
 
-function buildParagraph(
-  value: string
+function sanitiseAttachmentFilename(
+  filename: string
 ) {
-  const withBreaks =
-    value.replace(
-      /\n/g,
-      "<br>"
-    );
+  const cleaned =
+    filename
+      .replace(
+        /[\r\n]/g,
+        ""
+      )
+      .trim();
 
-  return `
-    <p style="
-      margin:0 0 18px 0;
-      line-height:1.7;
-    ">
-      ${withBreaks}
-    </p>
-  `;
-}
-
-/* =========================================================
-   VIEW GUARANTEE BUTTON
-   ========================================================= */
-
-function buildGuaranteeButton(
-  customerUrl: string
-) {
-  return `
-    <div style="
-      text-align:center;
-      margin:28px 0;
-    ">
-
-      <a
-        href="${escapeHtml(
-          customerUrl
-        )}"
-        style="
-          display:inline-block;
-          background:#047857;
-          color:#ffffff;
-          text-decoration:none;
-          padding:14px 28px;
-          border-radius:8px;
-          font-size:16px;
-          font-weight:700;
-        "
-      >
-        View Guarantee
-      </a>
-
-    </div>
-  `;
+  return (
+    cleaned ||
+    "attachment"
+  );
 }
 
 /* =========================================================
@@ -1014,8 +1259,16 @@ function formatDate(
 }
 
 /* =========================================================
-   ESCAPE HTML
+   VALIDATION
    ========================================================= */
+
+function isValidEmail(
+  value: string
+) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    value
+  );
+}
 
 function escapeHtml(
   value: string
@@ -1041,4 +1294,24 @@ function escapeHtml(
       "'",
       "&#039;"
     );
+}
+
+/* =========================================================
+   RESPONSES
+   ========================================================= */
+
+function sendErrorResponse(
+  _wantsJson: boolean,
+  message: string,
+  status = 500
+) {
+  return Response.json(
+    {
+      error:
+        message,
+    },
+    {
+      status,
+    }
+  );
 }

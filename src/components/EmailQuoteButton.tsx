@@ -1,6 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import {
+  ChangeEvent,
+  FormEvent,
+  useState,
+} from "react";
 
 type EmailQuoteButtonProps = {
   quoteId: string;
@@ -8,50 +12,379 @@ type EmailQuoteButtonProps = {
   status: string;
 };
 
+type ComposerData = {
+  recipient: string;
+  subject: string;
+  body: string;
+  automaticAttachment: string;
+};
+
+const MAX_ATTACHMENTS = 5;
+const MAX_TOTAL_ATTACHMENT_SIZE =
+  4 * 1024 * 1024;
+
 export default function EmailQuoteButton({
   quoteId,
   recipient,
   status,
 }: EmailQuoteButtonProps) {
-  const [sending, setSending] = useState(false);
+  const [open, setOpen] =
+    useState(false);
 
-  const hasEmail = Boolean(recipient);
+  const [loading, setLoading] =
+    useState(false);
 
-  function handleSubmit(
-    event: React.FormEvent<HTMLFormElement>
-  ) {
+  const [sending, setSending] =
+    useState(false);
+
+  const [error, setError] =
+    useState<string | null>(
+      null
+    );
+
+  const [emailTo, setEmailTo] =
+    useState(
+      recipient || ""
+    );
+
+  const [subject, setSubject] =
+    useState("");
+
+  const [body, setBody] =
+    useState("");
+
+  const [
+    originalSubject,
+    setOriginalSubject,
+  ] = useState("");
+
+  const [
+    originalBody,
+    setOriginalBody,
+  ] = useState("");
+
+  const [
+    automaticAttachment,
+    setAutomaticAttachment,
+  ] = useState(
+    "Quotation PDF"
+  );
+
+  const [
+    attachments,
+    setAttachments,
+  ] = useState<File[]>([]);
+
+  const hasEmail =
+    Boolean(recipient);
+
+  async function openComposer() {
     if (!recipient) {
-      event.preventDefault();
       return;
     }
 
-    const message =
-      status === "Sent"
-        ? `Send this quotation again to ${recipient}?`
-        : `Email this quotation to ${recipient}?`;
+    setOpen(true);
+    setLoading(true);
+    setError(null);
+    setAttachments([]);
+
+    try {
+      const response =
+        await fetch(
+          `/quotes/${quoteId}/send`,
+          {
+            method: "GET",
+            cache: "no-store",
+          }
+        );
+
+      const data =
+        (await response.json()) as
+          | ComposerData
+          | {
+              error?: string;
+            };
+
+      if (!response.ok) {
+        throw new Error(
+          "error" in data &&
+          data.error
+            ? data.error
+            : "Unable to load the email."
+        );
+      }
+
+      const composerData =
+        data as ComposerData;
+
+      setEmailTo(
+        composerData.recipient ||
+          recipient
+      );
+
+      setSubject(
+        composerData.subject
+      );
+
+      setBody(
+        composerData.body
+      );
+
+      setOriginalSubject(
+        composerData.subject
+      );
+
+      setOriginalBody(
+        composerData.body
+      );
+
+      setAutomaticAttachment(
+        composerData.automaticAttachment ||
+          "Quotation PDF"
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load the email."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function closeComposer() {
+    if (sending) {
+      return;
+    }
+
+    setOpen(false);
+    setError(null);
+    setAttachments([]);
+  }
+
+  function resetTemplate() {
+    setSubject(
+      originalSubject
+    );
+
+    setBody(
+      originalBody
+    );
+
+    setError(null);
+  }
+
+  function handleAttachments(
+    event: ChangeEvent<HTMLInputElement>
+  ) {
+    const files =
+      Array.from(
+        event.target.files ||
+          []
+      );
+
+    event.target.value = "";
+
+    if (
+      files.length === 0
+    ) {
+      return;
+    }
+
+    const combined = [
+      ...attachments,
+      ...files,
+    ];
+
+    if (
+      combined.length >
+      MAX_ATTACHMENTS
+    ) {
+      setError(
+        `You can add up to ${MAX_ATTACHMENTS} extra attachments.`
+      );
+
+      return;
+    }
+
+    const totalSize =
+      combined.reduce(
+        (
+          total,
+          file
+        ) =>
+          total +
+          file.size,
+        0
+      );
+
+    if (
+      totalSize >
+      MAX_TOTAL_ATTACHMENT_SIZE
+    ) {
+      setError(
+        "Extra attachments must be under 4 MB in total."
+      );
+
+      return;
+    }
+
+    setAttachments(
+      combined
+    );
+
+    setError(null);
+  }
+
+  function removeAttachment(
+    index: number
+  ) {
+    setAttachments(
+      (
+        current
+      ) =>
+        current.filter(
+          (
+            _file,
+            fileIndex
+          ) =>
+            fileIndex !==
+            index
+        )
+    );
+  }
+
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    setError(null);
+
+    if (
+      !emailTo.trim()
+    ) {
+      setError(
+        "Please enter an email address."
+      );
+
+      return;
+    }
+
+    if (
+      !subject.trim()
+    ) {
+      setError(
+        "Please enter an email subject."
+      );
+
+      return;
+    }
+
+    if (!body.trim()) {
+      setError(
+        "Please enter an email message."
+      );
+
+      return;
+    }
 
     const confirmed =
-      window.confirm(message);
+      window.confirm(
+        status === "Sent"
+          ? `Send this quotation again to ${emailTo}?`
+          : `Send this quotation to ${emailTo}?`
+      );
 
     if (!confirmed) {
-      event.preventDefault();
       return;
     }
 
     setSending(true);
+
+    try {
+      const formData =
+        new FormData();
+
+      formData.set(
+        "recipient",
+        emailTo.trim()
+      );
+
+      formData.set(
+        "subject",
+        subject.trim()
+      );
+
+      formData.set(
+        "body",
+        body.trim()
+      );
+
+      for (
+        const file of
+          attachments
+      ) {
+        formData.append(
+          "attachments",
+          file
+        );
+      }
+
+      const response =
+        await fetch(
+          `/quotes/${quoteId}/send`,
+          {
+            method: "POST",
+
+            headers: {
+              "x-dryhome-composer":
+                "1",
+            },
+
+            body:
+              formData,
+          }
+        );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ||
+            "The quotation could not be emailed."
+        );
+      }
+
+      window.location.href =
+        `/quotes/${quoteId}?sent=1`;
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "The quotation could not be emailed."
+      );
+
+      setSending(false);
+    }
   }
 
   return (
-    <form
-      method="post"
-      action={`/quotes/${quoteId}/send`}
-      onSubmit={handleSubmit}
-    >
+    <>
       <button
-        type="submit"
-        disabled={!hasEmail || sending}
+        type="button"
+        onClick={
+          openComposer
+        }
+        disabled={
+          !hasEmail ||
+          sending
+        }
         className={`rounded-lg px-4 py-3 text-sm font-semibold transition ${
-          hasEmail && !sending
+          hasEmail &&
+          !sending
             ? "bg-slate-900 text-white hover:bg-slate-700"
             : "cursor-not-allowed bg-slate-300 text-slate-500"
         }`}
@@ -61,12 +394,347 @@ export default function EmailQuoteButton({
             : "The client does not have an email address"
         }
       >
-        {sending
-          ? "Sending..."
-          : status === "Sent"
-            ? "Send Again"
-            : "Email Quote"}
+        {status ===
+        "Sent"
+          ? "Send Again"
+          : "Email Quote"}
       </button>
-    </form>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+
+            {/* HEADER */}
+
+            <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Email Composer
+                </p>
+
+                <h2 className="mt-1 text-2xl font-bold text-slate-900">
+                  {status ===
+                  "Sent"
+                    ? "Send Quote Again"
+                    : "Send Quote"}
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Review or edit the email before sending.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  closeComposer
+                }
+                disabled={
+                  sending
+                }
+                className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+              >
+                Close
+              </button>
+            </div>
+
+            {loading ? (
+              <div className="p-8 text-sm text-slate-500">
+                Loading email template...
+              </div>
+            ) : (
+              <form
+                onSubmit={
+                  handleSubmit
+                }
+                className="flex min-h-0 flex-1 flex-col"
+              >
+                <div className="flex-1 overflow-y-auto p-6">
+
+                  {error && (
+                    <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                      {error}
+                    </div>
+                  )}
+
+                  {/* TO */}
+
+                  <div>
+                    <label
+                      htmlFor={`quote-email-to-${quoteId}`}
+                      className="block text-sm font-semibold text-slate-700"
+                    >
+                      To
+                    </label>
+
+                    <input
+                      id={`quote-email-to-${quoteId}`}
+                      type="email"
+                      value={
+                        emailTo
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        setEmailTo(
+                          event
+                            .target
+                            .value
+                        )
+                      }
+                      disabled={
+                        sending
+                      }
+                      className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:border-slate-500"
+                    />
+
+                    <p className="mt-1 text-xs text-slate-400">
+                      Changing this address only affects this email. It does not change the client record.
+                    </p>
+                  </div>
+
+                  {/* SUBJECT */}
+
+                  <div className="mt-5">
+                    <label
+                      htmlFor={`quote-email-subject-${quoteId}`}
+                      className="block text-sm font-semibold text-slate-700"
+                    >
+                      Subject
+                    </label>
+
+                    <input
+                      id={`quote-email-subject-${quoteId}`}
+                      type="text"
+                      value={
+                        subject
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        setSubject(
+                          event
+                            .target
+                            .value
+                        )
+                      }
+                      disabled={
+                        sending
+                      }
+                      className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:border-slate-500"
+                    />
+                  </div>
+
+                  {/* MESSAGE */}
+
+                  <div className="mt-5">
+                    <div className="flex items-center justify-between gap-4">
+                      <label
+                        htmlFor={`quote-email-body-${quoteId}`}
+                        className="block text-sm font-semibold text-slate-700"
+                      >
+                        Email Message
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={
+                          resetTemplate
+                        }
+                        disabled={
+                          sending
+                        }
+                        className="text-xs font-semibold text-slate-500 hover:text-slate-900"
+                      >
+                        Reset to Template
+                      </button>
+                    </div>
+
+                    <textarea
+                      id={`quote-email-body-${quoteId}`}
+                      value={
+                        body
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        setBody(
+                          event
+                            .target
+                            .value
+                        )
+                      }
+                      disabled={
+                        sending
+                      }
+                      rows={
+                        14
+                      }
+                      className="mt-2 w-full resize-y rounded-lg border border-slate-300 px-4 py-3 text-sm leading-6 text-slate-900 outline-none focus:border-slate-500"
+                    />
+
+                    <div className="mt-2 rounded-lg bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">
+                      The secure{" "}
+                      <strong className="text-slate-700">
+                        View Quote
+                      </strong>{" "}
+                      button and quotation summary are added automatically, so you cannot accidentally remove the customer link.
+                    </div>
+                  </div>
+
+                  {/* ATTACHMENTS */}
+
+                  <div className="mt-6 border-t border-slate-200 pt-6">
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      Attachments
+                    </h3>
+
+                    <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <p className="text-sm font-semibold text-emerald-900">
+                            {automaticAttachment}
+                          </p>
+
+                          <p className="mt-1 text-xs text-emerald-700">
+                            Automatically attached to every quote email.
+                          </p>
+                        </div>
+
+                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                          PDF
+                        </span>
+                      </div>
+                    </div>
+
+                    {attachments.length >
+                      0 && (
+                      <div className="mt-3 space-y-2">
+                        {attachments.map(
+                          (
+                            file,
+                            index
+                          ) => (
+                            <div
+                              key={`${file.name}-${file.size}-${index}`}
+                              className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 px-4 py-3"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-slate-700">
+                                  {
+                                    file.name
+                                  }
+                                </p>
+
+                                <p className="mt-1 text-xs text-slate-400">
+                                  {formatFileSize(
+                                    file.size
+                                  )}
+                                </p>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  removeAttachment(
+                                    index
+                                  )
+                                }
+                                disabled={
+                                  sending
+                                }
+                                className="text-xs font-semibold text-red-600 hover:text-red-800"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    )}
+
+                    <div className="mt-4">
+                      <label className="inline-flex cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                        + Add Attachment
+
+                        <input
+                          type="file"
+                          multiple
+                          onChange={
+                            handleAttachments
+                          }
+                          disabled={
+                            sending
+                          }
+                          className="hidden"
+                        />
+                      </label>
+
+                      <p className="mt-2 text-xs text-slate-400">
+                        Up to 5 additional files, maximum 4 MB combined.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* FOOTER */}
+
+                <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
+                  <button
+                    type="button"
+                    onClick={
+                      closeComposer
+                    }
+                    disabled={
+                      sending
+                    }
+                    className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={
+                      sending
+                    }
+                    className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  >
+                    {sending
+                      ? "Sending..."
+                      : "Send Quote"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
+}
+
+function formatFileSize(
+  bytes: number
+) {
+  if (
+    bytes <
+    1024
+  ) {
+    return `${bytes} B`;
+  }
+
+  if (
+    bytes <
+    1024 * 1024
+  ) {
+    return `${(
+      bytes / 1024
+    ).toFixed(1)} KB`;
+  }
+
+  return `${(
+    bytes /
+    (1024 * 1024)
+  ).toFixed(1)} MB`;
 }

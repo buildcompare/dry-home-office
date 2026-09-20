@@ -7,7 +7,12 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { createClient } from "@/lib/supabase/server";
 import QuotePdfDocument from "@/components/QuotePdfDocument";
 
-export const runtime = "nodejs";
+export const runtime =
+  "nodejs";
+
+const MAX_ATTACHMENTS = 5;
+const MAX_TOTAL_ATTACHMENT_SIZE =
+  4 * 1024 * 1024;
 
 type RouteProps = {
   params: Promise<{
@@ -48,15 +53,182 @@ Dry Home Damp Proofing Solutions`,
 };
 
 /* =========================================================
-   SEND QUOTE
+   LOAD EMAIL COMPOSER
    ========================================================= */
 
-export async function POST(
+export async function GET(
   _request: Request,
   { params }: RouteProps
 ) {
   const { id } =
     await params;
+
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(
+      /\/$/,
+      ""
+    );
+
+  if (!appUrl) {
+    return Response.json(
+      {
+        error:
+          "NEXT_PUBLIC_APP_URL is missing.",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+
+  const supabase =
+    await createClient();
+
+  const context =
+    await loadQuoteContext(
+      supabase,
+      id
+    );
+
+  if (
+    !context.success
+  ) {
+    return Response.json(
+      {
+        error:
+          context.error,
+      },
+      {
+        status:
+          context.status,
+      }
+    );
+  }
+
+  const {
+    quote,
+    client,
+    job,
+    template,
+  } = context;
+
+  const recipient =
+    client?.email?.trim();
+
+  if (!recipient) {
+    return Response.json(
+      {
+        error:
+          "This client does not have an email address.",
+      },
+      {
+        status: 400,
+      }
+    );
+  }
+
+  if (
+    !quote.public_token
+  ) {
+    return Response.json(
+      {
+        error:
+          "This quotation does not have a customer access link.",
+      },
+      {
+        status: 400,
+      }
+    );
+  }
+
+  const clientName =
+    getClientName(
+      client
+    );
+
+  const jobTitle =
+    job?.title ||
+    quote.title ||
+    "your works";
+
+  const customerQuoteUrl =
+    `${appUrl}/q/${quote.public_token}`;
+
+  const values: TemplateValues = {
+    client_name:
+      clientName,
+
+    job_title:
+      jobTitle,
+
+    quote_number:
+      quote.quote_number,
+
+    quote_total:
+      formatCurrency(
+        Number(
+          quote.amount ??
+            0
+        )
+      ),
+
+    view_link:
+      customerQuoteUrl,
+  };
+
+  const subject =
+    replaceTemplatePlaceholders(
+      template.subject,
+      values
+    );
+
+  /*
+   * The secure link is not put into the editable textarea.
+   * It is always added automatically as a button when sent.
+   */
+
+  const body =
+    cleanComposerBody(
+      replaceTemplatePlaceholders(
+        template.body,
+        {
+          ...values,
+          view_link: "",
+        }
+      )
+    );
+
+  const filename =
+    buildQuoteFilename(
+      quote.quote_number,
+      quote.title
+    );
+
+  return Response.json({
+    recipient,
+    subject,
+    body,
+
+    automaticAttachment:
+      `${filename}.pdf`,
+  });
+}
+
+/* =========================================================
+   SEND QUOTE
+   ========================================================= */
+
+export async function POST(
+  request: Request,
+  { params }: RouteProps
+) {
+  const { id } =
+    await params;
+
+  const wantsJson =
+    request.headers.get(
+      "x-dryhome-composer"
+    ) === "1";
 
   const apiKey =
     process.env.RESEND_API_KEY;
@@ -67,30 +239,18 @@ export async function POST(
       ""
     );
 
-  /* =========================================================
-     CONFIG
-     ========================================================= */
-
   if (!apiKey) {
-    console.error(
-      "RESEND_API_KEY is missing"
-    );
-
-    return redirectToQuote(
+    return sendErrorResponse(
+      wantsJson,
       id,
-      "error",
       "Email service is not configured."
     );
   }
 
   if (!appUrl) {
-    console.error(
-      "NEXT_PUBLIC_APP_URL is missing"
-    );
-
-    return redirectToQuote(
+    return sendErrorResponse(
+      wantsJson,
       id,
-      "error",
       "The customer quote link is not configured."
     );
   }
@@ -98,239 +258,325 @@ export async function POST(
   const supabase =
     await createClient();
 
-  /* =========================================================
-     QUOTE
-     ========================================================= */
-
-  const {
-    data: quote,
-    error: quoteError,
-  } = await supabase
-    .from("quotes")
-    .select(`
-      id,
-      quote_number,
-      public_token,
-      title,
-      description,
-      status,
-      quote_date,
-      valid_until,
-      subtotal,
-      vat_enabled,
-      vat_rate,
-      vat_amount,
-      amount,
-      customer_message,
-      terms,
-
-      clients (
-        id,
-        display_name,
-        first_name,
-        last_name,
-        email,
-        phone,
-        address_line_1,
-        address_line_2,
-        town,
-        county,
-        postcode
-      ),
-
-      jobs (
-        id,
-        job_number,
-        title
-      )
-    `)
-    .eq(
-      "id",
+  const context =
+    await loadQuoteContext(
+      supabase,
       id
-    )
-    .single();
+    );
 
   if (
-    quoteError ||
-    !quote
+    !context.success
   ) {
-    console.error(
-      "Unable to load quote:",
-      quoteError
-    );
-
-    return redirectToQuote(
+    return sendErrorResponse(
+      wantsJson,
       id,
-      "error",
-      "Unable to find the quotation."
+      context.error,
+      context.status
     );
   }
+
+  const {
+    quote,
+    client,
+    job,
+  } = context;
 
   if (
     !quote.public_token
   ) {
-    console.error(
-      "Quote public token missing"
-    );
-
-    return redirectToQuote(
+    return sendErrorResponse(
+      wantsJson,
       id,
-      "error",
-      "This quotation does not have a customer access link."
+      "This quotation does not have a customer access link.",
+      400
     );
   }
 
   /* =========================================================
-     QUOTE ITEMS + EMAIL TEMPLATE
+     COMPOSER FORM
      ========================================================= */
 
-  const [
-    itemsResult,
-    templateResult,
-  ] = await Promise.all([
-    supabase
-      .from("quote_items")
-      .select(`
-        id,
-        description,
-        quantity,
-        unit,
-        unit_price,
-        item_type,
-        sort_order
-      `)
-      .eq(
-        "quote_id",
-        id
-      )
-      .order(
-        "sort_order",
-        {
-          ascending: true,
-        }
-      ),
+  let formData:
+    FormData | null =
+    null;
 
-    supabase
-      .from("email_templates")
-      .select(`
-        subject,
-        body
-      `)
-      .eq(
-        "template_key",
-        "quote"
-      )
-      .maybeSingle(),
-  ]);
-
-  if (
-    itemsResult.error
-  ) {
-    console.error(
-      "Unable to load quote items:",
-      itemsResult.error
-    );
-
-    return redirectToQuote(
-      id,
-      "error",
-      "Unable to load the quotation items."
-    );
+  try {
+    formData =
+      await request.formData();
+  } catch {
+    formData =
+      null;
   }
 
-  /*
-   * Email templates deliberately have a fallback.
-   *
-   * If the database template ever disappears or cannot
-   * be read, quote emails can still be sent.
-   */
-
-  if (
-    templateResult.error
-  ) {
-    console.error(
-      "Unable to load quote email template. Using fallback:",
-      templateResult.error
-    );
-  }
-
-  const emailTemplate = {
-    subject:
-      templateResult.data?.subject?.trim() ||
-      fallbackQuoteTemplate.subject,
-
-    body:
-      templateResult.data?.body?.trim() ||
-      fallbackQuoteTemplate.body,
-  };
-
-  const quoteItems =
-    itemsResult.data ??
-    [];
-
-  /* =========================================================
-     CLIENT / JOB
-     ========================================================= */
-
-  const client =
-    Array.isArray(
-      quote.clients
-    )
-      ? quote.clients[0]
-      : quote.clients;
-
-  const job =
-    Array.isArray(
-      quote.jobs
-    )
-      ? quote.jobs[0]
-      : quote.jobs;
+  const defaultRecipient =
+    client?.email?.trim() ||
+    "";
 
   const recipient =
-    client?.email?.trim();
+    String(
+      formData?.get(
+        "recipient"
+      ) ??
+        defaultRecipient
+    ).trim();
 
-  if (!recipient) {
-    return redirectToQuote(
+  if (
+    !recipient ||
+    !isValidEmail(
+      recipient
+    )
+  ) {
+    return sendErrorResponse(
+      wantsJson,
       id,
-      "error",
-      "This client does not have an email address."
+      "Please enter a valid recipient email address.",
+      400
     );
   }
 
   const clientName =
-    client?.display_name ||
-    [
-      client?.first_name,
-      client?.last_name,
-    ]
-      .filter(Boolean)
-      .join(" ") ||
-    "Customer";
+    getClientName(
+      client
+    );
 
   const jobTitle =
     job?.title ||
     quote.title ||
-    "your job";
+    "your works";
 
-  const clientAddressLines = [
-    client?.address_line_1,
-    client?.address_line_2,
-    client?.town,
-    client?.county,
-    client?.postcode,
-  ].filter(
-    (
-      value
-    ): value is string =>
-      Boolean(value)
-  );
+  const customerQuoteUrl =
+    `${appUrl}/q/${quote.public_token}`;
+
+  const values: TemplateValues = {
+    client_name:
+      clientName,
+
+    job_title:
+      jobTitle,
+
+    quote_number:
+      quote.quote_number,
+
+    quote_total:
+      formatCurrency(
+        Number(
+          quote.amount ??
+            0
+        )
+      ),
+
+    view_link:
+      customerQuoteUrl,
+  };
+
+  const defaultSubject =
+    replaceTemplatePlaceholders(
+      context.template.subject,
+      values
+    );
+
+  const defaultBody =
+    cleanComposerBody(
+      replaceTemplatePlaceholders(
+        context.template.body,
+        {
+          ...values,
+          view_link: "",
+        }
+      )
+    );
+
+  const subject =
+    String(
+      formData?.get(
+        "subject"
+      ) ??
+        defaultSubject
+    ).trim();
+
+  const body =
+    String(
+      formData?.get(
+        "body"
+      ) ??
+        defaultBody
+    ).trim();
+
+  if (!subject) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "Please enter an email subject.",
+      400
+    );
+  }
+
+  if (!body) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "Please enter an email message.",
+      400
+    );
+  }
+
+  if (
+    subject.length >
+    250
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "The email subject is too long.",
+      400
+    );
+  }
+
+  if (
+    body.length >
+    20000
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "The email message is too long.",
+      400
+    );
+  }
+
+  /* =========================================================
+     EXTRA ATTACHMENTS
+     ========================================================= */
+
+  const extraFiles =
+    formData
+      ? formData
+          .getAll(
+            "attachments"
+          )
+          .filter(
+            (
+              value
+            ): value is File =>
+              value instanceof
+              File &&
+              value.size >
+                0
+          )
+      : [];
+
+  if (
+    extraFiles.length >
+    MAX_ATTACHMENTS
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      `You can add up to ${MAX_ATTACHMENTS} extra attachments.`,
+      400
+    );
+  }
+
+  const totalExtraSize =
+    extraFiles.reduce(
+      (
+        total,
+        file
+      ) =>
+        total +
+        file.size,
+      0
+    );
+
+  if (
+    totalExtraSize >
+    MAX_TOTAL_ATTACHMENT_SIZE
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "Extra attachments must be under 4 MB in total.",
+      400
+    );
+  }
+
+  const extraAttachments: {
+    filename: string;
+    content: string;
+  }[] = [];
+
+  for (
+    const file of
+      extraFiles
+  ) {
+    const fileBuffer =
+      Buffer.from(
+        await file.arrayBuffer()
+      );
+
+    extraAttachments.push({
+      filename:
+        sanitiseAttachmentFilename(
+          file.name
+        ),
+
+      content:
+        fileBuffer.toString(
+          "base64"
+        ),
+    });
+  }
 
   /* =========================================================
      QUOTE ITEMS
      ========================================================= */
 
+  const {
+    data: quoteItems,
+    error: itemsError,
+  } = await supabase
+    .from("quote_items")
+    .select(`
+      id,
+      description,
+      quantity,
+      unit,
+      unit_price,
+      item_type,
+      sort_order
+    `)
+    .eq(
+      "quote_id",
+      id
+    )
+    .order(
+      "sort_order",
+      {
+        ascending:
+          true,
+      }
+    );
+
+  if (
+    itemsError
+  ) {
+    console.error(
+      "Unable to load quote items:",
+      itemsError
+    );
+
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "Unable to load the quotation items."
+    );
+  }
+
   const labourItems =
-    quoteItems
+    (
+      quoteItems ??
+      []
+    )
       .filter(
         (item) =>
           item.item_type !==
@@ -360,7 +606,10 @@ export async function POST(
       );
 
   const materialItems =
-    quoteItems
+    (
+      quoteItems ??
+      []
+    )
       .filter(
         (item) =>
           item.item_type ===
@@ -390,13 +639,31 @@ export async function POST(
       );
 
   /* =========================================================
+     CLIENT ADDRESS
+     ========================================================= */
+
+  const clientAddressLines = [
+    client?.address_line_1,
+    client?.address_line_2,
+    client?.town,
+    client?.county,
+    client?.postcode,
+  ].filter(
+    (
+      value
+    ): value is string =>
+      Boolean(value)
+  );
+
+  /* =========================================================
      PDF
      ========================================================= */
 
   const logoDataUri =
     await loadLogoFromDisk();
 
-  let pdfBuffer: Buffer;
+  let pdfBuffer:
+    Buffer;
 
   try {
     const pdfDocument =
@@ -493,77 +760,26 @@ export async function POST(
       pdfError
     );
 
-    return redirectToQuote(
+    return sendErrorResponse(
+      wantsJson,
       id,
-      "error",
       "Unable to generate the PDF attachment."
     );
   }
 
-  /* =========================================================
-     CUSTOMER URL
-     ========================================================= */
-
-  const customerQuoteUrl =
-    `${appUrl}/q/${quote.public_token}`;
-
-  /* =========================================================
-     TEMPLATE VALUES
-     ========================================================= */
-
-  const templateValues: TemplateValues = {
-    client_name:
-      clientName,
-
-    job_title:
-      jobTitle,
-
-    quote_number:
+  const filename =
+    buildQuoteFilename(
       quote.quote_number,
-
-    quote_total:
-      formatCurrency(
-        Number(
-          quote.amount ??
-            0
-        )
-      ),
-
-    view_link:
-      customerQuoteUrl,
-  };
-
-  /* =========================================================
-     SUBJECT
-     ========================================================= */
-
-  const subject =
-    replaceTemplatePlaceholders(
-      emailTemplate.subject,
-      templateValues
+      quote.title
     );
 
   /* =========================================================
-     TEXT EMAIL
-     ========================================================= */
-
-  const text =
-    replaceTemplatePlaceholders(
-      emailTemplate.body,
-      templateValues
-    );
-
-  /* =========================================================
-     HTML EMAIL
+     EMAIL
      ========================================================= */
 
   const html =
-    buildTemplateEmailHtml({
-      templateBody:
-        emailTemplate.body,
-
-      values:
-        templateValues,
+    buildComposerEmailHtml({
+      body,
 
       customerQuoteUrl,
 
@@ -580,9 +796,19 @@ export async function POST(
         ),
     });
 
-  /* =========================================================
-     EMAIL CONFIG
-     ========================================================= */
+  const text = [
+    body,
+
+    "",
+
+    "View your quotation securely online:",
+
+    customerQuoteUrl,
+
+    "",
+
+    "A PDF copy of the quotation is attached.",
+  ].join("\n");
 
   const fromAddress =
     process.env.RESEND_FROM_EMAIL?.trim() ||
@@ -595,21 +821,6 @@ export async function POST(
     new Resend(
       apiKey
     );
-
-  const filename =
-    `${quote.quote_number}-${quote.title}`
-      .replace(
-        /[^a-zA-Z0-9-_ ]/g,
-        ""
-      )
-      .replace(
-        /\s+/g,
-        "-"
-      );
-
-  /* =========================================================
-     SEND
-     ========================================================= */
 
   const {
     data: emailData,
@@ -644,6 +855,8 @@ export async function POST(
           filename:
             `${filename}.pdf`,
         },
+
+        ...extraAttachments,
       ],
     });
 
@@ -655,9 +868,9 @@ export async function POST(
       sendError
     );
 
-    return redirectToQuote(
+    return sendErrorResponse(
+      wantsJson,
       id,
-      "error",
       "The quotation could not be emailed. Please try again."
     );
   }
@@ -706,11 +919,33 @@ export async function POST(
       updateError
     );
 
+    if (
+      wantsJson
+    ) {
+      return Response.json(
+        {
+          success:
+            true,
+
+          warning:
+            "The email was sent, but DryHome Office could not update the quote status.",
+        }
+      );
+    }
+
     return redirectToQuote(
       id,
       "warning",
       "The email was sent, but DryHome Office could not update the quote status."
     );
+  }
+
+  if (
+    wantsJson
+  ) {
+    return Response.json({
+      success: true,
+    });
   }
 
   return redirectToQuote(
@@ -721,7 +956,185 @@ export async function POST(
 }
 
 /* =========================================================
-   TEMPLATE PLACEHOLDERS
+   LOAD QUOTE CONTEXT
+   ========================================================= */
+
+async function loadQuoteContext(
+  supabase: Awaited<
+    ReturnType<
+      typeof createClient
+    >
+  >,
+  id: string
+) {
+  const [
+    quoteResult,
+    templateResult,
+  ] = await Promise.all([
+    supabase
+      .from("quotes")
+      .select(`
+        id,
+        quote_number,
+        public_token,
+        title,
+        description,
+        status,
+        quote_date,
+        valid_until,
+        subtotal,
+        vat_enabled,
+        vat_rate,
+        vat_amount,
+        amount,
+        customer_message,
+        terms,
+
+        clients (
+          id,
+          display_name,
+          first_name,
+          last_name,
+          email,
+          phone,
+          address_line_1,
+          address_line_2,
+          town,
+          county,
+          postcode
+        ),
+
+        jobs (
+          id,
+          job_number,
+          title
+        )
+      `)
+      .eq(
+        "id",
+        id
+      )
+      .single(),
+
+    supabase
+      .from(
+        "email_templates"
+      )
+      .select(`
+        subject,
+        body
+      `)
+      .eq(
+        "template_key",
+        "quote"
+      )
+      .maybeSingle(),
+  ]);
+
+  if (
+    quoteResult.error ||
+    !quoteResult.data
+  ) {
+    console.error(
+      "Unable to load quote:",
+      quoteResult.error
+    );
+
+    return {
+      success:
+        false as const,
+
+      error:
+        "Unable to find the quotation.",
+
+      status:
+        404,
+    };
+  }
+
+  if (
+    templateResult.error
+  ) {
+    console.error(
+      "Unable to load quote email template. Using fallback:",
+      templateResult.error
+    );
+  }
+
+  const quote =
+    quoteResult.data;
+
+  const client =
+    Array.isArray(
+      quote.clients
+    )
+      ? quote.clients[0]
+      : quote.clients;
+
+  const job =
+    Array.isArray(
+      quote.jobs
+    )
+      ? quote.jobs[0]
+      : quote.jobs;
+
+  const template = {
+    subject:
+      templateResult.data?.subject?.trim() ||
+      fallbackQuoteTemplate.subject,
+
+    body:
+      templateResult.data?.body?.trim() ||
+      fallbackQuoteTemplate.body,
+  };
+
+  return {
+    success:
+      true as const,
+
+    quote,
+    client,
+    job,
+    template,
+  };
+}
+
+/* =========================================================
+   CLIENT NAME
+   ========================================================= */
+
+function getClientName(
+  client:
+    | {
+        display_name?:
+          | string
+          | null;
+
+        first_name?:
+          | string
+          | null;
+
+        last_name?:
+          | string
+          | null;
+      }
+    | null
+    | undefined
+) {
+  return (
+    client?.display_name ||
+    [
+      client?.first_name,
+      client?.last_name,
+    ]
+      .filter(Boolean)
+      .join(" ") ||
+    "Customer"
+  );
+}
+
+/* =========================================================
+   PLACEHOLDERS
    ========================================================= */
 
 function replaceTemplatePlaceholders(
@@ -750,21 +1163,32 @@ function replaceTemplatePlaceholders(
 }
 
 /* =========================================================
+   CLEAN COMPOSER BODY
+   ========================================================= */
+
+function cleanComposerBody(
+  value: string
+) {
+  return value
+    .replace(
+      /\n{3,}/g,
+      "\n\n"
+    )
+    .trim();
+}
+
+/* =========================================================
    HTML EMAIL
    ========================================================= */
 
-function buildTemplateEmailHtml({
-  templateBody,
-  values,
+function buildComposerEmailHtml({
+  body,
   customerQuoteUrl,
   quoteNumber,
   quoteTitle,
   quoteTotal,
 }: {
-  templateBody: string;
-
-  values:
-    TemplateValues;
+  body: string;
 
   customerQuoteUrl:
     string;
@@ -778,13 +1202,6 @@ function buildTemplateEmailHtml({
   quoteTotal:
     number;
 }) {
-  const bodyHtml =
-    renderTemplateBodyHtml(
-      templateBody,
-      values,
-      customerQuoteUrl
-    );
-
   return `
 <!DOCTYPE html>
 
@@ -805,6 +1222,7 @@ function buildTemplateEmailHtml({
     font-family:Arial,Helvetica,sans-serif;
     color:#334155;
   ">
+
     <div style="
       max-width:640px;
       margin:0 auto;
@@ -818,12 +1236,11 @@ function buildTemplateEmailHtml({
         border:1px solid #e2e8f0;
       ">
 
-        <!-- HEADER -->
-
         <div style="
           background:#0f172a;
           padding:28px 32px;
         ">
+
           <div style="
             color:#ffffff;
             font-size:22px;
@@ -839,25 +1256,22 @@ function buildTemplateEmailHtml({
           ">
             Professional Damp Proofing &amp; Property Solutions
           </div>
+
         </div>
 
-        <!-- TEMPLATE CONTENT -->
-
         <div style="
-          padding:32px;
+          padding:32px 32px 10px 32px;
           font-size:15px;
           line-height:1.7;
           color:#334155;
         ">
-
-          ${bodyHtml}
-
+          ${renderMessageHtml(
+            body
+          )}
         </div>
 
-        <!-- QUOTE SUMMARY -->
-
         <div style="
-          margin:0 32px 32px 32px;
+          margin:10px 32px 28px 32px;
           padding:20px;
           background:#f8fafc;
           border:1px solid #e2e8f0;
@@ -916,9 +1330,33 @@ function buildTemplateEmailHtml({
               )
             )}
           </div>
+
         </div>
 
-        <!-- FOOTER -->
+        <div style="
+          text-align:center;
+          margin:28px 32px 36px 32px;
+        ">
+
+          <a
+            href="${escapeHtml(
+              customerQuoteUrl
+            )}"
+            style="
+              display:inline-block;
+              background:#0f172a;
+              color:#ffffff;
+              text-decoration:none;
+              padding:14px 28px;
+              border-radius:8px;
+              font-size:16px;
+              font-weight:700;
+            "
+          >
+            View Quote
+          </a>
+
+        </div>
 
         <div style="
           border-top:1px solid #e2e8f0;
@@ -940,208 +1378,97 @@ function buildTemplateEmailHtml({
 }
 
 /* =========================================================
-   TEMPLATE BODY → HTML
+   MESSAGE HTML
    ========================================================= */
 
-function renderTemplateBodyHtml(
-  templateBody: string,
-  values: TemplateValues,
-  customerQuoteUrl: string
+function renderMessageHtml(
+  value: string
 ) {
-  /*
-   * We handle {{view_link}} separately because in
-   * the HTML version it becomes a proper button.
-   */
-
-  const viewLinkMarker =
-    "__DRYHOME_VIEW_QUOTE_BUTTON__";
-
-  let body =
-    templateBody.replaceAll(
-      "{{view_link}}",
-      viewLinkMarker
-    );
-
-  const htmlValues: Omit<
-    TemplateValues,
-    "view_link"
-  > = {
-    client_name:
-      values.client_name,
-
-    job_title:
-      values.job_title,
-
-    quote_number:
-      values.quote_number,
-
-    quote_total:
-      values.quote_total,
-  };
-
-  for (
-    const [
-      key,
-      value,
-    ] of Object.entries(
-      htmlValues
-    )
-  ) {
-    body =
-      body.replaceAll(
-        `{{${key}}}`,
-        value
-      );
-  }
-
   const escaped =
     escapeHtml(
-      body
+      value
     );
 
-  const paragraphs =
-    escaped
-      .split(
-        /\n\s*\n/
-      )
-      .map(
-        (
-          paragraph
-        ) =>
-          paragraph.trim()
-      )
-      .filter(Boolean);
-
-  return paragraphs
+  return escaped
+    .split(
+      /\n\s*\n/
+    )
     .map(
-      (
-        paragraph
-      ) => {
-        if (
-          paragraph ===
-          viewLinkMarker
-        ) {
-          return buildQuoteButton(
-            customerQuoteUrl
-          );
-        }
-
-        /*
-         * If the marker appears inside a paragraph,
-         * split the paragraph around the button.
-         */
-
-        if (
-          paragraph.includes(
-            viewLinkMarker
-          )
-        ) {
-          const parts =
-            paragraph.split(
-              viewLinkMarker
-            );
-
-          return parts
-            .map(
-              (
-                part,
-                index
-              ) => {
-                const blocks: string[] =
-                  [];
-
-                if (
-                  part.trim()
-                ) {
-                  blocks.push(
-                    buildParagraph(
-                      part
-                    )
-                  );
-                }
-
-                if (
-                  index <
-                  parts.length -
-                    1
-                ) {
-                  blocks.push(
-                    buildQuoteButton(
-                      customerQuoteUrl
-                    )
-                  );
-                }
-
-                return blocks.join(
-                  ""
-                );
-              }
-            )
-            .join("");
-        }
-
-        return buildParagraph(
-          paragraph
-        );
-      }
+      (paragraph) =>
+        paragraph.trim()
+    )
+    .filter(Boolean)
+    .map(
+      (paragraph) => `
+        <p style="
+          margin:0 0 18px 0;
+          line-height:1.7;
+        ">
+          ${paragraph.replace(
+            /\n/g,
+            "<br>"
+          )}
+        </p>
+      `
     )
     .join("");
 }
 
 /* =========================================================
-   HTML PARAGRAPH
+   QUOTE FILENAME
    ========================================================= */
 
-function buildParagraph(
-  value: string
+function buildQuoteFilename(
+  quoteNumber: string,
+  title:
+    | string
+    | null
 ) {
-  const withBreaks =
-    value.replace(
-      /\n/g,
-      "<br>"
-    );
+  const raw =
+    `${quoteNumber}-${title || "Quotation"}`;
 
-  return `
-    <p style="
-      margin:0 0 18px 0;
-      line-height:1.7;
-    ">
-      ${withBreaks}
-    </p>
-  `;
+  return raw
+    .replace(
+      /[^a-zA-Z0-9-_ ]/g,
+      ""
+    )
+    .replace(
+      /\s+/g,
+      "-"
+    );
 }
 
 /* =========================================================
-   VIEW QUOTE BUTTON
+   ATTACHMENT FILENAME
    ========================================================= */
 
-function buildQuoteButton(
-  customerQuoteUrl: string
+function sanitiseAttachmentFilename(
+  filename: string
 ) {
-  return `
-    <div style="
-      text-align:center;
-      margin:28px 0;
-    ">
-      <a
-        href="${escapeHtml(
-          customerQuoteUrl
-        )}"
-        style="
-          display:inline-block;
-          background:#0f172a;
-          color:#ffffff;
-          text-decoration:none;
-          padding:14px 28px;
-          border-radius:8px;
-          font-size:16px;
-          font-weight:700;
-        "
-      >
-        View Quote
-      </a>
-    </div>
-  `;
+  const cleaned =
+    filename
+      .replace(
+        /[\r\n]/g,
+        ""
+      )
+      .trim();
+
+  return (
+    cleaned ||
+    "attachment"
+  );
+}
+
+/* =========================================================
+   EMAIL VALIDATION
+   ========================================================= */
+
+function isValidEmail(
+  value: string
+) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    value
+  );
 }
 
 /* =========================================================
@@ -1200,7 +1527,7 @@ function formatCurrency(
 }
 
 /* =========================================================
-   ESCAPE HTML
+   HTML ESCAPE
    ========================================================= */
 
 function escapeHtml(
@@ -1227,6 +1554,37 @@ function escapeHtml(
       "'",
       "&#039;"
     );
+}
+
+/* =========================================================
+   ERROR RESPONSE
+   ========================================================= */
+
+function sendErrorResponse(
+  wantsJson: boolean,
+  id: string,
+  message: string,
+  status = 500
+) {
+  if (
+    wantsJson
+  ) {
+    return Response.json(
+      {
+        error:
+          message,
+      },
+      {
+        status,
+      }
+    );
+  }
+
+  return redirectToQuote(
+    id,
+    "error",
+    message
+  );
 }
 
 /* =========================================================
