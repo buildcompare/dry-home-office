@@ -78,6 +78,7 @@ export default async function JobPage({
   const [
     scheduleResult,
     quotesResult,
+    variationsResult,
     contractsResult,
     invoicesResult,
     guaranteesResult,
@@ -115,6 +116,25 @@ export default async function JobPage({
         status,
         amount,
         quote_date,
+        created_at
+      `)
+      .eq("job_id", id)
+      .order("created_at", {
+        ascending: false,
+      }),
+
+    supabase
+      .from("variations")
+      .select(`
+        id,
+        quote_id,
+        variation_number,
+        title,
+        status,
+        amount,
+        variation_date,
+        valid_until,
+        accepted_at,
         created_at
       `)
       .eq("job_id", id)
@@ -188,6 +208,9 @@ export default async function JobPage({
   const quotes =
     quotesResult.data ?? [];
 
+  const variations =
+    variationsResult.data ?? [];
+
   const contracts =
     contractsResult.data ?? [];
 
@@ -227,6 +250,47 @@ export default async function JobPage({
           )
         )
       : 0;
+
+  /* =========================================================
+     VARIATIONS
+     ========================================================= */
+
+  const acceptedVariations =
+    variations.filter(
+      (variation) =>
+        variation.status ===
+        "Accepted"
+    );
+
+  const acceptedVariationValue =
+    money(
+      acceptedVariations.reduce(
+        (total, variation) =>
+          total +
+          Number(
+            variation.amount ??
+              0
+          ),
+        0
+      )
+    );
+
+  const approvedJobValue =
+    money(
+      acceptedQuoteValue +
+        acceptedVariationValue
+    );
+
+  const openVariations =
+    variations.filter(
+      (variation) =>
+        variation.status ===
+          "Draft" ||
+        variation.status ===
+          "Sent" ||
+        variation.status ===
+          "Viewed"
+    );
 
   /* =========================================================
      CONTRACT
@@ -798,6 +862,13 @@ export default async function JobPage({
                     Schedule Work
                   </Link>
 
+                  <Link
+                    href={`/variations/new?job=${job.id}&quote=${acceptedQuote.id}`}
+                    className="rounded-lg px-5 py-3 text-sm font-semibold text-white shadow-sm hover:opacity-90" style={{ backgroundColor: "#d97706" }}
+                  >
+                    + Create Variation
+                  </Link>
+
                   {linkedContract ? (
                     <Link
                       href={`/contracts/${linkedContract.id}`}
@@ -857,11 +928,29 @@ export default async function JobPage({
                 </div>
               </div>
 
-              <div className="grid gap-px bg-slate-200 md:grid-cols-5">
+              <div className="grid gap-px bg-slate-200 md:grid-cols-2 xl:grid-cols-7">
                 <WorkflowStat
-                  title="Accepted Value"
+                  title="Original Quote"
                   value={formatCurrency(
                     acceptedQuoteValue
+                  )}
+                />
+
+                <WorkflowStat
+                  title="Accepted Variations"
+                  value={formatCurrency(
+                    acceptedVariationValue
+                  )}
+                  strong={
+                    acceptedVariationValue >
+                    0
+                  }
+                />
+
+                <WorkflowStat
+                  title="Approved Job Value"
+                  value={formatCurrency(
+                    approvedJobValue
                   )}
                 />
 
@@ -887,14 +976,10 @@ export default async function JobPage({
                 />
 
                 <WorkflowStat
-                  title="Remaining to Invoice"
+                  title="Quote Remaining"
                   value={formatCurrency(
                     remainingToInvoice
                   )}
-                  strong={
-                    remainingToInvoice >
-                    0.009
-                  }
                 />
               </div>
 
@@ -1186,11 +1271,11 @@ export default async function JobPage({
             />
 
             <SummaryCard
-              title="Accepted Value"
+              title="Approved Value"
               value={
                 acceptedQuote
                   ? formatCurrency(
-                      acceptedQuoteValue
+                      approvedJobValue
                     )
                   : job.estimated_value !==
                       null
@@ -1572,6 +1657,153 @@ export default async function JobPage({
                   </tbody>
                 </table>
               </div>
+            )}
+          </RecordSection>
+
+          {/* VARIATIONS */}
+
+          <RecordSection
+            title="Variations / Additional Works"
+            subtitle={`${variations.length} ${
+              variations.length === 1
+                ? "variation"
+                : "variations"
+            } linked to this job`}
+            action={
+              acceptedQuote ? (
+                <Link
+                  href={`/variations/new?job=${job.id}&quote=${acceptedQuote.id}`}
+                  className="rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90" style={{ backgroundColor: "#d97706" }}
+                >
+                  + Create Variation
+                </Link>
+              ) : undefined
+            }
+          >
+            {variations.length === 0 ? (
+              <EmptyState text="No variations or additional works have been created for this job." />
+            ) : (
+              <>
+                {(acceptedVariationValue >
+                  0 ||
+                  openVariations.length >
+                    0) && (
+                  <div className="grid gap-px border-b border-slate-200 bg-slate-200 md:grid-cols-3">
+                    <WorkflowStat
+                      title="Accepted Variations"
+                      value={formatCurrency(
+                        acceptedVariationValue
+                      )}
+                    />
+
+                    <WorkflowStat
+                      title="Awaiting Approval"
+                      value={String(
+                        openVariations.length
+                      )}
+                    />
+
+                    <WorkflowStat
+                      title="Approved Job Value"
+                      value={formatCurrency(
+                        approvedJobValue
+                      )}
+                    />
+                  </div>
+                )}
+
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <Heading>
+                          Variation
+                        </Heading>
+
+                        <Heading>
+                          Status
+                        </Heading>
+
+                        <Heading>
+                          Date
+                        </Heading>
+
+                        <Heading>
+                          Valid Until
+                        </Heading>
+
+                        <Heading right>
+                          Amount
+                        </Heading>
+
+                        <Heading right>
+                          Action
+                        </Heading>
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-slate-100">
+                      {variations.map(
+                        (variation) => (
+                          <tr
+                            key={
+                              variation.id
+                            }
+                          >
+                            <TableCell>
+                              <Link
+                                href={`/variations/${variation.id}`}
+                                className="font-semibold text-slate-900 hover:underline"
+                              >
+                                {
+                                  variation.variation_number
+                                }
+                              </Link>
+
+                              <p className="mt-1 text-sm text-slate-500">
+                                {variation.title ||
+                                  "Additional Works"}
+                              </p>
+                            </TableCell>
+
+                            <TableCell>
+                              <StatusBadge
+                                status={
+                                  variation.status
+                                }
+                              />
+                            </TableCell>
+
+                            <TableCell>
+                              {formatDate(
+                                variation.variation_date
+                              )}
+                            </TableCell>
+
+                            <TableCell>
+                              {formatDate(
+                                variation.valid_until
+                              )}
+                            </TableCell>
+
+                            <TableCell right>
+                              {formatCurrency(
+                                variation.amount
+                              )}
+                            </TableCell>
+
+                            <TableCell right>
+                              <RecordLink
+                                href={`/variations/${variation.id}`}
+                              />
+                            </TableCell>
+                          </tr>
+                        )
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </RecordSection>
 

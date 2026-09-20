@@ -5,46 +5,33 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 
-const allowedTemplateKeys = [
+const allowedTemplateKeys = new Set([
   "quote",
   "contract",
   "invoice",
   "guarantee",
-] as const;
-
-type TemplateKey =
-  (typeof allowedTemplateKeys)[number];
+  "variation",
+]);
 
 export async function updateEmailTemplate(
   formData: FormData
 ) {
-  const supabase =
-    await createClient();
+  const templateKey = String(
+    formData.get("template_key") ?? ""
+  ).trim();
 
-  const templateKey =
-    String(
-      formData.get(
-        "template_key"
-      ) || ""
-    ).trim();
+  const subject = String(
+    formData.get("subject") ?? ""
+  ).trim();
 
-  const subject =
-    String(
-      formData.get(
-        "subject"
-      ) || ""
-    ).trim();
-
-  const body =
-    String(
-      formData.get(
-        "body"
-      ) || ""
-    ).trim();
+  const body = String(
+    formData.get("body") ?? ""
+  ).trim();
 
   if (
-    !allowedTemplateKeys.includes(
-      templateKey as TemplateKey
+    !templateKey ||
+    !allowedTemplateKeys.has(
+      templateKey
     )
   ) {
     redirect(
@@ -54,31 +41,39 @@ export async function updateEmailTemplate(
 
   if (!subject) {
     redirect(
-      `/settings/email-templates?error=Please%20enter%20an%20email%20subject#${templateKey}`
+      `/settings/email-templates?error=${encodeURIComponent(
+        "Email subject is required."
+      )}`
     );
   }
 
   if (!body) {
     redirect(
-      `/settings/email-templates?error=Please%20enter%20email%20content#${templateKey}`
+      `/settings/email-templates?error=${encodeURIComponent(
+        "Email message is required."
+      )}`
     );
   }
 
-  const { error } =
-    await supabase
-      .from(
-        "email_templates"
-      )
-      .update({
-        subject,
-        body,
-        updated_at:
-          new Date().toISOString(),
-      })
-      .eq(
-        "template_key",
-        templateKey
-      );
+  const supabase =
+    await createClient();
+
+  const {
+    error,
+  } = await supabase
+    .from(
+      "email_templates"
+    )
+    .update({
+      subject,
+      body,
+      updated_at:
+        new Date().toISOString(),
+    })
+    .eq(
+      "template_key",
+      templateKey
+    );
 
   if (error) {
     console.error(
@@ -87,7 +82,9 @@ export async function updateEmailTemplate(
     );
 
     redirect(
-      `/settings/email-templates?error=Unable%20to%20save%20email%20template#${templateKey}`
+      `/settings/email-templates?error=${encodeURIComponent(
+        "Unable to save email template."
+      )}`
     );
   }
 
@@ -96,6 +93,8 @@ export async function updateEmailTemplate(
   );
 
   redirect(
-    `/settings/email-templates?saved=${templateKey}#${templateKey}`
+    `/settings/email-templates?updated=${encodeURIComponent(
+      templateKey
+    )}`
   );
 }
