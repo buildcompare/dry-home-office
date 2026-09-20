@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+
 import Sidebar from "@/components/Sidebar";
 import { createClient } from "@/lib/supabase/server";
 
@@ -7,12 +8,23 @@ type ClientPageProps = {
   params: Promise<{
     id: string;
   }>;
+
+  searchParams: Promise<{
+    updated?: string;
+    error?: string;
+  }>;
 };
 
 export default async function ClientPage({
   params,
+  searchParams,
 }: ClientPageProps) {
-  const { id } = await params;
+  const {
+    id,
+  } = await params;
+
+  const query =
+    await searchParams;
 
   const supabase =
     await createClient();
@@ -44,7 +56,10 @@ export default async function ClientPage({
         notes,
         created_at
       `)
-      .eq("id", id)
+      .eq(
+        "id",
+        id
+      )
       .single(),
 
     supabase
@@ -60,10 +75,17 @@ export default async function ClientPage({
         estimated_value,
         created_at
       `)
-      .eq("client_id", id)
-      .order("created_at", {
-        ascending: false,
-      }),
+      .eq(
+        "client_id",
+        id
+      )
+      .order(
+        "created_at",
+        {
+          ascending:
+            false,
+        }
+      ),
 
     supabase
       .from("quotes")
@@ -76,10 +98,17 @@ export default async function ClientPage({
         valid_until,
         created_at
       `)
-      .eq("client_id", id)
-      .order("created_at", {
-        ascending: false,
-      }),
+      .eq(
+        "client_id",
+        id
+      )
+      .order(
+        "created_at",
+        {
+          ascending:
+            false,
+        }
+      ),
 
     supabase
       .from("invoices")
@@ -94,10 +123,17 @@ export default async function ClientPage({
         paid_at,
         created_at
       `)
-      .eq("client_id", id)
-      .order("created_at", {
-        ascending: false,
-      }),
+      .eq(
+        "client_id",
+        id
+      )
+      .order(
+        "created_at",
+        {
+          ascending:
+            false,
+        }
+      ),
 
     supabase
       .from("contracts")
@@ -109,10 +145,17 @@ export default async function ClientPage({
         signed_at,
         created_at
       `)
-      .eq("client_id", id)
-      .order("created_at", {
-        ascending: false,
-      }),
+      .eq(
+        "client_id",
+        id
+      )
+      .order(
+        "created_at",
+        {
+          ascending:
+            false,
+        }
+      ),
 
     supabase
       .from("guarantees")
@@ -128,10 +171,17 @@ export default async function ClientPage({
         viewed_at,
         created_at
       `)
-      .eq("client_id", id)
-      .order("created_at", {
-        ascending: false,
-      }),
+      .eq(
+        "client_id",
+        id
+      )
+      .order(
+        "created_at",
+        {
+          ascending:
+            false,
+        }
+      ),
   ]);
 
   const client =
@@ -145,19 +195,24 @@ export default async function ClientPage({
   }
 
   const jobs =
-    jobsResult.data ?? [];
+    jobsResult.data ??
+    [];
 
   const quotes =
-    quotesResult.data ?? [];
+    quotesResult.data ??
+    [];
 
   const invoices =
-    invoicesResult.data ?? [];
+    invoicesResult.data ??
+    [];
 
   const contracts =
-    contractsResult.data ?? [];
+    contractsResult.data ??
+    [];
 
   const guarantees =
-    guaranteesResult.data ?? [];
+    guaranteesResult.data ??
+    [];
 
   const clientName =
     client.display_name ||
@@ -176,6 +231,26 @@ export default async function ClientPage({
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
+
+          {/* MESSAGES */}
+
+          {query.updated ===
+            "1" && (
+            <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
+              Client details updated successfully.
+            </div>
+          )}
+
+          {query.error && (
+            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm font-medium text-red-700">
+              {
+                query.error
+              }
+            </div>
+          )}
+
+          {/* HEADER */}
+
           <div className="mb-8">
             <Link
               href="/clients"
@@ -184,35 +259,61 @@ export default async function ClientPage({
               ← Back to Clients
             </Link>
 
-            <div className="mt-4">
-              <p className="text-sm font-medium text-slate-500">
-                Client Record
-              </p>
-
-              <h1 className="mt-1 text-3xl font-bold text-slate-900">
-                {clientName}
-              </h1>
-
-              {client.friendly_name && (
-                <p className="mt-2 text-slate-500">
-                  Contact:{" "}
-                  {
-                    client.friendly_name
-                  }
+            <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-slate-500">
+                  Client Record
                 </p>
-              )}
+
+                <h1 className="mt-1 text-3xl font-bold text-slate-900">
+                  {
+                    clientName
+                  }
+                </h1>
+
+                {client.friendly_name && (
+                  <p className="mt-2 text-slate-500">
+                    Contact:{" "}
+                    {
+                      client.friendly_name
+                    }
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Link
+                  href={`/jobs/new?client=${client.id}`}
+                  className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  + New Job
+                </Link>
+
+                <Link
+                  href={`/clients/${client.id}/edit`}
+                  className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700"
+                >
+                  Edit Client
+                </Link>
+              </div>
             </div>
           </div>
+
+          {/* SUMMARY */}
 
           <div className="mb-8 grid gap-5 md:grid-cols-2 xl:grid-cols-5">
             <SummaryCard
               title="Jobs"
-              value={jobs.length}
+              value={
+                jobs.length
+              }
             />
 
             <SummaryCard
               title="Quotes"
-              value={quotes.length}
+              value={
+                quotes.length
+              }
             />
 
             <SummaryCard
@@ -237,13 +338,33 @@ export default async function ClientPage({
             />
           </div>
 
+          {/* CLIENT INFORMATION */}
+
           <div className="grid gap-6 lg:grid-cols-3">
             <section className="rounded-2xl bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-900">
-                Contact Details
-              </h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-slate-900">
+                  Contact Details
+                </h2>
+
+                <Link
+                  href={`/clients/${client.id}/edit`}
+                  className="text-sm font-semibold text-slate-600 hover:underline"
+                >
+                  Edit →
+                </Link>
+              </div>
 
               <div className="mt-5 space-y-4">
+                {client.company_name && (
+                  <DetailRow
+                    label="Company"
+                    value={
+                      client.company_name
+                    }
+                  />
+                )}
+
                 <DetailRow
                   label="Email"
                   value={
@@ -265,7 +386,7 @@ export default async function ClientPage({
                 Address
               </h2>
 
-              <div className="mt-5 text-sm text-slate-700">
+              <div className="mt-5 text-sm leading-6 text-slate-700">
                 {client.address_line_1 ? (
                   <>
                     <p>
@@ -319,10 +440,12 @@ export default async function ClientPage({
                 Client Notes
               </h2>
 
-              <div className="mt-5 text-sm text-slate-700">
+              <div className="mt-5 text-sm leading-6 text-slate-700">
                 {client.notes ? (
                   <p className="whitespace-pre-wrap">
-                    {client.notes}
+                    {
+                      client.notes
+                    }
                   </p>
                 ) : (
                   <p className="text-slate-400">
@@ -332,6 +455,8 @@ export default async function ClientPage({
               </div>
             </section>
           </div>
+
+          {/* JOBS */}
 
           <RecordSection
             title="Jobs"
@@ -423,6 +548,7 @@ export default async function ClientPage({
                           <TableCell right>
                             <RecordLink
                               href={`/jobs/${job.id}`}
+                              label="Open Hub"
                             />
                           </TableCell>
                         </tr>
@@ -433,6 +559,8 @@ export default async function ClientPage({
               </div>
             )}
           </RecordSection>
+
+          {/* QUOTES */}
 
           <RecordSection
             title="Quotes"
@@ -526,6 +654,8 @@ export default async function ClientPage({
             )}
           </RecordSection>
 
+          {/* CONTRACTS */}
+
           <RecordSection
             title="Contracts"
             subtitle={`${contracts.length} contracts linked to this client`}
@@ -562,9 +692,7 @@ export default async function ClientPage({
 
                   <tbody className="divide-y divide-slate-100">
                     {contracts.map(
-                      (
-                        contract
-                      ) => (
+                      (contract) => (
                         <tr
                           key={
                             contract.id
@@ -616,6 +744,8 @@ export default async function ClientPage({
             )}
           </RecordSection>
 
+          {/* INVOICES */}
+
           <RecordSection
             title="Invoices"
             subtitle={`${invoices.length} invoices linked to this client`}
@@ -660,9 +790,7 @@ export default async function ClientPage({
 
                   <tbody className="divide-y divide-slate-100">
                     {invoices.map(
-                      (
-                        invoice
-                      ) => (
+                      (invoice) => (
                         <tr
                           key={
                             invoice.id
@@ -727,6 +855,8 @@ export default async function ClientPage({
             )}
           </RecordSection>
 
+          {/* GUARANTEES */}
+
           <RecordSection
             title="Guarantees"
             subtitle={`${guarantees.length} guarantees linked to this client`}
@@ -767,9 +897,7 @@ export default async function ClientPage({
 
                   <tbody className="divide-y divide-slate-100">
                     {guarantees.map(
-                      (
-                        guarantee
-                      ) => {
+                      (guarantee) => {
                         const expired =
                           guarantee.expiry_date
                             ? new Date(
@@ -853,6 +981,10 @@ export default async function ClientPage({
   );
 }
 
+/* =========================================================
+   SUMMARY
+   ========================================================= */
+
 function SummaryCard({
   title,
   value,
@@ -872,6 +1004,10 @@ function SummaryCard({
     </div>
   );
 }
+
+/* =========================================================
+   RECORD SECTION
+   ========================================================= */
 
 function RecordSection({
   title,
@@ -899,6 +1035,10 @@ function RecordSection({
   );
 }
 
+/* =========================================================
+   EMPTY
+   ========================================================= */
+
 function EmptyState({
   text,
 }: {
@@ -913,12 +1053,19 @@ function EmptyState({
   );
 }
 
+/* =========================================================
+   DETAIL ROW
+   ========================================================= */
+
 function DetailRow({
   label,
   value,
 }: {
   label: string;
-  value: string | null;
+
+  value:
+    | string
+    | null;
 }) {
   return (
     <div>
@@ -934,6 +1081,10 @@ function DetailRow({
   );
 }
 
+/* =========================================================
+   STATUS
+   ========================================================= */
+
 function StatusBadge({
   status,
 }: {
@@ -943,49 +1094,76 @@ function StatusBadge({
     status === "Paid" ||
     status === "Signed" ||
     status === "Accepted" ||
-    status === "Issued"
+    status === "Issued" ||
+    status === "Complete" ||
+    status === "Completed"
       ? "bg-emerald-100 text-emerald-800"
+
       : status === "Part Paid" ||
           status === "Expired"
         ? "bg-amber-100 text-amber-800"
+
         : status === "Sent" ||
-            status === "Viewed"
+            status === "Viewed" ||
+            status === "Scheduled" ||
+            status === "Survey Booked" ||
+            status === "In Progress"
           ? "bg-blue-100 text-blue-800"
+
           : status === "Cancelled" ||
               status === "Declined" ||
               status === "Overdue"
             ? "bg-red-100 text-red-700"
+
             : "bg-slate-100 text-slate-700";
 
   return (
     <span
       className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${classes}`}
     >
-      {status}
+      {
+        status
+      }
     </span>
   );
 }
 
+/* =========================================================
+   RECORD LINK
+   ========================================================= */
+
 function RecordLink({
   href,
+  label = "View",
 }: {
   href: string;
+  label?: string;
 }) {
   return (
     <Link
-      href={href}
+      href={
+        href
+      }
       className="inline-flex rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
     >
-      View
+      {
+        label
+      }
     </Link>
   );
 }
+
+/* =========================================================
+   TABLE
+   ========================================================= */
 
 function TableHeading({
   children,
   right = false,
 }: {
-  children: React.ReactNode;
+  children:
+    React.ReactNode;
+
   right?: boolean;
 }) {
   return (
@@ -996,7 +1174,9 @@ function TableHeading({
           : "text-left"
       }`}
     >
-      {children}
+      {
+        children
+      }
     </th>
   );
 }
@@ -1005,7 +1185,9 @@ function TableCell({
   children,
   right = false,
 }: {
-  children: React.ReactNode;
+  children:
+    React.ReactNode;
+
   right?: boolean;
 }) {
   return (
@@ -1016,10 +1198,16 @@ function TableCell({
           : ""
       }`}
     >
-      {children}
+      {
+        children
+      }
     </td>
   );
 }
+
+/* =========================================================
+   CURRENCY
+   ========================================================= */
 
 function formatCurrency(
   value:
@@ -1037,23 +1225,37 @@ function formatCurrency(
   return new Intl.NumberFormat(
     "en-GB",
     {
-      style: "currency",
-      currency: "GBP",
+      style:
+        "currency",
+
+      currency:
+        "GBP",
     }
   ).format(
-    Number(value)
+    Number(
+      value
+    )
   );
 }
 
+/* =========================================================
+   DATE
+   ========================================================= */
+
 function formatDate(
-  value: string | null
+  value:
+    | string
+    | null
 ) {
   if (!value) {
     return "—";
   }
 
   const dateValue =
-    value.slice(0, 10);
+    value.slice(
+      0,
+      10
+    );
 
   const [
     year,
@@ -1066,9 +1268,17 @@ function formatDate(
   return new Intl.DateTimeFormat(
     "en-GB",
     {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
+      day:
+        "2-digit",
+
+      month:
+        "short",
+
+      year:
+        "numeric",
+
+      timeZone:
+        "UTC",
     }
   ).format(
     new Date(
