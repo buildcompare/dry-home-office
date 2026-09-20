@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
+
 import { createClient } from "@/lib/supabase/server";
+
+export const runtime = "nodejs";
 
 type RouteProps = {
   params: Promise<{
@@ -8,8 +11,41 @@ type RouteProps = {
   }>;
 };
 
+type TemplateValues = {
+  client_name: string;
+  job_title: string;
+  guarantee_number: string;
+  view_link: string;
+};
+
+const fallbackGuaranteeTemplate = {
+  subject:
+    "Guarantee {{guarantee_number}} from Dry Home Damp Proofing Solutions",
+
+  body: `Hi {{client_name}},
+
+Please find your guarantee {{guarantee_number}} for {{job_title}}.
+
+You can view the guarantee using the link below:
+
+{{view_link}}
+
+Please keep this document for your records.
+
+If you have any questions, simply reply to this email.
+
+Kind regards,
+
+James
+Dry Home Damp Proofing Solutions`,
+};
+
+/* =========================================================
+   SEND GUARANTEE
+   ========================================================= */
+
 export async function POST(
-  request: Request,
+  _request: Request,
   { params }: RouteProps
 ) {
   const { id } =
@@ -17,6 +53,10 @@ export async function POST(
 
   const supabase =
     await createClient();
+
+  /* =========================================================
+     AUTH
+     ========================================================= */
 
   const {
     data: authData,
@@ -35,6 +75,10 @@ export async function POST(
     );
   }
 
+  /* =========================================================
+     GUARANTEE
+     ========================================================= */
+
   const {
     data: guarantee,
     error: guaranteeError,
@@ -50,18 +94,28 @@ export async function POST(
       expiry_date,
       public_token,
       client_id,
+      job_id,
+
       clients (
         display_name,
         email
       )
     `)
-    .eq("id", id)
+    .eq(
+      "id",
+      id
+    )
     .single();
 
   if (
     guaranteeError ||
     !guarantee
   ) {
+    console.error(
+      "Unable to load guarantee:",
+      guaranteeError
+    );
+
     return NextResponse.json(
       {
         error:
@@ -72,6 +126,10 @@ export async function POST(
       }
     );
   }
+
+  /* =========================================================
+     CLIENT
+     ========================================================= */
 
   const client =
     Array.isArray(
@@ -109,9 +167,12 @@ export async function POST(
     );
   }
 
+  /* =========================================================
+     EMAIL CONFIG
+     ========================================================= */
+
   const resendApiKey =
-    process.env
-      .RESEND_API_KEY;
+    process.env.RESEND_API_KEY;
 
   if (!resendApiKey) {
     return NextResponse.json(
@@ -126,8 +187,10 @@ export async function POST(
   }
 
   const appUrl =
-    process.env
-      .NEXT_PUBLIC_APP_URL;
+    process.env.NEXT_PUBLIC_APP_URL?.replace(
+      /\/$/,
+      ""
+    );
 
   if (!appUrl) {
     return NextResponse.json(
@@ -141,29 +204,87 @@ export async function POST(
     );
   }
 
-  const fromEmail =
-    process.env
-      .RESEND_FROM_EMAIL ||
-    "Dry Home Damp Proofing Solutions <quotes@admin.dryhomedampproofing.co.uk>";
+  /* =========================================================
+     EMAIL TEMPLATE + JOB
+     ========================================================= */
 
-  const replyTo =
-    process.env
-      .DRYHOME_REPLY_TO_EMAIL;
+  const [
+    templateResult,
+    jobResult,
+  ] = await Promise.all([
+    supabase
+      .from("email_templates")
+      .select(`
+        subject,
+        body
+      `)
+      .eq(
+        "template_key",
+        "guarantee"
+      )
+      .maybeSingle(),
 
-  const customerUrl =
-    `${appUrl}/g/${guarantee.public_token}`;
+    guarantee.job_id
+      ? supabase
+          .from("jobs")
+          .select(`
+            id,
+            title
+          `)
+          .eq(
+            "id",
+            guarantee.job_id
+          )
+          .maybeSingle()
+      : Promise.resolve({
+          data: null,
+          error: null,
+        }),
+  ]);
+
+  if (
+    templateResult.error
+  ) {
+    console.error(
+      "Unable to load guarantee email template. Using fallback:",
+      templateResult.error
+    );
+  }
+
+  if (
+    jobResult.error
+  ) {
+    console.error(
+      "Unable to load guarantee job:",
+      jobResult.error
+    );
+  }
+
+  const emailTemplate = {
+    subject:
+      templateResult.data?.subject?.trim() ||
+      fallbackGuaranteeTemplate.subject,
+
+    body:
+      templateResult.data?.body?.trim() ||
+      fallbackGuaranteeTemplate.body,
+  };
+
+  /* =========================================================
+     VALUES
+     ========================================================= */
 
   const customerName =
     client?.display_name ||
     "Customer";
 
-  const subject =
-    `Your Guarantee - ${guarantee.guarantee_number}`;
+  const jobTitle =
+    jobResult.data?.title ||
+    guarantee.title ||
+    "your works";
 
-  const resend =
-    new Resend(
-      resendApiKey
-    );
+  const customerUrl =
+    `${appUrl}/g/${guarantee.public_token}`;
 
   const formattedIssueDate =
     formatDate(
@@ -175,159 +296,112 @@ export async function POST(
       guarantee.expiry_date
     );
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-      <body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px;">
-          <tr>
-            <td align="center">
-              <table width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;background:#ffffff;border-radius:16px;overflow:hidden;">
-                <tr>
-                  <td style="background:#020617;padding:32px;">
-                    <h1 style="margin:0;color:#ffffff;font-size:24px;">
-                      Dry Home Damp Proofing Solutions LTD
-                    </h1>
+  const guaranteeType =
+    guarantee.guarantee_type ||
+    "Works Guarantee";
 
-                    <p style="margin:10px 0 0;color:#94a3b8;font-size:14px;">
-                      Customer Guarantee
-                    </p>
-                  </td>
-                </tr>
+  const templateValues: TemplateValues = {
+    client_name:
+      customerName,
 
-                <tr>
-                  <td style="padding:32px;">
-                    <p style="margin:0 0 16px;font-size:16px;">
-                      Dear ${escapeHtml(customerName)},
-                    </p>
+    job_title:
+      jobTitle,
 
-                    <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#475569;">
-                      Your guarantee from Dry Home Damp Proofing Solutions LTD is now available to view securely online.
-                    </p>
+    guarantee_number:
+      guarantee.guarantee_number,
 
-                    <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0;background:#f8fafc;border-radius:12px;padding:20px;">
-                      <tr>
-                        <td style="font-size:14px;color:#64748b;padding-bottom:8px;">
-                          Guarantee Number
-                        </td>
+    view_link:
+      customerUrl,
+  };
 
-                        <td align="right" style="font-size:14px;font-weight:bold;color:#0f172a;padding-bottom:8px;">
-                          ${escapeHtml(
-                            guarantee.guarantee_number
-                          )}
-                        </td>
-                      </tr>
+  /* =========================================================
+     SUBJECT
+     ========================================================= */
 
-                      <tr>
-                        <td style="font-size:14px;color:#64748b;padding-bottom:8px;">
-                          Guarantee Type
-                        </td>
+  const subject =
+    replaceTemplatePlaceholders(
+      emailTemplate.subject,
+      templateValues
+    );
 
-                        <td align="right" style="font-size:14px;font-weight:bold;color:#0f172a;padding-bottom:8px;">
-                          ${escapeHtml(
-                            guarantee.guarantee_type ||
-                              "Works Guarantee"
-                          )}
-                        </td>
-                      </tr>
+  /* =========================================================
+     TEXT
+     ========================================================= */
 
-                      <tr>
-                        <td style="font-size:14px;color:#64748b;padding-bottom:8px;">
-                          Issue Date
-                        </td>
+  const text =
+    replaceTemplatePlaceholders(
+      emailTemplate.body,
+      templateValues
+    );
 
-                        <td align="right" style="font-size:14px;font-weight:bold;color:#0f172a;padding-bottom:8px;">
-                          ${escapeHtml(
-                            formattedIssueDate
-                          )}
-                        </td>
-                      </tr>
+  /* =========================================================
+     HTML
+     ========================================================= */
 
-                      <tr>
-                        <td style="font-size:14px;color:#64748b;">
-                          Valid Until
-                        </td>
+  const html =
+    buildTemplateEmailHtml({
+      templateBody:
+        emailTemplate.body,
 
-                        <td align="right" style="font-size:14px;font-weight:bold;color:#0f172a;">
-                          ${escapeHtml(
-                            formattedExpiryDate
-                          )}
-                        </td>
-                      </tr>
-                    </table>
+      values:
+        templateValues,
 
-                    <p style="margin:24px 0;text-align:center;">
-                      <a
-                        href="${customerUrl}"
-                        style="display:inline-block;background:#047857;color:#ffffff;text-decoration:none;font-weight:bold;padding:14px 24px;border-radius:8px;"
-                      >
-                        View Guarantee
-                      </a>
-                    </p>
+      customerUrl,
 
-                    <p style="margin:24px 0 0;font-size:13px;line-height:1.6;color:#64748b;">
-                      Please retain this guarantee with your property records.
-                    </p>
+      guaranteeNumber:
+        guarantee.guarantee_number,
 
-                    <p style="margin:20px 0 0;font-size:13px;line-height:1.6;color:#64748b;">
-                      If you have any questions regarding the covered works, please contact Dry Home Damp Proofing Solutions LTD and quote guarantee number ${escapeHtml(
-                        guarantee.guarantee_number
-                      )}.
-                    </p>
-                  </td>
-                </tr>
-              </table>
+      guaranteeType,
 
-              <p style="margin:20px 0 0;font-size:12px;color:#94a3b8;">
-                Dry Home Damp Proofing Solutions LTD
-              </p>
-            </td>
-          </tr>
-        </table>
-      </body>
-    </html>
-  `;
+      issueDate:
+        formattedIssueDate,
 
-  const text = `
-Dear ${customerName},
+      expiryDate:
+        formattedExpiryDate,
+    });
 
-Your guarantee from Dry Home Damp Proofing Solutions LTD is now available.
+  /* =========================================================
+     RESEND
+     ========================================================= */
 
-Guarantee Number: ${guarantee.guarantee_number}
-Guarantee Type: ${guarantee.guarantee_type || "Works Guarantee"}
-Issue Date: ${formattedIssueDate}
-Valid Until: ${formattedExpiryDate}
+  const fromEmail =
+    process.env.RESEND_FROM_EMAIL?.trim() ||
+    "Dry Home Damp Proofing Solutions <quotes@admin.dryhomedampproofing.co.uk>";
 
-View your guarantee securely here:
-${customerUrl}
+  const replyTo =
+    process.env.DRYHOME_REPLY_TO_EMAIL?.trim();
 
-Please retain this guarantee with your property records.
-
-Dry Home Damp Proofing Solutions LTD
-  `.trim();
+  const resend =
+    new Resend(
+      resendApiKey
+    );
 
   const {
     error: sendError,
-  } = await resend.emails.send({
-    from:
-      fromEmail,
+  } =
+    await resend.emails.send({
+      from:
+        fromEmail,
 
-    to: recipient,
+      to:
+        recipient,
 
-    subject,
+      subject,
 
-    html,
+      html,
 
-    text,
+      text,
 
-    ...(replyTo
-      ? {
-          replyTo,
-        }
-      : {}),
-  });
+      ...(replyTo
+        ? {
+            replyTo,
+          }
+        : {}),
+    });
 
-  if (sendError) {
+  if (
+    sendError
+  ) {
     console.error(
       "Guarantee email error:",
       sendError
@@ -344,6 +418,13 @@ Dry Home Damp Proofing Solutions LTD
     );
   }
 
+  /* =========================================================
+     UPDATE GUARANTEE
+     ========================================================= */
+
+  const sentAt =
+    new Date().toISOString();
+
   const {
     error: updateError,
   } = await supabase
@@ -353,7 +434,12 @@ Dry Home Damp Proofing Solutions LTD
         recipient,
 
       sent_at:
-        new Date().toISOString(),
+        sentAt,
+
+      /*
+       * If the customer has already viewed the
+       * guarantee, don't move it backwards to Issued.
+       */
 
       status:
         guarantee.status ===
@@ -362,14 +448,16 @@ Dry Home Damp Proofing Solutions LTD
           : "Issued",
 
       updated_at:
-        new Date().toISOString(),
+        sentAt,
     })
     .eq(
       "id",
       guarantee.id
     );
 
-  if (updateError) {
+  if (
+    updateError
+  ) {
     console.error(
       "Guarantee send tracking error:",
       updateError
@@ -391,8 +479,495 @@ Dry Home Damp Proofing Solutions LTD
   });
 }
 
+/* =========================================================
+   TEMPLATE PLACEHOLDERS
+   ========================================================= */
+
+function replaceTemplatePlaceholders(
+  template: string,
+  values: TemplateValues
+) {
+  let result =
+    template;
+
+  for (
+    const [
+      key,
+      value,
+    ] of Object.entries(
+      values
+    )
+  ) {
+    result =
+      result.replaceAll(
+        `{{${key}}}`,
+        value
+      );
+  }
+
+  return result;
+}
+
+/* =========================================================
+   HTML EMAIL
+   ========================================================= */
+
+function buildTemplateEmailHtml({
+  templateBody,
+  values,
+  customerUrl,
+  guaranteeNumber,
+  guaranteeType,
+  issueDate,
+  expiryDate,
+}: {
+  templateBody: string;
+
+  values:
+    TemplateValues;
+
+  customerUrl:
+    string;
+
+  guaranteeNumber:
+    string;
+
+  guaranteeType:
+    string;
+
+  issueDate:
+    string;
+
+  expiryDate:
+    string;
+}) {
+  const bodyHtml =
+    renderTemplateBodyHtml(
+      templateBody,
+      values,
+      customerUrl
+    );
+
+  return `
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8">
+
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    >
+  </head>
+
+  <body style="
+    margin:0;
+    padding:0;
+    background:#f1f5f9;
+    font-family:Arial,Helvetica,sans-serif;
+    color:#334155;
+  ">
+
+    <div style="
+      max-width:640px;
+      margin:0 auto;
+      padding:32px 20px;
+    ">
+
+      <div style="
+        background:#ffffff;
+        border-radius:12px;
+        overflow:hidden;
+        border:1px solid #e2e8f0;
+      ">
+
+        <!-- HEADER -->
+
+        <div style="
+          background:#0f172a;
+          padding:28px 32px;
+        ">
+
+          <div style="
+            color:#ffffff;
+            font-size:22px;
+            font-weight:700;
+          ">
+            Dry Home Damp Proofing Solutions
+          </div>
+
+          <div style="
+            margin-top:6px;
+            color:#cbd5e1;
+            font-size:13px;
+          ">
+            Customer Guarantee
+          </div>
+
+        </div>
+
+        <!-- TEMPLATE CONTENT -->
+
+        <div style="
+          padding:32px 32px 10px 32px;
+          font-size:15px;
+          line-height:1.7;
+          color:#334155;
+        ">
+
+          ${bodyHtml}
+
+        </div>
+
+        <!-- GUARANTEE SUMMARY -->
+
+        <div style="
+          margin:10px 32px 32px 32px;
+          padding:20px;
+          background:#f8fafc;
+          border:1px solid #e2e8f0;
+          border-radius:8px;
+        ">
+
+          <div style="
+            font-size:11px;
+            text-transform:uppercase;
+            letter-spacing:0.06em;
+            color:#94a3b8;
+          ">
+            Guarantee
+          </div>
+
+          <div style="
+            margin-top:5px;
+            color:#0f172a;
+            font-size:18px;
+            font-weight:700;
+          ">
+            ${escapeHtml(
+              guaranteeNumber
+            )}
+          </div>
+
+          <table
+            role="presentation"
+            style="
+              width:100%;
+              margin-top:20px;
+              border-collapse:collapse;
+            "
+          >
+
+            <tr>
+              <td style="
+                padding:6px 0;
+                color:#64748b;
+                font-size:13px;
+              ">
+                Guarantee Type
+              </td>
+
+              <td style="
+                padding:6px 0;
+                text-align:right;
+                color:#0f172a;
+                font-size:14px;
+                font-weight:700;
+              ">
+                ${escapeHtml(
+                  guaranteeType
+                )}
+              </td>
+            </tr>
+
+            <tr>
+              <td style="
+                padding:6px 0;
+                color:#64748b;
+                font-size:13px;
+              ">
+                Issue Date
+              </td>
+
+              <td style="
+                padding:6px 0;
+                text-align:right;
+                color:#0f172a;
+                font-size:14px;
+                font-weight:700;
+              ">
+                ${escapeHtml(
+                  issueDate
+                )}
+              </td>
+            </tr>
+
+            <tr>
+              <td style="
+                padding:6px 0;
+                color:#64748b;
+                font-size:13px;
+              ">
+                Valid Until
+              </td>
+
+              <td style="
+                padding:6px 0;
+                text-align:right;
+                color:#0f172a;
+                font-size:14px;
+                font-weight:700;
+              ">
+                ${escapeHtml(
+                  expiryDate
+                )}
+              </td>
+            </tr>
+
+          </table>
+        </div>
+
+        <!-- RETAIN NOTICE -->
+
+        <div style="
+          margin:0 32px 32px 32px;
+          padding:16px 18px;
+          border-radius:8px;
+          background:#ecfdf5;
+          color:#065f46;
+          font-size:13px;
+          line-height:1.6;
+        ">
+          Please retain this guarantee with your property records.
+        </div>
+
+        <!-- FOOTER -->
+
+        <div style="
+          border-top:1px solid #e2e8f0;
+          padding:22px 32px;
+          font-size:12px;
+          line-height:1.6;
+          color:#94a3b8;
+          background:#f8fafc;
+        ">
+          Dry Home Damp Proofing Solutions LTD<br>
+          dryhomedampproofing.co.uk
+        </div>
+
+      </div>
+    </div>
+  </body>
+</html>
+`;
+}
+
+/* =========================================================
+   TEMPLATE BODY → HTML
+   ========================================================= */
+
+function renderTemplateBodyHtml(
+  templateBody: string,
+  values: TemplateValues,
+  customerUrl: string
+) {
+  /*
+   * {{view_link}} becomes the customer-facing
+   * View Guarantee button in HTML emails.
+   */
+
+  const viewLinkMarker =
+    "__DRYHOME_VIEW_GUARANTEE_BUTTON__";
+
+  let body =
+    templateBody.replaceAll(
+      "{{view_link}}",
+      viewLinkMarker
+    );
+
+  const htmlValues: Omit<
+    TemplateValues,
+    "view_link"
+  > = {
+    client_name:
+      values.client_name,
+
+    job_title:
+      values.job_title,
+
+    guarantee_number:
+      values.guarantee_number,
+  };
+
+  for (
+    const [
+      key,
+      value,
+    ] of Object.entries(
+      htmlValues
+    )
+  ) {
+    body =
+      body.replaceAll(
+        `{{${key}}}`,
+        value
+      );
+  }
+
+  const escaped =
+    escapeHtml(
+      body
+    );
+
+  const paragraphs =
+    escaped
+      .split(
+        /\n\s*\n/
+      )
+      .map(
+        (paragraph) =>
+          paragraph.trim()
+      )
+      .filter(
+        Boolean
+      );
+
+  return paragraphs
+    .map(
+      (paragraph) => {
+        if (
+          paragraph ===
+          viewLinkMarker
+        ) {
+          return buildGuaranteeButton(
+            customerUrl
+          );
+        }
+
+        if (
+          paragraph.includes(
+            viewLinkMarker
+          )
+        ) {
+          const parts =
+            paragraph.split(
+              viewLinkMarker
+            );
+
+          return parts
+            .map(
+              (
+                part,
+                index
+              ) => {
+                const blocks: string[] =
+                  [];
+
+                if (
+                  part.trim()
+                ) {
+                  blocks.push(
+                    buildParagraph(
+                      part
+                    )
+                  );
+                }
+
+                if (
+                  index <
+                  parts.length -
+                    1
+                ) {
+                  blocks.push(
+                    buildGuaranteeButton(
+                      customerUrl
+                    )
+                  );
+                }
+
+                return blocks.join(
+                  ""
+                );
+              }
+            )
+            .join("");
+        }
+
+        return buildParagraph(
+          paragraph
+        );
+      }
+    )
+    .join("");
+}
+
+/* =========================================================
+   PARAGRAPH
+   ========================================================= */
+
+function buildParagraph(
+  value: string
+) {
+  const withBreaks =
+    value.replace(
+      /\n/g,
+      "<br>"
+    );
+
+  return `
+    <p style="
+      margin:0 0 18px 0;
+      line-height:1.7;
+    ">
+      ${withBreaks}
+    </p>
+  `;
+}
+
+/* =========================================================
+   VIEW GUARANTEE BUTTON
+   ========================================================= */
+
+function buildGuaranteeButton(
+  customerUrl: string
+) {
+  return `
+    <div style="
+      text-align:center;
+      margin:28px 0;
+    ">
+
+      <a
+        href="${escapeHtml(
+          customerUrl
+        )}"
+        style="
+          display:inline-block;
+          background:#047857;
+          color:#ffffff;
+          text-decoration:none;
+          padding:14px 28px;
+          border-radius:8px;
+          font-size:16px;
+          font-weight:700;
+        "
+      >
+        View Guarantee
+      </a>
+
+    </div>
+  `;
+}
+
+/* =========================================================
+   DATE
+   ========================================================= */
+
 function formatDate(
-  value: string | null
+  value:
+    | string
+    | null
 ) {
   if (!value) {
     return "Not set";
@@ -403,16 +978,29 @@ function formatDate(
     month,
     day,
   ] = value
-    .slice(0, 10)
+    .slice(
+      0,
+      10
+    )
     .split("-")
-    .map(Number);
+    .map(
+      Number
+    );
 
   return new Intl.DateTimeFormat(
     "en-GB",
     {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
+      day:
+        "2-digit",
+
+      month:
+        "long",
+
+      year:
+        "numeric",
+
+      timeZone:
+        "UTC",
     }
   ).format(
     new Date(
@@ -425,28 +1013,32 @@ function formatDate(
   );
 }
 
+/* =========================================================
+   ESCAPE HTML
+   ========================================================= */
+
 function escapeHtml(
   value: string
 ) {
   return value
-    .replace(
-      /&/g,
+    .replaceAll(
+      "&",
       "&amp;"
     )
-    .replace(
-      /</g,
+    .replaceAll(
+      "<",
       "&lt;"
     )
-    .replace(
-      />/g,
+    .replaceAll(
+      ">",
       "&gt;"
     )
-    .replace(
-      /"/g,
+    .replaceAll(
+      '"',
       "&quot;"
     )
-    .replace(
-      /'/g,
+    .replaceAll(
+      "'",
       "&#039;"
     );
 }
