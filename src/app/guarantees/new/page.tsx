@@ -1,9 +1,17 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import {
+  redirect,
+} from "next/navigation";
 
 import Sidebar from "@/components/Sidebar";
-import { createClient } from "@/lib/supabase/server";
-import { createGuarantee } from "../actions";
+
+import {
+  createClient,
+} from "@/lib/supabase/server";
+
+import {
+  createGuarantee,
+} from "../actions";
 
 type GuaranteeNewPageProps = {
   searchParams: Promise<{
@@ -19,9 +27,12 @@ export default async function NewGuaranteePage({
     await searchParams;
 
   const invoiceId =
-    query.invoice || "";
+    query.invoice ||
+    "";
 
-  if (!invoiceId) {
+  if (
+    !invoiceId
+  ) {
     redirect(
       "/invoices"
     );
@@ -30,61 +41,63 @@ export default async function NewGuaranteePage({
   const supabase =
     await createClient();
 
-  /*
-   * -------------------------------------------------------
-   * SOURCE INVOICE
-   * -------------------------------------------------------
-   */
+  /* =========================================================
+     SOURCE INVOICE
+     ========================================================= */
 
   const {
     data: invoice,
-    error,
-  } = await supabase
-    .from("invoices")
-    .select(`
-      id,
-      invoice_number,
-      invoice_type,
-      status,
-      title,
-      description,
-      amount,
-      subtotal,
-      vat_amount,
-      amount_paid,
-      client_id,
-      job_id,
-      contract_id,
-      quote_id,
-
-      clients (
-        id,
-        display_name,
-        email
-      ),
-
-      jobs (
-        id,
-        job_number,
-        title,
-        description
-      ),
-
-      contracts (
-        id,
-        contract_number,
-        title,
-        description
+    error:
+      invoiceError,
+  } =
+    await supabase
+      .from(
+        "invoices"
       )
-    `)
-    .eq(
-      "id",
-      invoiceId
-    )
-    .single();
+      .select(`
+        id,
+        invoice_number,
+        invoice_type,
+        status,
+        title,
+        description,
+        amount,
+        subtotal,
+        vat_amount,
+        amount_paid,
+        client_id,
+        job_id,
+        contract_id,
+        quote_id,
+
+        clients (
+          id,
+          display_name,
+          email
+        ),
+
+        jobs (
+          id,
+          job_number,
+          title,
+          description
+        ),
+
+        contracts (
+          id,
+          contract_number,
+          title,
+          description
+        )
+      `)
+      .eq(
+        "id",
+        invoiceId
+      )
+      .single();
 
   if (
-    error ||
+    invoiceError ||
     !invoice
   ) {
     redirect(
@@ -92,78 +105,44 @@ export default async function NewGuaranteePage({
     );
   }
 
-  /*
-   * -------------------------------------------------------
-   * GUARANTEES NOW BELONG TO THE COMPLETED QUOTE WORKFLOW
-   * -------------------------------------------------------
-   *
-   * Invoice type no longer matters.
-   *
-   * Guarantee becomes available when:
-   *
-   * 1. Invoice belongs to a quote
-   * 2. Quote has been fully invoiced
-   * 3. Every active invoice against the quote is fully paid
-   */
-
-  if (!invoice.quote_id) {
+  if (
+    !invoice.quote_id
+  ) {
     redirect(
-      `/invoices/${invoice.id}?error=This%20invoice%20is%20not%20linked%20to%20a%20quote.%20Guarantees%20are%20created%20once%20the%20quote%20is%20financially%20complete`
+      `/invoices/${invoice.id}?error=This%20invoice%20is%20not%20linked%20to%20an%20accepted%20quote.%20Guarantees%20are%20created%20once%20the%20approved%20job%20is%20financially%20complete`
     );
   }
 
-  const [
-    quoteResult,
-    linkedInvoicesResult,
-  ] = await Promise.all([
-    supabase
-      .from("quotes")
+  /* =========================================================
+     QUOTE
+     ========================================================= */
+
+  const {
+    data: quote,
+    error:
+      quoteError,
+  } =
+    await supabase
+      .from(
+        "quotes"
+      )
       .select(`
         id,
         quote_number,
         title,
+        description,
         status,
-        amount
+        amount,
+        job_id
       `)
       .eq(
         "id",
         invoice.quote_id
       )
-      .single(),
-
-    supabase
-      .from("invoices")
-      .select(`
-        id,
-        invoice_number,
-        status,
-        amount,
-        subtotal,
-        vat_amount,
-        amount_paid,
-        created_at
-      `)
-      .eq(
-        "quote_id",
-        invoice.quote_id
-      )
-      .neq(
-        "status",
-        "Cancelled"
-      )
-      .order(
-        "created_at",
-        {
-          ascending: false,
-        }
-      ),
-  ]);
-
-  const quote =
-    quoteResult.data;
+      .single();
 
   if (
-    quoteResult.error ||
+    quoteError ||
     !quote
   ) {
     redirect(
@@ -171,16 +150,260 @@ export default async function NewGuaranteePage({
     );
   }
 
-  const linkedInvoices =
-    linkedInvoicesResult.data ??
-    [];
+  const resolvedJobId =
+    invoice.job_id ||
+    quote.job_id ||
+    null;
+
+  /* =========================================================
+     ACCEPTED VARIATIONS
+     ========================================================= */
+
+  let acceptedVariations:
+    {
+      id: string;
+      variation_number:
+        | string
+        | null;
+      title:
+        | string
+        | null;
+      amount:
+        | number
+        | string
+        | null;
+      quote_id:
+        | string
+        | null;
+    }[] = [];
+
+  if (
+    resolvedJobId
+  ) {
+    const {
+      data:
+        variationRows,
+      error:
+        variationsError,
+    } =
+      await supabase
+        .from(
+          "variations"
+        )
+        .select(`
+          id,
+          variation_number,
+          title,
+          amount,
+          quote_id
+        `)
+        .eq(
+          "job_id",
+          resolvedJobId
+        )
+        .eq(
+          "status",
+          "Accepted"
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              true,
+          }
+        );
+
+    if (
+      variationsError
+    ) {
+      redirect(
+        `/invoices/${invoice.id}?error=Accepted%20variations%20could%20not%20be%20checked`
+      );
+    }
+
+    acceptedVariations =
+      (
+        variationRows ??
+        []
+      ).filter(
+        (
+          variation
+        ) =>
+          !variation.quote_id ||
+          variation.quote_id ===
+            quote.id
+      );
+  }
+
+  /* =========================================================
+     APPROVED JOB VALUE
+     ========================================================= */
 
   const quoteTotal =
     money(
       Number(
-        quote.amount ?? 0
+        quote.amount ??
+          0
       )
     );
+
+  const acceptedVariationValue =
+    money(
+      acceptedVariations.reduce(
+        (
+          total,
+          variation
+        ) =>
+          total +
+          Number(
+            variation.amount ??
+              0
+          ),
+        0
+      )
+    );
+
+  const approvedJobValue =
+    money(
+      quoteTotal +
+        acceptedVariationValue
+    );
+
+  /* =========================================================
+     ACTIVE JOB INVOICES
+     ========================================================= */
+
+  let linkedInvoices:
+    {
+      id: string;
+      invoice_number:
+        | string
+        | null;
+      status: string;
+      amount:
+        | number
+        | string
+        | null;
+      subtotal:
+        | number
+        | string
+        | null;
+      vat_amount:
+        | number
+        | string
+        | null;
+      amount_paid:
+        | number
+        | string
+        | null;
+      created_at:
+        | string
+        | null;
+    }[] = [];
+
+  if (
+    resolvedJobId
+  ) {
+    const {
+      data:
+        invoiceRows,
+      error:
+        linkedInvoicesError,
+    } =
+      await supabase
+        .from(
+          "invoices"
+        )
+        .select(`
+          id,
+          invoice_number,
+          status,
+          amount,
+          subtotal,
+          vat_amount,
+          amount_paid,
+          created_at
+        `)
+        .eq(
+          "job_id",
+          resolvedJobId
+        )
+        .neq(
+          "status",
+          "Cancelled"
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              false,
+          }
+        );
+
+    if (
+      linkedInvoicesError
+    ) {
+      redirect(
+        `/invoices/${invoice.id}?error=The%20job%20invoices%20could%20not%20be%20checked`
+      );
+    }
+
+    linkedInvoices =
+      invoiceRows ??
+      [];
+  } else {
+    const {
+      data:
+        invoiceRows,
+      error:
+        linkedInvoicesError,
+    } =
+      await supabase
+        .from(
+          "invoices"
+        )
+        .select(`
+          id,
+          invoice_number,
+          status,
+          amount,
+          subtotal,
+          vat_amount,
+          amount_paid,
+          created_at
+        `)
+        .eq(
+          "quote_id",
+          quote.id
+        )
+        .neq(
+          "status",
+          "Cancelled"
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              false,
+          }
+        );
+
+    if (
+      linkedInvoicesError
+    ) {
+      redirect(
+        `/invoices/${invoice.id}?error=The%20linked%20invoices%20could%20not%20be%20checked`
+      );
+    }
+
+    linkedInvoices =
+      invoiceRows ??
+      [];
+  }
+
+  /* =========================================================
+     FINANCIAL STATUS
+     ========================================================= */
 
   const totalInvoiced =
     money(
@@ -213,16 +436,60 @@ export default async function NewGuaranteePage({
       )
     );
 
+  const remainingToInvoice =
+    money(
+      Math.max(
+        0,
+        approvedJobValue -
+          totalInvoiced
+      )
+    );
+
+  const outstanding =
+    money(
+      linkedInvoices.reduce(
+        (
+          total,
+          linkedInvoice
+        ) => {
+          const invoiceTotal =
+            invoiceRowTotal(
+              linkedInvoice
+            );
+
+          const amountPaid =
+            Number(
+              linkedInvoice.amount_paid ??
+                0
+            );
+
+          return (
+            total +
+            Math.max(
+              0,
+              invoiceTotal -
+                amountPaid
+            )
+          );
+        },
+        0
+      )
+    );
+
   const fullyInvoiced =
-    quoteTotal > 0 &&
+    approvedJobValue >
+      0 &&
     totalInvoiced >=
-      quoteTotal - 0.009;
+      approvedJobValue -
+        0.009;
 
   const everyInvoicePaid =
     linkedInvoices.length >
       0 &&
     linkedInvoices.every(
-      (linkedInvoice) => {
+      (
+        linkedInvoice
+      ) => {
         const invoiceTotal =
           invoiceRowTotal(
             linkedInvoice
@@ -235,7 +502,8 @@ export default async function NewGuaranteePage({
           );
 
         return (
-          invoiceTotal > 0 &&
+          invoiceTotal >
+            0 &&
           amountPaid >=
             invoiceTotal -
               0.009
@@ -247,25 +515,25 @@ export default async function NewGuaranteePage({
     fullyInvoiced &&
     everyInvoicePaid;
 
-  if (!financiallyComplete) {
+  if (
+    !financiallyComplete
+  ) {
     redirect(
-      `/invoices/${invoice.id}?error=The%20quote%20must%20be%20fully%20invoiced%20and%20all%20linked%20invoices%20must%20be%20paid%20before%20a%20guarantee%20can%20be%20created`
+      `/invoices/${invoice.id}?error=${encodeURIComponent(
+        "The approved job must be fully invoiced and every active invoice must be paid in full before a guarantee can be created."
+      )}`
     );
   }
 
-  /*
-   * -------------------------------------------------------
-   * STOP DUPLICATE GUARANTEES FOR THE SAME QUOTE
-   * -------------------------------------------------------
-   *
-   * Guarantees currently store an invoice_id rather than
-   * a quote_id, so check every invoice belonging to this
-   * quote for an existing active guarantee.
-   */
+  /* =========================================================
+     DUPLICATE GUARANTEE CHECK
+     ========================================================= */
 
   const linkedInvoiceIds =
     linkedInvoices.map(
-      (linkedInvoice) =>
+      (
+        linkedInvoice
+      ) =>
         linkedInvoice.id
     );
 
@@ -276,24 +544,32 @@ export default async function NewGuaranteePage({
     const {
       data:
         existingGuarantees,
-    } = await supabase
-      .from("guarantees")
-      .select("id")
-      .in(
-        "invoice_id",
-        linkedInvoiceIds
-      )
-      .neq(
-        "status",
-        "Cancelled"
-      )
-      .order(
-        "created_at",
-        {
-          ascending: false,
-        }
-      )
-      .limit(1);
+    } =
+      await supabase
+        .from(
+          "guarantees"
+        )
+        .select(
+          "id"
+        )
+        .in(
+          "invoice_id",
+          linkedInvoiceIds
+        )
+        .neq(
+          "status",
+          "Cancelled"
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              false,
+          }
+        )
+        .limit(
+          1
+        );
 
     const existingGuarantee =
       existingGuarantees?.[0];
@@ -307,11 +583,9 @@ export default async function NewGuaranteePage({
     }
   }
 
-  /*
-   * -------------------------------------------------------
-   * RELATED RECORDS
-   * -------------------------------------------------------
-   */
+  /* =========================================================
+     RELATED RECORDS
+     ========================================================= */
 
   const client =
     Array.isArray(
@@ -338,16 +612,17 @@ export default async function NewGuaranteePage({
     client?.display_name ||
     "Unknown client";
 
-  /*
-   * -------------------------------------------------------
-   * DEFAULT GUARANTEE DATES
-   * -------------------------------------------------------
-   */
+  /* =========================================================
+     DEFAULT GUARANTEE DATES
+     ========================================================= */
 
   const today =
     new Date()
       .toISOString()
-      .slice(0, 10);
+      .slice(
+        0,
+        10
+      );
 
   const defaultDuration =
     10;
@@ -363,7 +638,10 @@ export default async function NewGuaranteePage({
   const defaultExpiryDate =
     expiry
       .toISOString()
-      .slice(0, 10);
+      .slice(
+        0,
+        10
+      );
 
   const defaultTitle =
     job?.title ||
@@ -375,8 +653,14 @@ export default async function NewGuaranteePage({
   const defaultCoveredWorks =
     job?.description ||
     contract?.description ||
+    quote.description ||
     invoice.description ||
     "";
+
+  const backHref =
+    resolvedJobId
+      ? `/jobs/${resolvedJobId}`
+      : `/quotes/${quote.id}`;
 
   return (
     <div className="flex min-h-screen bg-slate-100">
@@ -385,14 +669,21 @@ export default async function NewGuaranteePage({
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-5xl">
 
-          {/* BACK */}
+          {/* =================================================
+              BACK
+              ================================================= */}
 
           <div className="flex flex-wrap items-center gap-4">
             <Link
-              href={`/quotes/${quote.id}`}
+              href={
+                backHref
+              }
               className="text-sm font-semibold text-emerald-700 hover:text-emerald-900"
             >
-              ← Back to Quote Hub
+              ←{" "}
+              {resolvedJobId
+                ? "Back to Job Hub"
+                : "Back to Quote"}
             </Link>
 
             <Link
@@ -403,11 +694,13 @@ export default async function NewGuaranteePage({
             </Link>
           </div>
 
-          {/* HEADER */}
+          {/* =================================================
+              HEADER
+              ================================================= */}
 
           <div className="mt-4">
             <p className="text-sm font-medium text-emerald-700">
-              Financially Complete Quote
+              Financially Complete Job
             </p>
 
             <h1 className="mt-1 text-3xl font-bold text-slate-900">
@@ -426,27 +719,46 @@ export default async function NewGuaranteePage({
             </div>
           )}
 
-          {/* FINANCIAL COMPLETE MESSAGE */}
+          {/* =================================================
+              FINANCIALLY COMPLETE
+              ================================================= */}
 
-          <section className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
-            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-              Guarantee Available
-            </p>
+          <section className="mt-8 overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50">
+            <div className="p-6">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                Guarantee Available
+              </p>
 
-            <h2 className="mt-2 text-xl font-bold text-emerald-950">
-              The quote is financially complete
-            </h2>
+              <h2 className="mt-2 text-xl font-bold text-emerald-950">
+                The approved job is financially complete
+              </h2>
 
-            <p className="mt-2 text-sm leading-6 text-emerald-800">
-              The full quote value has been invoiced and all
-              linked invoices have been paid in full.
-            </p>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-emerald-800">
+                The original quotation and all accepted variations have
+                been fully invoiced, and every active invoice for the job
+                has been paid in full.
+              </p>
+            </div>
 
-            <div className="mt-5 grid gap-4 md:grid-cols-3">
+            <div className="grid gap-px bg-emerald-200 sm:grid-cols-2 lg:grid-cols-5">
               <FinancialDetail
-                label="Quote Value"
+                label="Original Quote"
                 value={formatCurrency(
                   quoteTotal
+                )}
+              />
+
+              <FinancialDetail
+                label="Accepted Variations"
+                value={formatCurrency(
+                  acceptedVariationValue
+                )}
+              />
+
+              <FinancialDetail
+                label="Approved Job Value"
+                value={formatCurrency(
+                  approvedJobValue
                 )}
               />
 
@@ -464,9 +776,97 @@ export default async function NewGuaranteePage({
                 )}
               />
             </div>
+
+            {(remainingToInvoice >
+              0 ||
+              outstanding >
+                0) && (
+              <div className="border-t border-emerald-200 p-5 text-sm text-emerald-800">
+                Remaining to invoice:{" "}
+                <strong>
+                  {formatCurrency(
+                    remainingToInvoice
+                  )}
+                </strong>
+                {" · "}
+                Outstanding:{" "}
+                <strong>
+                  {formatCurrency(
+                    outstanding
+                  )}
+                </strong>
+              </div>
+            )}
           </section>
 
-          {/* SOURCE DETAILS */}
+          {/* =================================================
+              ACCEPTED VARIATIONS
+              ================================================= */}
+
+          {acceptedVariations.length >
+            0 && (
+            <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                    Approved Additional Works
+                  </p>
+
+                  <h2 className="mt-1 text-lg font-semibold text-slate-900">
+                    Accepted Variations
+                  </h2>
+                </div>
+
+                <p className="text-lg font-bold text-slate-900">
+                  {formatCurrency(
+                    acceptedVariationValue
+                  )}
+                </p>
+              </div>
+
+              <div className="mt-5 divide-y divide-slate-100">
+                {acceptedVariations.map(
+                  (
+                    variation
+                  ) => (
+                    <div
+                      key={
+                        variation.id
+                      }
+                      className="flex flex-wrap items-center justify-between gap-4 py-4"
+                    >
+                      <div>
+                        <p className="font-semibold text-slate-900">
+                          {variation.variation_number ||
+                            "Variation"}
+                        </p>
+
+                        <p className="mt-1 text-sm text-slate-500">
+                          {variation.title ||
+                            "Additional works"}
+                        </p>
+                      </div>
+
+                      <p className="font-semibold text-slate-900">
+                        {formatCurrency(
+                          money(
+                            Number(
+                              variation.amount ??
+                                0
+                            )
+                          )
+                        )}
+                      </p>
+                    </div>
+                  )
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* =================================================
+              SOURCE DETAILS
+              ================================================= */}
 
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">
@@ -484,14 +884,16 @@ export default async function NewGuaranteePage({
               <Detail
                 label="Quote"
                 value={
-                  quote.quote_number
+                  quote.quote_number ||
+                  "Accepted quote"
                 }
               />
 
               <Detail
-                label="Invoice"
+                label="Source Invoice"
                 value={
-                  invoice.invoice_number
+                  invoice.invoice_number ||
+                  "Invoice"
                 }
               />
 
@@ -513,7 +915,9 @@ export default async function NewGuaranteePage({
             </div>
           </section>
 
-          {/* FORM */}
+          {/* =================================================
+              FORM
+              ================================================= */}
 
           <form
             action={
@@ -529,7 +933,9 @@ export default async function NewGuaranteePage({
               }
             />
 
-            {/* GUARANTEE DETAILS */}
+            {/* ===============================================
+                GUARANTEE DETAILS
+                =============================================== */}
 
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">
@@ -706,7 +1112,9 @@ export default async function NewGuaranteePage({
               </div>
             </section>
 
-            {/* COVERED WORKS */}
+            {/* ===============================================
+                COVERED WORKS
+                =============================================== */}
 
             <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">
@@ -719,7 +1127,9 @@ export default async function NewGuaranteePage({
 
               <textarea
                 name="covered_works"
-                rows={7}
+                rows={
+                  7
+                }
                 defaultValue={
                   defaultCoveredWorks
                 }
@@ -727,7 +1137,9 @@ export default async function NewGuaranteePage({
               />
             </section>
 
-            {/* TERMS */}
+            {/* ===============================================
+                TERMS
+                =============================================== */}
 
             <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">
@@ -736,7 +1148,9 @@ export default async function NewGuaranteePage({
 
               <textarea
                 name="terms"
-                rows={7}
+                rows={
+                  7
+                }
                 defaultValue={
                   "This guarantee applies to the works described above and is subject to the property being adequately maintained. Any defects or concerns should be reported to Dry Home Damp Proofing Solutions LTD as soon as reasonably possible."
                 }
@@ -744,7 +1158,9 @@ export default async function NewGuaranteePage({
               />
             </section>
 
-            {/* EXCLUSIONS */}
+            {/* ===============================================
+                EXCLUSIONS
+                =============================================== */}
 
             <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">
@@ -753,7 +1169,9 @@ export default async function NewGuaranteePage({
 
               <textarea
                 name="exclusions"
-                rows={6}
+                rows={
+                  6
+                }
                 defaultValue={
                   "This guarantee does not cover damage caused by building movement, structural defects, flooding, plumbing leaks, defective external maintenance, alterations by third parties, or circumstances outside the scope of the original works."
                 }
@@ -761,7 +1179,9 @@ export default async function NewGuaranteePage({
               />
             </section>
 
-            {/* CUSTOMER MESSAGE */}
+            {/* ===============================================
+                CUSTOMER MESSAGE
+                =============================================== */}
 
             <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">
@@ -770,7 +1190,9 @@ export default async function NewGuaranteePage({
 
               <textarea
                 name="customer_message"
-                rows={4}
+                rows={
+                  4
+                }
                 defaultValue={
                   "Thank you for choosing Dry Home Damp Proofing Solutions LTD. Please retain this guarantee with your property records."
                 }
@@ -778,7 +1200,9 @@ export default async function NewGuaranteePage({
               />
             </section>
 
-            {/* INTERNAL NOTES */}
+            {/* ===============================================
+                INTERNAL NOTES
+                =============================================== */}
 
             <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">
@@ -787,17 +1211,23 @@ export default async function NewGuaranteePage({
 
               <textarea
                 name="internal_notes"
-                rows={4}
+                rows={
+                  4
+                }
                 placeholder="These notes are for DryHome Office only and will not be shown to the customer."
                 className="mt-5 w-full rounded-lg border border-slate-300 px-3 py-3 text-slate-900 outline-none focus:border-slate-500"
               />
             </section>
 
-            {/* ACTIONS */}
+            {/* ===============================================
+                ACTIONS
+                =============================================== */}
 
             <div className="mt-8 flex flex-wrap justify-end gap-3">
               <Link
-                href={`/quotes/${quote.id}`}
+                href={
+                  backHref
+                }
                 className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Cancel
@@ -853,7 +1283,7 @@ function FinancialDetail({
   value: string;
 }) {
   return (
-    <div className="rounded-xl bg-white/70 p-4">
+    <div className="bg-white/70 p-4">
       <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
         {label}
       </p>
@@ -869,53 +1299,69 @@ function FinancialDetail({
    INVOICE TOTAL
    ========================================================= */
 
-function invoiceRowTotal(invoice: {
-  amount?:
-    | number
-    | string
-    | null;
+function invoiceRowTotal(
+  invoice: {
+    amount?:
+      | number
+      | string
+      | null;
 
-  subtotal?:
-    | number
-    | string
-    | null;
+    subtotal?:
+      | number
+      | string
+      | null;
 
-  vat_amount?:
-    | number
-    | string
-    | null;
-}) {
+    vat_amount?:
+      | number
+      | string
+      | null;
+  }
+) {
   const amount =
     Number(
-      invoice.amount ?? 0
+      invoice.amount ??
+        0
     );
 
   if (
     Number.isFinite(
       amount
     ) &&
-    amount > 0
+    amount >
+      0
   ) {
-    return money(amount);
+    return money(
+      amount
+    );
   }
 
   const subtotal =
     Number(
-      invoice.subtotal ?? 0
+      invoice.subtotal ??
+        0
     );
 
   const vatAmount =
     Number(
-      invoice.vat_amount ?? 0
+      invoice.vat_amount ??
+        0
     );
 
   return money(
-    (Number.isFinite(subtotal)
-      ? subtotal
-      : 0) +
-      (Number.isFinite(vatAmount)
-        ? vatAmount
-        : 0)
+    (
+      Number.isFinite(
+        subtotal
+      )
+        ? subtotal
+        : 0
+    ) +
+      (
+        Number.isFinite(
+          vatAmount
+        )
+          ? vatAmount
+          : 0
+      )
   );
 }
 
@@ -945,8 +1391,12 @@ function formatCurrency(
   return new Intl.NumberFormat(
     "en-GB",
     {
-      style: "currency",
-      currency: "GBP",
+      style:
+        "currency",
+      currency:
+        "GBP",
     }
-  ).format(value);
+  ).format(
+    value
+  );
 }
