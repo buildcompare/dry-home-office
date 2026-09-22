@@ -1,10 +1,18 @@
+import React from "react";
+import path from "path";
+import { readFile } from "fs/promises";
+
 import { NextRequest } from "next/server";
 import { Resend } from "resend";
+import {
+  renderToBuffer,
+} from "@react-pdf/renderer";
 
 import { createClient } from "@/lib/supabase/server";
+import ContractPdfDocument from "@/components/ContractPdfDocument";
+import build from "next/dist/build";
 
-export const runtime =
-  "nodejs";
+export const runtime = "nodejs";
 
 const MAX_ATTACHMENTS = 5;
 
@@ -41,6 +49,7 @@ If you have any questions regarding the contract or proposed works, simply reply
 Kind regards,
 
 James
+
 Dry Home Damp Proofing Solutions`,
 };
 
@@ -82,9 +91,7 @@ export async function GET(
       id
     );
 
-  if (
-    !context.success
-  ) {
+  if (!context.success) {
     return Response.json(
       {
         error:
@@ -119,9 +126,7 @@ export async function GET(
     );
   }
 
-  if (
-    !contract.public_token
-  ) {
+  if (!contract.public_token) {
     return Response.json(
       {
         error:
@@ -134,9 +139,7 @@ export async function GET(
   }
 
   const clientName =
-    getClientName(
-      client
-    );
+    getClientName(client);
 
   const jobTitle =
     job?.title ||
@@ -181,6 +184,8 @@ export async function GET(
     recipient,
     subject,
     body,
+    automaticAttachment:
+      "Contract PDF",
   });
 }
 
@@ -234,9 +239,7 @@ export async function POST(
       id
     );
 
-  if (
-    !context.success
-  ) {
+  if (!context.success) {
     return sendErrorResponse(
       wantsJson,
       id,
@@ -249,12 +252,11 @@ export async function POST(
     contract,
     client,
     job,
+    quote,
     template,
   } = context;
 
-  if (
-    !contract.public_token
-  ) {
+  if (!contract.public_token) {
     return sendErrorResponse(
       wantsJson,
       id,
@@ -302,9 +304,7 @@ export async function POST(
   }
 
   const clientName =
-    getClientName(
-      client
-    );
+    getClientName(client);
 
   const jobTitle =
     job?.title ||
@@ -466,7 +466,7 @@ export async function POST(
 
   for (
     const file of
-      extraFiles
+    extraFiles
   ) {
     const fileBuffer =
       Buffer.from(
@@ -487,7 +487,135 @@ export async function POST(
   }
 
   /* =========================================================
-     EMAIL HTML
+     CONTRACT PDF
+     ========================================================= */
+
+  const clientAddressLines =
+    getAddressLines(
+      client
+    );
+
+  const jobAddressLines =
+    getAddressLines(
+      job
+    );
+
+  const propertyAddressLines =
+    jobAddressLines.length >
+    0
+      ? jobAddressLines
+      : clientAddressLines;
+
+  const logoDataUri =
+    await loadLogoFromDisk();
+
+  let pdfBuffer: Buffer;
+
+  try {
+    const pdfDocument =
+      React.createElement(
+        ContractPdfDocument,
+        {
+          logoDataUri,
+
+          contractNumber:
+            contract.contract_number,
+
+          title:
+            contract.title ||
+            "Customer Contract",
+
+          status:
+            contract.status ||
+            "Contract",
+
+          contractDate:
+            contract.contract_date,
+
+          clientName,
+
+          clientEmail:
+            client?.email ||
+            null,
+
+          clientPhone:
+            client?.phone ||
+            null,
+
+          clientAddressLines,
+
+          jobNumber:
+            job?.job_number ||
+            null,
+
+          jobTitle:
+            job?.title ||
+            null,
+
+          jobType:
+            job?.job_type ||
+            null,
+
+          propertyAddressLines,
+
+          quoteNumber:
+            quote?.quote_number ||
+            null,
+
+          description:
+            contract.description,
+
+          terms:
+            contract.terms,
+
+          customerMessage:
+            contract.customer_message,
+
+          total:
+            Number(
+              contract.amount ??
+                0
+            ),
+
+          signedAt:
+            contract.signed_at,
+
+          signedName:
+            contract.signed_name,
+
+          signedEmail:
+            contract.signed_email,
+
+          customerUrl,
+        }
+      );
+
+    pdfBuffer =
+      await renderToBuffer(
+        pdfDocument
+      );
+  } catch (pdfError) {
+    console.error(
+      "Unable to generate contract PDF:",
+      pdfError
+    );
+
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "Unable to generate the contract PDF attachment."
+    );
+  }
+
+  const pdfFilename =
+    makePdfFilename(
+      contract.contract_number,
+      contract.title ||
+        "Contract"
+    );
+
+  /* =========================================================
+     EMAIL
      ========================================================= */
 
   const contractTotal =
@@ -503,24 +631,21 @@ export async function POST(
   const html =
     buildComposerEmailHtml({
       body,
-
       customerUrl,
 
       contractNumber:
         contract.contract_number,
 
       contractTitle,
-
       contractTotal,
     });
 
   const text = [
     body,
-
     "",
-
+    "A PDF copy of your contract is attached.",
+    "",
     "View and sign your contract securely online:",
-
     customerUrl,
   ].join("\n");
 
@@ -555,18 +680,22 @@ export async function POST(
         : {}),
 
       subject,
-
       text,
-
       html,
 
-      ...(extraAttachments.length >
-      0
-        ? {
-            attachments:
-              extraAttachments,
-          }
-        : {}),
+      attachments: [
+        {
+          filename:
+            `${pdfFilename}.pdf`,
+
+          content:
+            pdfBuffer.toString(
+              "base64"
+            ),
+        },
+
+        ...extraAttachments,
+      ],
     });
 
   if (
@@ -679,6 +808,7 @@ async function loadContractContext(
       typeof createClient
     >
   >,
+
   id: string
 ) {
   const [
@@ -696,13 +826,44 @@ async function loadContractContext(
         public_token,
         client_id,
         job_id,
+        quote_id,
+        contract_date,
+        description,
+        terms,
+        customer_message,
+        signed_at,
+        signed_name,
+        signed_email,
 
         clients (
           id,
           display_name,
           first_name,
           last_name,
-          email
+          email,
+          phone,
+          address_line_1,
+          address_line_2,
+          town,
+          county,
+          postcode
+        ),
+
+        jobs (
+          id,
+          job_number,
+          title,
+          job_type,
+          address_line_1,
+          address_line_2,
+          town,
+          county,
+          postcode
+        ),
+
+        quotes (
+          id,
+          quote_number
         )
       `)
       .eq(
@@ -763,49 +924,25 @@ async function loadContractContext(
     Array.isArray(
       contract.clients
     )
-      ? contract.clients[0]
+      ? contract.clients[0] ||
+        null
       : contract.clients;
 
-  let job:
-    | {
-        id: string;
-        title:
-          | string
-          | null;
-      }
-    | null = null;
+  const job =
+    Array.isArray(
+      contract.jobs
+    )
+      ? contract.jobs[0] ||
+        null
+      : contract.jobs;
 
-  if (
-    contract.job_id
-  ) {
-    const {
-      data: jobData,
-      error: jobError,
-    } = await supabase
-      .from("jobs")
-      .select(`
-        id,
-        title
-      `)
-      .eq(
-        "id",
-        contract.job_id
-      )
-      .maybeSingle();
-
-    if (
-      jobError
-    ) {
-      console.error(
-        "Unable to load contract job:",
-        jobError
-      );
-    }
-
-    job =
-      jobData ||
-      null;
-  }
+  const quote =
+    Array.isArray(
+      contract.quotes
+    )
+      ? contract.quotes[0] ||
+        null
+      : contract.quotes;
 
   const template = {
     subject:
@@ -824,12 +961,45 @@ async function loadContractContext(
     contract,
     client,
     job,
+    quote,
     template,
   };
 }
 
 /* =========================================================
-   CLIENT NAME
+   PDF LOGO
+   ========================================================= */
+
+async function loadLogoFromDisk():
+  Promise<string | null> {
+  try {
+    const logoPath =
+      path.join(
+        process.cwd(),
+        "public",
+        "dryhome-logo-light.png"
+      );
+
+    const logoBuffer =
+      await readFile(
+        logoPath
+      );
+
+    return `data:image/png;base64,${logoBuffer.toString(
+      "base64"
+    )}`;
+  } catch (error) {
+    console.error(
+      "Unable to load contract PDF logo:",
+      error
+    );
+
+    return null;
+  }
+}
+
+/* =========================================================
+   CLIENT / ADDRESS
    ========================================================= */
 
 function getClientName(
@@ -859,6 +1029,48 @@ function getClientName(
       .filter(Boolean)
       .join(" ") ||
     "Customer"
+  );
+}
+
+function getAddressLines(
+  record:
+    | {
+        address_line_1?:
+          | string
+          | null;
+
+        address_line_2?:
+          | string
+          | null;
+
+        town?:
+          | string
+          | null;
+
+        county?:
+          | string
+          | null;
+
+        postcode?:
+          | string
+          | null;
+      }
+    | null
+    | undefined
+) {
+  return [
+    record?.address_line_1,
+    record?.address_line_2,
+    record?.town,
+    record?.county,
+    record?.postcode,
+  ].filter(
+    (
+      value
+    ): value is string =>
+      Boolean(
+        value?.trim()
+      )
   );
 }
 
@@ -929,11 +1141,9 @@ function buildComposerEmailHtml({
 }) {
   return `
 <!DOCTYPE html>
-
 <html>
   <head>
     <meta charset="utf-8">
-
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1"
@@ -947,25 +1157,21 @@ function buildComposerEmailHtml({
     font-family:Arial,Helvetica,sans-serif;
     color:#334155;
   ">
-
     <div style="
       max-width:640px;
       margin:0 auto;
       padding:32px 20px;
     ">
-
       <div style="
         background:#ffffff;
         border-radius:12px;
         overflow:hidden;
         border:1px solid #e2e8f0;
       ">
-
         <div style="
           background:#0f172a;
           padding:28px 32px;
         ">
-
           <div style="
             color:#ffffff;
             font-size:22px;
@@ -979,9 +1185,8 @@ function buildComposerEmailHtml({
             color:#cbd5e1;
             font-size:13px;
           ">
-            Customer Contract
+            Works Contract
           </div>
-
         </div>
 
         <div style="
@@ -996,13 +1201,12 @@ function buildComposerEmailHtml({
         </div>
 
         <div style="
-          margin:10px 32px 28px 32px;
+          margin:10px 32px 20px 32px;
           padding:20px;
           background:#f8fafc;
           border:1px solid #e2e8f0;
           border-radius:8px;
         ">
-
           <div style="
             font-size:11px;
             text-transform:uppercase;
@@ -1062,14 +1266,26 @@ function buildComposerEmailHtml({
               `
               : ""
           }
+        </div>
 
+        <div style="
+          margin:0 32px 24px 32px;
+          padding:14px 16px;
+          background:#f8fafc;
+          border-radius:8px;
+          color:#64748b;
+          font-size:13px;
+          line-height:1.6;
+        ">
+          A PDF copy of the contract is attached to this email.
+          Please use the secure button below to review and sign
+          the contract online.
         </div>
 
         <div style="
           text-align:center;
-          margin:28px 32px 36px 32px;
+          margin:24px 32px 34px 32px;
         ">
-
           <a
             href="${escapeHtml(
               customerUrl
@@ -1087,7 +1303,6 @@ function buildComposerEmailHtml({
           >
             View &amp; Sign Contract
           </a>
-
         </div>
 
         <div style="
@@ -1099,7 +1314,8 @@ function buildComposerEmailHtml({
           font-size:13px;
           line-height:1.6;
         ">
-          Please review the scope of works and terms carefully before confirming your agreement.
+          Please review the scope of works, contract value and
+          terms carefully before confirming your agreement.
         </div>
 
         <div style="
@@ -1113,7 +1329,6 @@ function buildComposerEmailHtml({
           Dry Home Damp Proofing Solutions LTD<br>
           dryhomedampproofing.co.uk
         </div>
-
       </div>
     </div>
   </body>
@@ -1155,7 +1370,7 @@ function renderMessageHtml(
 }
 
 /* =========================================================
-   ATTACHMENTS
+   ATTACHMENTS / FILENAMES
    ========================================================= */
 
 function sanitiseAttachmentFilename(
@@ -1173,6 +1388,29 @@ function sanitiseAttachmentFilename(
     cleaned ||
     "attachment"
   );
+}
+
+function makePdfFilename(
+  contractNumber: string,
+  title: string
+) {
+  return `${contractNumber}-${title}`
+    .replace(
+      /[^a-zA-Z0-9-_ ]/g,
+      ""
+    )
+    .replace(
+      /\s+/g,
+      "-"
+    )
+    .replace(
+      /-+/g,
+      "-"
+    )
+    .replace(
+      /^-|-$/g,
+      ""
+    );
 }
 
 /* =========================================================
