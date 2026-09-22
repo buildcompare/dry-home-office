@@ -145,7 +145,7 @@ export default async function CustomerContractPage({
         <div className="overflow-hidden rounded-2xl bg-white shadow-lg">
           <header className="bg-slate-950 px-6 py-8 text-white sm:px-10">
             <Image
-              src="/dryhome-logo-light.png"
+              src="/dryhome-logo.png"
               alt="Dry Home Damp Proofing Solutions"
               width={230}
               height={90}
