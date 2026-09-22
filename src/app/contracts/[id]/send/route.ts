@@ -977,7 +977,7 @@ async function loadLogoFromDisk():
       path.join(
         process.cwd(),
         "public",
-        "dryhome-logo-light.png"
+        "dryhome-logo.png"
       );
 
     const logoBuffer =
