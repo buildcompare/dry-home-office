@@ -16,6 +16,7 @@ type SearchParams =
   Promise<{
     contract?: string;
     quote?: string;
+    portion?: string;
   }>;
 
 function clientName(
@@ -217,6 +218,13 @@ export default async function NewInvoicePage({
   const selectedQuoteId =
     params.quote ??
     "";
+
+  const portion =
+    params.portion === "deposit"
+      ? "deposit"
+      : params.portion === "final"
+        ? "final"
+        : "";
 
   const supabase =
     await createClient();
@@ -851,6 +859,26 @@ export default async function NewInvoicePage({
     }
   }
 
+  if (portion === "deposit") {
+    for (const item of defaultItems) {
+      item.unit_price = money(Number(item.unit_price || 0) / 2);
+      item.description = `Deposit (50%) – ${item.description}`;
+    }
+  }
+
+  if (portion === "final") {
+    for (const item of defaultItems) {
+      item.description = `Final balance – ${item.description}`;
+    }
+  }
+
+  const portionTotal = money(
+    defaultItems.reduce(
+      (total, item) => total + Number(item.quantity || 1) * Number(item.unit_price || 0),
+      0
+    )
+  );
+
   /* =========================================================
      RETURN
      ========================================================= */
@@ -1403,7 +1431,9 @@ export default async function NewInvoicePage({
           <InvoiceForm
             defaultAmount={
               hasSource
-                ? remainingBalance
+                ? portion === "deposit"
+                  ? portionTotal
+                  : remainingBalance
                 : 0
             }
             defaultDescription={

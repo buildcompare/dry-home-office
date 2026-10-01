@@ -11,6 +11,42 @@ type QuoteItem = {
   item_type: "Labour" | "Materials";
 };
 
+
+const quoteTemplates: {
+  name: string;
+  labour: QuoteItem[];
+  materials: QuoteItem[];
+}[] = [
+  {
+    name: "Chemical DPC",
+    labour: [
+      { id: "tpl-dpc-labour", description: "Chemical damp proof course injection", quantity: 1, unit: "lm", unit_price: 0, item_type: "Labour" },
+      { id: "tpl-dpc-reinstatement", description: "Hack off and reinstate affected plaster", quantity: 1, unit: "m2", unit_price: 0, item_type: "Labour" },
+    ],
+    materials: [
+      { id: "tpl-dpc-cream", description: "Damp proofing cream", quantity: 1, unit: "item", unit_price: 0, item_type: "Materials" },
+    ],
+  },
+  {
+    name: "Tanking",
+    labour: [
+      { id: "tpl-tank-prep", description: "Prepare walls and apply tanking slurry", quantity: 1, unit: "m2", unit_price: 0, item_type: "Labour" },
+    ],
+    materials: [
+      { id: "tpl-tank-slurry", description: "Cementitious tanking slurry", quantity: 1, unit: "item", unit_price: 0, item_type: "Materials" },
+    ],
+  },
+  {
+    name: "Replaster",
+    labour: [
+      { id: "tpl-plaster", description: "Remove salt-contaminated plaster and replaster", quantity: 1, unit: "m2", unit_price: 0, item_type: "Labour" },
+    ],
+    materials: [
+      { id: "tpl-plaster-mat", description: "Renovating plaster", quantity: 1, unit: "item", unit_price: 0, item_type: "Materials" },
+    ],
+  },
+];
+
 function createItem(
   type: "Labour" | "Materials"
 ): QuoteItem {
@@ -131,8 +167,32 @@ export default function QuoteFormItems() {
     }
   }
 
+  function applyTemplate(name: string) {
+    const template = quoteTemplates.find((item) => item.name === name);
+    if (!template) return;
+    setLabourItems(template.labour.map((item) => ({ ...item, id: crypto.randomUUID() })));
+    setMaterialItems(template.materials.map((item) => ({ ...item, id: crypto.randomUUID() })));
+  }
+
   return (
     <>
+      <section className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-900">Start from a template</h2>
+        <p className="mt-1 text-sm text-slate-500">Loads common lines. Add your prices before sending.</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {quoteTemplates.map((template) => (
+            <button
+              key={template.name}
+              type="button"
+              onClick={() => applyTemplate(template.name)}
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              {template.name}
+            </button>
+          ))}
+        </div>
+      </section>
+
       <input
         type="hidden"
         name="items"
