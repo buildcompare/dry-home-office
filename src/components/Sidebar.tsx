@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/client";
+import SidebarTodos from "@/components/SidebarTodos";
 
 const mainNavItems = [
   {
@@ -161,6 +162,8 @@ export default function Sidebar() {
           </div>
         </div>
       </nav>
+
+      <SidebarTodos />
 
       {/* SIGN OUT */}
 
