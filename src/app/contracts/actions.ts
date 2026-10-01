@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { allocateDocumentNumber } from "@/lib/numbering";
 
 export async function addContract(
   formData: FormData
@@ -119,6 +120,7 @@ export async function addContract(
   } = await supabase
     .from("contracts")
     .insert({
+      contract_number: await allocateDocumentNumber("contract"),
       client_id: clientId,
       job_id: jobId,
       quote_id: quoteId,

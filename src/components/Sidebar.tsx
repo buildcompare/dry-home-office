@@ -55,6 +55,10 @@ const settingsNavItems = [
     label: "Email Templates",
     href: "/settings/email-templates",
   },
+  {
+    label: "Numbering",
+    href: "/settings/numbering",
+  },
 ];
 
 export default function Sidebar() {

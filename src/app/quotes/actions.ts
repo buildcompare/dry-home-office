@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { allocateDocumentNumber } from "@/lib/numbering";
 
 type RawQuoteItem = {
   description?: string;
@@ -221,6 +222,8 @@ export async function addQuote(
   } = await supabase
     .from("quotes")
     .insert({
+      quote_number:
+        await allocateDocumentNumber("quote"),
       client_id:
         clientId,
       job_id:

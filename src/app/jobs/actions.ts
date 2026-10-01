@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { allocateDocumentNumber } from "@/lib/numbering";
 
 /* =========================================================
    CREATE JOB
@@ -112,6 +113,8 @@ export async function addJob(
   } = await supabase
     .from("jobs")
     .insert({
+      job_number:
+        await allocateDocumentNumber("job"),
       client_id:
         clientId,
 

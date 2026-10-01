@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { allocateDocumentNumber } from "@/lib/numbering";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -858,79 +859,7 @@ export async function addInvoice(
     }
   }
 
-  /* =======================================================
-     NEXT INVOICE NUMBER
-     ======================================================= */
-
-  const year =
-    new Date()
-      .getFullYear();
-
-  const prefix =
-    `DH-I-${year}-`;
-
-  const {
-    data:
-      lastInvoice,
-  } =
-    await supabase
-      .from(
-        "invoices"
-      )
-      .select(
-        "invoice_number"
-      )
-      .like(
-        "invoice_number",
-        `${prefix}%`
-      )
-      .order(
-        "invoice_number",
-        {
-          ascending:
-            false,
-        }
-      )
-      .limit(
-        1
-      )
-      .maybeSingle();
-
-  let nextNumber =
-    1;
-
-  if (
-    lastInvoice?.invoice_number
-  ) {
-    const finalPart =
-      lastInvoice.invoice_number
-        .split("-")
-        .pop() ??
-      "0";
-
-    const previousNumber =
-      Number(
-        finalPart
-      );
-
-    if (
-      Number.isFinite(
-        previousNumber
-      )
-    ) {
-      nextNumber =
-        previousNumber +
-        1;
-    }
-  }
-
-  const invoiceNumber =
-    `${prefix}${String(
-      nextNumber
-    ).padStart(
-      4,
-      "0"
-    )}`;
+  const invoiceNumber = await allocateDocumentNumber("invoice");
 
   /* =======================================================
      INSERT INVOICE
