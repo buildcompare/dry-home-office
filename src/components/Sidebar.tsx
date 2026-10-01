@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/client";
-import SidebarTodos from "@/components/SidebarTodos";
 
 const mainNavItems = [
   {
@@ -43,6 +42,10 @@ const mainNavItems = [
   {
     label: "Reports",
     href: "/reports",
+  },
+  {
+    label: "To-do",
+    href: "/todos",
   },
 ];
 
@@ -162,8 +165,6 @@ export default function Sidebar() {
           </div>
         </div>
       </nav>
-
-      <SidebarTodos />
 
       {/* SIGN OUT */}
 
