@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { createClient } from "@/lib/supabase/client";
 import SidebarTodos from "@/components/SidebarTodos";
@@ -24,10 +24,6 @@ const mainNavItems = [
   {
     label: "Schedule",
     href: "/schedule",
-  },
-  {
-    label: "Today",
-    href: "/today",
   },
   {
     label: "Quotes",
@@ -72,6 +68,13 @@ export default function Sidebar() {
   const [settingsOpen, setSettingsOpen] =
     useState(settingsActive);
 
+  const [menuOpen, setMenuOpen] =
+    useState(false);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
+
   async function signOut() {
     const supabase =
       createClient();
@@ -83,7 +86,33 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="flex min-h-screen w-64 flex-col bg-slate-950 px-4 py-6 text-white">
+    <>
+      <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center gap-3 border-b border-slate-800 bg-slate-950 px-4 text-white lg:hidden">
+        <button
+          type="button"
+          onClick={() => setMenuOpen(true)}
+          className="rounded-lg border border-slate-700 px-3 py-2 text-sm font-semibold"
+          aria-label="Open menu"
+        >
+          Menu
+        </button>
+        <span className="text-sm font-semibold tracking-[0.2em] text-slate-300">
+          OFFICE
+        </span>
+      </div>
+
+      {menuOpen && (
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={() => setMenuOpen(false)}
+          className="fixed inset-0 z-40 bg-slate-950/60 lg:hidden"
+        />
+      )}
+
+    <aside className={`fixed inset-y-0 left-0 z-50 flex min-h-screen w-64 flex-col bg-slate-950 px-4 py-6 text-white transition-transform lg:static lg:z-auto lg:translate-x-0 ${
+      menuOpen ? "translate-x-0" : "-translate-x-full"
+    }`}>
 
       {/* LOGO */}
 
