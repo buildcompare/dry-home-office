@@ -4,15 +4,15 @@ export default function StatusBadge({
   status: string;
 }) {
   const classes =
-    status === "Accepted" ||
     status === "Paid" ||
     status === "Signed" ||
+    status === "Accepted" ||
+    status === "Issued" ||
     status === "Complete" ||
-    status === "Completed" ||
-    status === "Issued"
+    status === "Completed"
       ? "bg-emerald-100 text-emerald-800"
-      : status === "Draft"
-        ? "bg-slate-100 text-slate-700"
+      : status === "Part Paid" || status === "Expired"
+        ? "bg-amber-100 text-amber-800"
         : status === "Sent" ||
             status === "Viewed" ||
             status === "Scheduled" ||
@@ -29,7 +29,7 @@ export default function StatusBadge({
 
   return (
     <span
-      className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${classes}`}
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${classes}`}
     >
       {status}
     </span>
