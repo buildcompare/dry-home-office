@@ -1982,7 +1982,7 @@ export default async function JobPage({
                     href={`${createInvoiceHref}&portion=deposit`}
                     className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                   >
-                    50% deposit
+                    25% deposit
                   </Link>
                   <Link
                     href={`${createInvoiceHref}&portion=final`}

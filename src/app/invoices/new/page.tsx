@@ -861,8 +861,8 @@ export default async function NewInvoicePage({
 
   if (portion === "deposit") {
     for (const item of defaultItems) {
-      item.unit_price = money(Number(item.unit_price || 0) / 2);
-      item.description = `Deposit (50%) – ${item.description}`;
+      item.unit_price = money(Number(item.unit_price || 0) / 4);
+      item.description = `Deposit (25%) – ${item.description}`;
     }
   }
 
