@@ -221,8 +221,10 @@ export default function Sidebar() {
         Sign Out
       </button>
     </aside>
+    </>
   );
 }
+
 function CogIcon() {
   return (
     <svg
