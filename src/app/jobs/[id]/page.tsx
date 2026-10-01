@@ -2,8 +2,19 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import Sidebar from "@/components/Sidebar";
+import StatusBadge from "@/components/StatusBadge";
 import { createClient } from "@/lib/supabase/server";
 import { updateJobStatus } from "@/app/jobs/actions";
+import {
+  money,
+  formatCurrency,
+  invoiceRowTotal,
+} from "@/lib/money";
+import {
+  getLondonDateKey,
+  formatShortDate,
+  formatEventTime,
+} from "@/lib/dates";
 
 type JobPageProps = {
   params: Promise<{
@@ -2381,45 +2392,6 @@ function DetailRow({
   );
 }
 
-function StatusBadge({
-  status,
-}: {
-  status: string;
-}) {
-  const classes =
-    status === "Paid" ||
-    status === "Signed" ||
-    status === "Accepted" ||
-    status === "Issued" ||
-    status === "Completed" ||
-    status === "Complete"
-      ? "bg-emerald-100 text-emerald-800"
-      : status === "Part Paid" ||
-          status === "Expired"
-        ? "bg-amber-100 text-amber-800"
-        : status === "Sent" ||
-            status === "Viewed" ||
-            status === "Scheduled" ||
-            status === "Survey" ||
-            status === "Survey Booked" ||
-            status === "Work" ||
-            status === "In Progress"
-          ? "bg-blue-100 text-blue-800"
-          : status === "Cancelled" ||
-              status === "Declined" ||
-              status === "Overdue"
-            ? "bg-red-100 text-red-700"
-            : "bg-slate-100 text-slate-700";
-
-  return (
-    <span
-      className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${classes}`}
-    >
-      {status}
-    </span>
-  );
-}
-
 function Heading({
   children,
   right = false,
@@ -2512,165 +2484,4 @@ function getJobPipeline(
   }
 
   return "Upcoming";
-}
-
-function invoiceRowTotal(invoice: {
-  amount?: number | string | null;
-  subtotal?: number | string | null;
-  vat_amount?: number | string | null;
-}) {
-  const amount =
-    Number(
-      invoice.amount ?? 0
-    );
-
-  if (
-    Number.isFinite(amount) &&
-    amount > 0
-  ) {
-    return money(amount);
-  }
-
-  const subtotal =
-    Number(
-      invoice.subtotal ?? 0
-    );
-
-  const vatAmount =
-    Number(
-      invoice.vat_amount ?? 0
-    );
-
-  return money(
-    (Number.isFinite(subtotal)
-      ? subtotal
-      : 0) +
-      (Number.isFinite(vatAmount)
-        ? vatAmount
-        : 0)
-  );
-}
-
-function money(
-  value: number
-) {
-  return Math.round(
-    (value + Number.EPSILON) *
-      100
-  ) / 100;
-}
-
-function formatCurrency(
-  value:
-    | number
-    | string
-    | null
-) {
-  return new Intl.NumberFormat(
-    "en-GB",
-    {
-      style: "currency",
-      currency: "GBP",
-    }
-  ).format(
-    money(
-      Number(
-        value ?? 0
-      )
-    )
-  );
-}
-
-function formatDate(
-  value:
-    | string
-    | null
-) {
-  if (!value) {
-    return "Not set";
-  }
-
-  const [
-    year,
-    month,
-    day,
-  ] = value
-    .slice(0, 10)
-    .split("-")
-    .map(Number);
-
-  return new Intl.DateTimeFormat(
-    "en-GB",
-    {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      timeZone: "UTC",
-    }
-  ).format(
-    new Date(
-      Date.UTC(
-        year,
-        month - 1,
-        day
-      )
-    )
-  );
-}
-
-function formatEventTime(
-  start: string | null,
-  end: string | null
-) {
-  if (!start) {
-    return "Time not set";
-  }
-
-  const startTime =
-    start.slice(0, 5);
-
-  if (!end) {
-    return startTime;
-  }
-
-  return `${startTime} – ${end.slice(
-    0,
-    5
-  )}`;
-}
-
-function getLondonDateKey(
-  date: Date
-) {
-  const parts =
-    new Intl.DateTimeFormat(
-      "en-GB",
-      {
-        timeZone:
-          "Europe/London",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }
-    ).formatToParts(date);
-
-  const year =
-    parts.find(
-      (part) =>
-        part.type === "year"
-    )?.value;
-
-  const month =
-    parts.find(
-      (part) =>
-        part.type === "month"
-    )?.value;
-
-  const day =
-    parts.find(
-      (part) =>
-        part.type === "day"
-    )?.value;
-
-  return `${year}-${month}-${day}`;
 }
