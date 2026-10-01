@@ -39,6 +39,10 @@ const mainNavItems = [
     label: "Guarantees",
     href: "/guarantees",
   },
+  {
+    label: "Reports",
+    href: "/reports",
+  },
 ];
 
 const settingsNavItems = [
