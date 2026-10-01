@@ -44,10 +44,6 @@ const mainNavItems = [
     label: "Reports",
     href: "/reports",
   },
-  {
-    label: "To-do",
-    href: "/todos",
-  },
 ];
 
 const settingsNavItems = [
@@ -125,6 +121,7 @@ export default function Sidebar() {
               );
             }
           )}
+          <SidebarTodos />
         </div>
 
         {/* SETTINGS */}
@@ -166,8 +163,6 @@ export default function Sidebar() {
           </div>
         </div>
       </nav>
-
-      <SidebarTodos />
 
       {/* SIGN OUT */}
 

@@ -67,8 +67,8 @@ export default function SidebarTodos() {
   }
 
   return (
-    <div className="mt-6 border-t border-slate-800 pt-5">
-      <div className="mb-3 flex items-center justify-between px-1">
+    <div className="mt-2 rounded-lg bg-slate-900/70 px-3 py-3">
+      <div className="mb-3 flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
           To-do
         </p>
