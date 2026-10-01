@@ -189,6 +189,17 @@ export default async function CustomerQuotePage({
           </div>
         )}
 
+        {!hasResponded && (
+          <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-center">
+            <p className="font-semibold text-blue-950">
+              This quotation is ready for your decision
+            </p>
+            <p className="mt-1 text-sm text-blue-800">
+              Review the work and total below, then accept or decline.
+            </p>
+          </div>
+        )}
+
         {/* Main quote */}
         <div className="overflow-hidden rounded-3xl bg-white shadow-sm">
           {/* Header */}

@@ -830,6 +830,58 @@ export default async function JobPage({
             </div>
           </section>
 
+          {/* WORKFLOW */}
+
+          <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Workflow
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
+              <WorkflowStep
+                title="Quote"
+                value={latestQuote ? latestQuote.status : "Not started"}
+                complete={Boolean(latestQuote)}
+              />
+              <WorkflowStep
+                title="Accepted"
+                value={acceptedQuote ? "Accepted" : "Waiting"}
+                complete={Boolean(acceptedQuote)}
+              />
+              <WorkflowStep
+                title="Scheduled"
+                value={hasWorkScheduled ? "Work booked" : "Not booked"}
+                complete={hasWorkScheduled}
+              />
+              <WorkflowStep
+                title="Invoiced"
+                value={
+                  fullyInvoiced
+                    ? "Fully invoiced"
+                    : quoteInvoices.length > 0
+                      ? "Part invoiced"
+                      : "Not invoiced"
+                }
+                complete={fullyInvoiced}
+              />
+              <WorkflowStep
+                title="Paid"
+                value={
+                  everyInvoicePaid
+                    ? "Paid in full"
+                    : paidTotal > 0
+                      ? "Part paid"
+                      : "Unpaid"
+                }
+                complete={everyInvoicePaid}
+              />
+              <WorkflowStep
+                title="Guarantee"
+                value={linkedGuarantee ? linkedGuarantee.status : "Not issued"}
+                complete={Boolean(linkedGuarantee)}
+              />
+            </div>
+          </section>
+
           {/* JOB HUB */}
 
           {acceptedQuote ? (

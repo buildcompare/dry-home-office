@@ -184,6 +184,23 @@ export default async function CustomerInvoicePage({
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-4xl">
+        {balance > 0.009 && (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-center">
+            <p className="font-semibold text-amber-950">
+              {formatCurrency(balance)} is outstanding on this invoice
+            </p>
+            <p className="mt-1 text-sm text-amber-800">
+              Please arrange payment using the details shown below.
+            </p>
+          </div>
+        )}
+        {balance <= 0.009 && (
+          <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center">
+            <p className="font-semibold text-emerald-900">
+              This invoice has been paid. Thank you.
+            </p>
+          </div>
+        )}
         <div className="overflow-hidden rounded-2xl bg-white shadow-lg">
           <header className="bg-slate-950 px-6 py-8 text-white sm:px-10">
             <Image
