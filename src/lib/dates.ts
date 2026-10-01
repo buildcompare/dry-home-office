@@ -94,3 +94,7 @@ export function dateDifferenceInDays(
 
   return Math.floor((date2 - date1) / (1000 * 60 * 60 * 24));
 }
+
+export function formatDate(value: string | null | undefined): string {
+  return formatShortDate(value);
+}

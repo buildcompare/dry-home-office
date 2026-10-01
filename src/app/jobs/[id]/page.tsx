@@ -13,6 +13,7 @@ import {
 import {
   getLondonDateKey,
   formatShortDate,
+  formatDate,
   formatEventTime,
 } from "@/lib/dates";
 
