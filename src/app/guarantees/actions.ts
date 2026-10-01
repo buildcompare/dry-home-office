@@ -3,6 +3,7 @@
 import {
   revalidatePath,
 } from "next/cache";
+import { allocateDocumentNumber } from "@/lib/numbering";
 
 import {
   redirect,
