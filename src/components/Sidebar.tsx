@@ -124,17 +124,17 @@ export default function Sidebar() {
 
       {/* LOGO */}
 
-      <div className="mb-8 flex items-center gap-3 px-2">
+      <div className="mb-6 flex flex-col items-center px-2">
         <Image
           src="/dryhome-logo.png"
           alt="Dry Home Damp Proofing Solutions"
-          width={120}
-          height={50}
-          className="h-auto w-28 object-contain"
+          width={144}
+          height={60}
+          className="h-auto w-36 object-contain"
           priority
         />
 
-        <span className="text-sm font-semibold tracking-[0.25em] text-slate-300">
+        <span className="mt-2 text-center text-sm font-semibold tracking-[0.25em] text-slate-300">
           OFFICE
         </span>
       </div>
@@ -160,7 +160,7 @@ export default function Sidebar() {
                   href={
                     item.href
                   }
-                  className={`block rounded-lg px-4 py-3 text-sm font-semibold transition ${
+                  className={`block rounded-lg px-4 py-3 text-xs font-semibold transition ${
                     active
                       ? "bg-white text-slate-950"
                       : "text-slate-300 hover:bg-slate-800 hover:text-white"
@@ -182,7 +182,7 @@ export default function Sidebar() {
           <button
             type="button"
             onClick={() => setSettingsOpen((open) => !open)}
-            className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition ${
+            className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-xs font-semibold transition ${
               settingsActive
                 ? "bg-white text-slate-950"
                 : "text-slate-300 hover:bg-slate-800 hover:text-white"
@@ -202,7 +202,7 @@ export default function Sidebar() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`block rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+                    className={`block rounded-lg px-4 py-2.5 text-xs font-semibold transition ${
                       active
                         ? "bg-slate-800 text-white"
                         : "text-slate-400 hover:bg-slate-800 hover:text-white"
