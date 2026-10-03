@@ -125,16 +125,20 @@ export default function Sidebar() {
       {/* LOGO */}
 
       <div className="mb-6 flex flex-col items-center px-2">
-        <Image
-          src="/dryhome-logo.png"
-          alt="Dry Home Damp Proofing Solutions"
-          width={144}
-          height={60}
-          className="h-auto w-36 object-contain"
-          priority
-        />
+        {/* PNG is 500x500 with the mark inset (y 152–348). Clip that transparent band so OFFICE sits just under the artwork. */}
+        <div className="h-[calc(12rem*197/500)] w-48 overflow-hidden">
+          <Image
+            src="/dryhome-logo.png"
+            alt="Dry Home Damp Proofing Solutions"
+            width={500}
+            height={500}
+            className="h-48 w-48 max-w-none object-cover object-center"
+            style={{ marginTop: "calc(12rem * -152 / 500)" }}
+            priority
+          />
+        </div>
 
-        <span className="mt-2 text-center text-sm font-semibold tracking-[0.25em] text-slate-300">
+        <span className="mt-1 text-center text-sm font-semibold tracking-[0.25em] text-slate-300">
           OFFICE
         </span>
       </div>
