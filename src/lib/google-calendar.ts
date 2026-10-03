@@ -3,7 +3,9 @@ import { dateDifferenceInDays } from "@/lib/dates";
 export type GoogleScheduleEvent = {
   id: string;
   title: string;
-  event_type: "Google" | "Google Family";
+  event_type: "Other";
+  google_event_id: string;
+  google_label: "Google" | "Google Family";
   start_date: string;
   end_date: string;
   start_time: string | null;
@@ -184,10 +186,13 @@ function pushEvent(
   location: string | null
 ) {
   const title = summary.trim() || "(No title)";
+  const googleLabel = label === "Family" ? "Google Family" : "Google";
   results.push({
     id: safeId(`gcal-${label}-${uid}-${occurrence.key}`),
     title,
-    event_type: label === "Family" ? "Google Family" : "Google",
+    event_type: "Other",
+    google_event_id: safeId(uid),
+    google_label: googleLabel,
     start_date: occurrence.start_date,
     end_date: occurrence.end_date,
     start_time: occurrence.start_time,

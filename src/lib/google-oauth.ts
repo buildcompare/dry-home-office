@@ -38,7 +38,8 @@ export type MirroredEvent = {
   start_time: string | null;
   end_time: string | null;
   all_day: boolean;
-  event_type: "Google" | "Google Family";
+  event_type: "Other";
+  google_label: "Google" | "Google Family";
   cancelled: boolean;
 };
 
@@ -198,7 +199,7 @@ export function mapGoogleApiEvent(
   const id = event.id?.trim();
   if (!id || !calendarId.trim()) return null;
   const cancelled = (event.status ?? "").trim().toLowerCase() === "cancelled";
-  const eventType = label === "Family" ? "Google Family" : "Google";
+  const googleLabel = label === "Family" ? "Google Family" : "Google";
   const title = event.summary?.trim() || "(No title)";
   const location = event.location?.trim() || null;
   const placed = event.start ? placeEvent(event) : null;
@@ -215,7 +216,8 @@ export function mapGoogleApiEvent(
       start_time: null,
       end_time: null,
       all_day: true,
-      event_type: eventType,
+      event_type: "Other",
+      google_label: googleLabel,
       cancelled: true,
     };
   }
@@ -225,7 +227,8 @@ export function mapGoogleApiEvent(
     google_calendar_id: calendarId,
     title,
     location,
-    event_type: eventType,
+    event_type: "Other",
+    google_label: googleLabel,
     cancelled,
     ...placed,
   };
@@ -276,12 +279,68 @@ export function planGoogleSync(
       all_day: event.all_day,
     };
     if (row.event_type === "Google" || row.event_type === "Google Family") {
-      patch.event_type = event.event_type;
+      patch.event_type = "Other";
     }
     updates.push({ id: row.id, patch });
   }
 
   return { inserts, updates, removals };
+}
+
+export function googleDisplayLabel(
+  event: {
+    source?: "office" | "google" | null;
+    event_type?: string | null;
+    google_label?: "Google" | "Google Family" | null;
+    google_event_id?: string | null;
+    google_calendar_id?: string | null;
+    job_id?: string | null;
+    client_id?: string | null;
+    contract_id?: string | null;
+  },
+  familyCalendarId: string | null
+): "Google" | "Google Family" | null {
+  if (event.source === "google") {
+    if (event.google_label === "Google" || event.google_label === "Google Family") {
+      return event.google_label;
+    }
+    if (event.event_type === "Google" || event.event_type === "Google Family") {
+      return event.event_type;
+    }
+    return null;
+  }
+
+  const googleEventId = event.google_event_id?.trim() ?? "";
+  if (!googleEventId) return null;
+  if (event.job_id || event.client_id || event.contract_id) return null;
+
+  const type = event.event_type ?? "";
+  if (type !== "Other" && type !== "Google" && type !== "Google Family") return null;
+
+  const familyId = familyCalendarId?.trim() ?? "";
+  const calendarId = event.google_calendar_id?.trim() ?? "";
+  if (familyId && calendarId === familyId) return "Google Family";
+  return "Google";
+}
+
+export function hideIcalDuplicate(
+  event: {
+    google_label?: "Google" | "Google Family" | null;
+    event_type?: string | null;
+  },
+  sync: { workSynced: boolean; familySynced: boolean }
+) {
+  const label = googleDisplayLabel(
+    {
+      source: "google",
+      event_type: event.event_type,
+      google_label: event.google_label,
+    },
+    null
+  );
+  if (label === "Google") return sync.workSynced;
+  if (label === "Google Family") return sync.familySynced;
+  return false;
 }
 
 export function londonRangeBounds(monthStart: string, monthEnd: string) {
@@ -308,6 +367,7 @@ function placeEvent(event: GoogleApiEvent): Omit<
   | "title"
   | "location"
   | "event_type"
+  | "google_label"
   | "cancelled"
 > | null {
   const startDate = dateOnly(event.start?.date);

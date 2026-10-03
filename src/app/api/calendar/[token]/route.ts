@@ -1,6 +1,7 @@
 import {
   createAdminClient,
 } from "@/lib/supabase/admin";
+import { googleDisplayLabel } from "@/lib/google-oauth";
 
 export const runtime =
   "nodejs";
@@ -57,8 +58,11 @@ export async function GET(
         id,
         job_id,
         client_id,
+        contract_id,
         title,
         event_type,
+        google_calendar_id,
+        google_event_id,
         status,
         start_date,
         end_date,
@@ -156,7 +160,19 @@ export async function GET(
           event.event_type !==
             "Google" &&
           event.event_type !==
-            "Google Family"
+            "Google Family" &&
+          googleDisplayLabel(
+            {
+              source: "office",
+              event_type: event.event_type,
+              google_event_id: event.google_event_id,
+              google_calendar_id: event.google_calendar_id,
+              job_id: event.job_id,
+              client_id: event.client_id,
+              contract_id: event.contract_id,
+            },
+            null
+          ) === null
       )
       .map(
         (

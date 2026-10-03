@@ -4,6 +4,10 @@ import DeleteScheduleEventButton from "@/components/DeleteScheduleEventButton";
 import { createClient } from "@/lib/supabase/server";
 import { loadGoogleScheduleEvents } from "@/lib/calendar-feeds";
 import { syncGoogleCalendarMonth } from "@/lib/google-calendar-sync";
+import {
+  googleDisplayLabel,
+  hideIcalDuplicate,
+} from "@/lib/google-oauth";
 
 type SchedulePageProps = {
   searchParams: Promise<{
@@ -62,6 +66,9 @@ export default async function SchedulePage({
       assigned_to,
       client_id,
       job_id,
+      contract_id,
+      google_calendar_id,
+      google_event_id,
       clients (
         id,
         display_name,
@@ -102,11 +109,9 @@ export default async function SchedulePage({
       source: "office" as const,
     }));
 
-  const icalEvents = googleCalendar.events.filter((event) => {
-    if (googleSync.workSynced && event.event_type === "Google") return false;
-    if (googleSync.familySynced && event.event_type === "Google Family") return false;
-    return true;
-  });
+  const icalEvents = googleCalendar.events.filter(
+    (event) => !hideIcalDuplicate(event, googleSync)
+  );
 
   const calendarEvents = [
     ...officeEvents,
@@ -368,11 +373,42 @@ export default async function SchedulePage({
                                     .filter(Boolean)
                                     .join(" ");
 
+                                const googleLabel = googleDisplayLabel(
+                                  {
+                                    source: event.source,
+                                    event_type: event.event_type,
+                                    google_label:
+                                      "google_label" in event
+                                        ? event.google_label
+                                        : null,
+                                    google_event_id:
+                                      "google_event_id" in event
+                                        ? event.google_event_id
+                                        : null,
+                                    google_calendar_id:
+                                      "google_calendar_id" in event
+                                        ? event.google_calendar_id
+                                        : null,
+                                    job_id:
+                                      "job_id" in event ? event.job_id : null,
+                                    client_id:
+                                      "client_id" in event
+                                        ? event.client_id
+                                        : null,
+                                    contract_id:
+                                      "contract_id" in event
+                                        ? event.contract_id
+                                        : null,
+                                  },
+                                  googleSync.familyCalendarId
+                                );
+
                                 return (
                                   <div
                                     key={event.id}
                                     className={`rounded-lg border px-2.5 py-2 text-xs ${eventClass(
-                                      event.event_type
+                                      event.event_type,
+                                      googleLabel
                                     )}`}
                                   >
                                     <div className="flex items-start justify-between gap-2">
@@ -411,11 +447,9 @@ export default async function SchedulePage({
                                       </p>
                                     )}
 
-                                    {(event.source === "google" ||
-                                      event.event_type === "Google" ||
-                                      event.event_type === "Google Family") && (
+                                    {googleLabel && (
                                         <p className="mt-1 font-semibold uppercase tracking-wide opacity-70">
-                                          {event.event_type === "Google Family"
+                                          {googleLabel === "Google Family"
                                             ? "Google · Family"
                                             : "Google"}
                                         </p>
@@ -461,7 +495,18 @@ function occursOnDate(
   );
 }
 
-function eventClass(type: string) {
+function eventClass(
+  type: string,
+  googleLabel: "Google" | "Google Family" | null
+) {
+  if (googleLabel === "Google Family") {
+    return "border-rose-200 bg-rose-50 text-rose-950";
+  }
+
+  if (googleLabel === "Google") {
+    return "border-sky-200 bg-sky-50 text-sky-950";
+  }
+
   switch (type) {
     case "Survey":
       return "border-blue-200 bg-blue-50 text-blue-900";
