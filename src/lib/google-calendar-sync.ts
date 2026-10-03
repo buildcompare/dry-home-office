@@ -29,6 +29,7 @@ export type GoogleSyncResult = {
   familySynced: boolean;
   warning: boolean;
   status: number | null;
+  reason: string | null;
 };
 
 export type GoogleOAuthRead =
@@ -146,7 +147,13 @@ export async function syncGoogleCalendarMonth(
   monthStart: string,
   monthEnd: string
 ): Promise<GoogleSyncResult> {
-  const idle = { workSynced: false, familySynced: false, warning: false, status: null };
+  const idle = {
+    workSynced: false,
+    familySynced: false,
+    warning: false,
+    status: null,
+    reason: null,
+  };
   if (!googleCredentialsConfigured()) return idle;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(monthStart) || !/^\d{4}-\d{2}-\d{2}$/.test(monthEnd)) {
     return idle;
@@ -162,6 +169,10 @@ export async function syncGoogleCalendarMonth(
       familySynced: false,
       warning: true,
       status: access.status,
+      reason:
+        access.status !== null
+          ? `token refresh failed (${access.status})`
+          : "token refresh failed",
     };
   }
   const accessToken = access.token;
@@ -171,6 +182,7 @@ export async function syncGoogleCalendarMonth(
   let familySynced = false;
   let warning = false;
   let status: number | null = null;
+  let reason: string | null = null;
 
   for (const calendar of calendarsToRead(stored.connection)) {
     try {
@@ -184,8 +196,9 @@ export async function syncGoogleCalendarMonth(
         .map((event) => mapGoogleApiEvent(event, calendar.id, calendar.label))
         .filter((event): event is MirroredEvent => event !== null);
       const applied = await applyMirror(calendar.id, mirrored);
-      if (!applied) {
+      if (!applied.ok) {
         warning = true;
+        if (reason === null) reason = applied.reason;
         continue;
       }
       if (calendar.label === "Work") workSynced = true;
@@ -196,10 +209,16 @@ export async function syncGoogleCalendarMonth(
       if (status === null && error instanceof GoogleListError) {
         status = error.status;
       }
+      if (reason === null) {
+        reason =
+          error instanceof GoogleListError && error.status !== null
+            ? `list failed (${error.status})`
+            : "list failed";
+      }
     }
   }
 
-  return { workSynced, familySynced, warning, status };
+  return { workSynced, familySynced, warning, status, reason };
 }
 
 export async function copyAppointmentToGoogle(
@@ -379,7 +398,10 @@ async function listCalendarEvents(
   return events.slice(0, MAX_EVENTS);
 }
 
-async function applyMirror(calendarId: string, incoming: MirroredEvent[]) {
+async function applyMirror(
+  calendarId: string,
+  incoming: MirroredEvent[]
+): Promise<{ ok: true } | { ok: false; reason: string }> {
   const admin = createAdminClient();
   const ids = [...new Set(incoming.map((event) => event.google_event_id))];
   const existing: StoredGoogleRow[] = [];
@@ -394,7 +416,7 @@ async function applyMirror(calendarId: string, incoming: MirroredEvent[]) {
 
     if (error) {
       console.error("Google Calendar sync could not read appointments");
-      return false;
+      return { ok: false, reason: supabaseReason(error) };
     }
 
     for (const row of data ?? []) {
@@ -423,7 +445,7 @@ async function applyMirror(calendarId: string, incoming: MirroredEvent[]) {
 
     if (result.error) {
       console.error("Google Calendar sync could not update an appointment");
-      return false;
+      return { ok: false, reason: supabaseReason(result.error) };
     }
   }
 
@@ -434,7 +456,7 @@ async function applyMirror(calendarId: string, incoming: MirroredEvent[]) {
       .eq("id", update.id);
     if (error) {
       console.error("Google Calendar sync could not update an appointment");
-      return false;
+      return { ok: false, reason: supabaseReason(error) };
     }
   }
 
@@ -460,11 +482,28 @@ async function applyMirror(calendarId: string, incoming: MirroredEvent[]) {
 
     if (error) {
       console.error("Google Calendar sync could not save appointments");
-      return false;
+      return { ok: false, reason: supabaseReason(error) };
     }
   }
 
-  return true;
+  return { ok: true };
+}
+
+function supabaseReason(error: { message?: unknown }) {
+  const message = typeof error.message === "string" ? error.message : "";
+  return clipPublicReason(message);
+}
+
+function clipPublicReason(value: string) {
+  const cleaned = value
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/\bBearer\s+\S+/gi, "")
+    .replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const text = cleaned || "sync failed";
+  if (text.length <= 180) return text;
+  return `${text.slice(0, 179).trimEnd()}…`;
 }
 
 function textOrNull(value: unknown) {
