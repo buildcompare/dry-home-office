@@ -1,11 +1,15 @@
 import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
+import DeleteScheduleEventButton from "@/components/DeleteScheduleEventButton";
 import { createClient } from "@/lib/supabase/server";
 import { loadGoogleScheduleEvents } from "@/lib/calendar-feeds";
+import { syncGoogleCalendarMonth } from "@/lib/google-calendar-sync";
 
 type SchedulePageProps = {
   searchParams: Promise<{
     month?: string;
+    error?: string;
+    notice?: string;
   }>;
 };
 
@@ -34,6 +38,11 @@ export default async function SchedulePage({
       2,
       "0"
     )}`;
+
+  const googleSync = await syncGoogleCalendarMonth(
+    monthStart,
+    monthEnd
+  );
 
   const supabase = await createClient();
 
@@ -86,12 +95,22 @@ export default async function SchedulePage({
       monthEnd
     );
 
-  const calendarEvents = [
-    ...(events ?? []).map((event) => ({
+  const officeEvents = (events ?? [])
+    .filter((event) => event.status !== "Cancelled")
+    .map((event) => ({
       ...event,
       source: "office" as const,
-    })),
-    ...googleCalendar.events,
+    }));
+
+  const icalEvents = googleCalendar.events.filter((event) => {
+    if (googleSync.workSynced && event.event_type === "Google") return false;
+    if (googleSync.familySynced && event.event_type === "Google Family") return false;
+    return true;
+  });
+
+  const calendarEvents = [
+    ...officeEvents,
+    ...icalEvents,
   ];
 
   const firstDay = new Date(
@@ -175,6 +194,30 @@ export default async function SchedulePage({
               {googleCalendar.warning ? (
                 <p className="mt-2 text-sm text-amber-700">
                   A Google calendar could not be read. Office events are still shown.
+                </p>
+              ) : null}
+
+              {googleSync.warning ? (
+                <p className="mt-2 text-sm text-amber-700">
+                  Google Calendar could not be synced. The secret iCal feed is still shown when it is set.
+                </p>
+              ) : null}
+
+              {params.notice === "google" ? (
+                <p className="mt-2 text-sm text-amber-700">
+                  The appointment was saved here, but it could not be added to Google Calendar.
+                </p>
+              ) : null}
+
+              {params.error === "google-delete" ? (
+                <p className="mt-2 text-sm text-amber-700">
+                  That event is still on Google Calendar, so it was left on the schedule.
+                </p>
+              ) : null}
+
+              {params.error === "delete" ? (
+                <p className="mt-2 text-sm text-amber-700">
+                  The appointment could not be removed.
                 </p>
               ) : null}
             </div>
@@ -366,14 +409,23 @@ export default async function SchedulePage({
                                       </p>
                                     )}
 
-                                    {"source" in event &&
-                                      event.source === "google" && (
+                                    {(event.source === "google" ||
+                                      event.event_type === "Google" ||
+                                      event.event_type === "Google Family") && (
                                         <p className="mt-1 font-semibold uppercase tracking-wide opacity-70">
                                           {event.event_type === "Google Family"
                                             ? "Google · Family"
                                             : "Google"}
                                         </p>
                                       )}
+
+                                    {event.source === "office" ? (
+                                      <DeleteScheduleEventButton
+                                        id={String(event.id)}
+                                        title={event.title}
+                                        month={currentMonth}
+                                      />
+                                    ) : null}
                                   </div>
                                 );
                               }

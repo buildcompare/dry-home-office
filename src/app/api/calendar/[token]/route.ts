@@ -149,6 +149,15 @@ export async function GET(
             event.start_date
           )
       )
+      .filter(
+        (
+          event
+        ) =>
+          event.event_type !==
+            "Google" &&
+          event.event_type !==
+            "Google Family"
+      )
       .map(
         (
           event
