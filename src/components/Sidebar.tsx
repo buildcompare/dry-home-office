@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { createClient } from "@/lib/supabase/client";
+import ChatWidget from "@/components/ChatWidget";
 import SidebarTodos from "@/components/SidebarTodos";
 
 const mainNavItems = [
@@ -221,6 +222,7 @@ export default function Sidebar() {
         Sign Out
       </button>
     </aside>
+    <ChatWidget />
     </>
   );
 }
