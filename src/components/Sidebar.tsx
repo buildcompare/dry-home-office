@@ -124,7 +124,7 @@ export default function Sidebar() {
 
       {/* LOGO */}
 
-      <div className="mb-6 flex flex-col items-center px-2">
+      <div className="mb-12 flex flex-col items-center px-2">
         {/* PNG is 500x500 with the mark inset (y 152–348). Clip that transparent band so OFFICE sits just under the artwork. */}
         <div className="h-[calc(12rem*197/500)] w-48 overflow-hidden">
           <Image
