@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 
 type ChatMessage = {
   id: number;
+  role: "user" | "bot";
   text: string;
 };
 
@@ -32,7 +33,7 @@ export default function ChatWidget({
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
-  function sendMessage(event: FormEvent<HTMLFormElement>) {
+  async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const text = draft.trim();
@@ -41,14 +42,50 @@ export default function ChatWidget({
       return;
     }
 
+    const sentAt = Date.now();
+
     setMessages((current) => [
       ...current,
       {
-        id: Date.now(),
+        id: sentAt,
+        role: "user",
         text,
       },
     ]);
     setDraft("");
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text }),
+      });
+      const payload = await response.json().catch(() => null);
+      const reply =
+        typeof payload?.reply === "string"
+          ? payload.reply
+          : typeof payload?.error === "string"
+            ? payload.error
+            : "The model didn't reply.";
+
+      setMessages((current) => [
+        ...current,
+        {
+          id: sentAt + 1,
+          role: "bot",
+          text: reply,
+        },
+      ]);
+    } catch {
+      setMessages((current) => [
+        ...current,
+        {
+          id: sentAt + 1,
+          role: "bot",
+          text: "The model didn't reply.",
+        },
+      ]);
+    }
   }
 
   return (
@@ -84,8 +121,17 @@ export default function ChatWidget({
               messages.map((message) => (
                 <div
                   key={message.id}
-                  className="ml-8 rounded-2xl rounded-br-md bg-slate-900 px-3 py-2 text-sm text-white"
+                  className={
+                    message.role === "user"
+                      ? "ml-8 rounded-2xl rounded-br-md bg-slate-900 px-3 py-2 text-sm text-white"
+                      : "mr-8 rounded-2xl rounded-bl-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                  }
                 >
+                  {message.role === "bot" && (
+                    <p className="mb-1 text-xs font-semibold text-slate-500">
+                      Office
+                    </p>
+                  )}
                   {message.text}
                 </div>
               ))
