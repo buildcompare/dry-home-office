@@ -30,6 +30,7 @@ export type GoogleSyncResult = {
   warning: boolean;
   status: number | null;
   reason: string | null;
+  familyCalendarId: string | null;
 };
 
 export type GoogleOAuthRead =
@@ -153,14 +154,24 @@ export async function syncGoogleCalendarMonth(
     warning: false,
     status: null,
     reason: null,
+    familyCalendarId: null as string | null,
   };
-  if (!googleCredentialsConfigured()) return idle;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(monthStart) || !/^\d{4}-\d{2}-\d{2}$/.test(monthEnd)) {
     return idle;
   }
 
   const stored = await readGoogleOAuth();
-  if (!stored.ready || !stored.connection?.refreshToken) return idle;
+  const familyRaw = stored.ready
+    ? stored.connection?.familyCalendarId?.trim() || ""
+    : "";
+  const workCalendarId = stored.ready
+    ? writeCalendarId(stored.connection?.calendarId)
+    : "";
+  const familyCalendarId =
+    familyRaw && familyRaw !== workCalendarId ? familyRaw : null;
+  const unread = { ...idle, familyCalendarId };
+  if (!googleCredentialsConfigured()) return unread;
+  if (!stored.ready || !stored.connection?.refreshToken) return unread;
 
   const access = await accessTokenFor(stored.connection.refreshToken);
   if (!access.token) {
@@ -173,6 +184,7 @@ export async function syncGoogleCalendarMonth(
         access.status !== null
           ? `token refresh failed (${access.status})`
           : "token refresh failed",
+      familyCalendarId,
     };
   }
   const accessToken = access.token;
@@ -218,7 +230,7 @@ export async function syncGoogleCalendarMonth(
     }
   }
 
-  return { workSynced, familySynced, warning, status, reason };
+  return { workSynced, familySynced, warning, status, reason, familyCalendarId };
 }
 
 export async function copyAppointmentToGoogle(
@@ -464,7 +476,7 @@ async function applyMirror(
     const { error } = await admin.from("schedule_events").insert(
       plan.inserts.map((event) => ({
         title: event.title,
-        event_type: event.event_type,
+        event_type: "Other",
         status: "Scheduled",
         start_date: event.start_date,
         end_date: event.end_date,

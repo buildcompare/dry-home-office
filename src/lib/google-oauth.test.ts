@@ -10,6 +10,8 @@ import {
   googleDeleteSucceeded,
   googleEventBody,
   localGoogleEffect,
+  googleDisplayLabel,
+  hideIcalDuplicate,
   mapGoogleApiEvent,
   planGoogleSync,
   refreshTokenFromTokenResponse,
@@ -76,7 +78,8 @@ const allDay = mapGoogleApiEvent(
 assert.equal(allDay?.start_date, "2026-10-03");
 assert.equal(allDay?.end_date, "2026-10-05");
 assert.equal(allDay?.all_day, true);
-assert.equal(allDay?.event_type, "Google");
+assert.equal(allDay?.event_type, "Other");
+assert.equal(allDay?.google_label, "Google");
 
 const timed = mapGoogleApiEvent(
   {
@@ -104,7 +107,9 @@ const family = mapGoogleApiEvent(
   "family-cal",
   "Family"
 );
-assert.equal(family?.event_type, "Google Family");
+assert.equal(family?.event_type, "Other");
+assert.equal(family?.google_label, "Google Family");
+assert.equal(family?.google_calendar_id, "family-cal");
 
 const body = googleEventBody({
   title: "Survey",
@@ -211,7 +216,7 @@ assert.deepEqual(
 );
 assert.equal(plan.updates.length, 1);
 assert.equal(plan.updates[0].id, "row-mirror");
-assert.equal(plan.updates[0].patch.event_type, "Google");
+assert.equal(plan.updates[0].patch.event_type, "Other");
 
 const renamedOffice: typeof mirror = {
   ...mirror,
@@ -233,6 +238,86 @@ const keepType = planGoogleSync(
 );
 assert.equal(keepType.updates[0].patch.title, "Renamed on Google");
 assert.equal(keepType.updates[0].patch.event_type, undefined);
+
+const fresh = mapGoogleApiEvent(
+  {
+    id: "fresh",
+    status: "confirmed",
+    summary: "New from Google",
+    start: { date: "2026-10-04" },
+    end: { date: "2026-10-05" },
+  },
+  "family-cal",
+  "Family"
+);
+assert.equal(fresh?.event_type, "Other");
+const inserted = planGoogleSync(fresh ? [fresh] : [], []);
+assert.equal(inserted.inserts.length, 1);
+assert.equal(inserted.inserts[0].event_type, "Other");
+assert.equal(inserted.inserts[0].google_event_id, "fresh");
+
+assert.equal(
+  googleDisplayLabel(
+    {
+      source: "office",
+      event_type: "Other",
+      google_event_id: "fam",
+      google_calendar_id: "family-cal",
+    },
+    "family-cal"
+  ),
+  "Google Family"
+);
+assert.equal(
+  googleDisplayLabel(
+    {
+      source: "office",
+      event_type: "Other",
+      google_event_id: "work",
+      google_calendar_id: "work-cal",
+    },
+    "family-cal"
+  ),
+  "Google"
+);
+assert.equal(
+  googleDisplayLabel(
+    {
+      source: "office",
+      event_type: "Survey",
+      google_event_id: "pushed",
+      google_calendar_id: "work-cal",
+      job_id: "job-1",
+    },
+    "family-cal"
+  ),
+  null
+);
+assert.equal(
+  googleDisplayLabel(
+    {
+      source: "google",
+      event_type: "Other",
+      google_label: "Google Family",
+    },
+    null
+  ),
+  "Google Family"
+);
+assert.equal(
+  hideIcalDuplicate(
+    { google_label: "Google", event_type: "Other" },
+    { workSynced: true, familySynced: false }
+  ),
+  true
+);
+assert.equal(
+  hideIcalDuplicate(
+    { google_label: "Google Family", event_type: "Other" },
+    { workSynced: true, familySynced: false }
+  ),
+  false
+);
 assert.equal(localGoogleEffect({ job_id: null, contract_id: "c" }), "cancel");
 assert.equal(localGoogleEffect({ job_id: null, contract_id: null }), "delete");
 

@@ -12,6 +12,7 @@ function titles(ics: string, range = october) {
     endTime: event.end_time,
     allDay: event.all_day,
     type: event.event_type,
+    label: event.google_label,
   }));
 }
 
@@ -34,7 +35,8 @@ assert.deepEqual(allDay, [{
   time: null,
   endTime: null,
   allDay: true,
-  type: "Google",
+  type: "Other",
+  label: "Google",
 }]);
 
 const bst = titles(wrap(`
@@ -324,7 +326,9 @@ DTSTART;VALUE=DATE:20261003
 DTEND;VALUE=DATE:20261004
 END:VEVENT
 `), october, "Family");
-assert.equal(family[0].event_type, "Google Family");
+assert.equal(family[0].event_type, "Other");
+assert.equal(family[0].google_label, "Google Family");
+assert.equal(family[0].google_event_id, "fam");
 assert.equal(family[0].source, "google");
 assert.equal(family[0].jobs, null);
 
