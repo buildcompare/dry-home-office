@@ -3,6 +3,12 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import {
+  copyAppointmentToGoogle,
+  deleteGoogleCalendarEvent,
+} from "@/lib/google-calendar-sync";
+import { localGoogleEffect } from "@/lib/google-oauth";
+
 
 export async function addScheduleEvent(
   formData: FormData
@@ -191,6 +197,11 @@ export async function addScheduleEvent(
     }
   }
 
+  const notes =
+    String(
+      formData.get("notes") ?? ""
+    ).trim() || null;
+
   const {
     data: newEvent,
     error,
@@ -237,12 +248,7 @@ export async function addScheduleEvent(
           ) ?? ""
         ).trim() || null,
 
-      notes:
-        String(
-          formData.get(
-            "notes"
-          ) ?? ""
-        ).trim() || null,
+      notes,
     })
     .select(`
       id,
@@ -296,10 +302,225 @@ export async function addScheduleEvent(
     );
   }
 
+  const copied =
+    await copyAppointmentToGoogle({
+      title,
+      location,
+      notes,
+      start_date: startDate,
+      end_date: endDate,
+      start_time: startTime,
+      end_time: endTime,
+      all_day: allDay,
+    });
+
+  let googleNotice = false;
+
+  if (copied.status === "failed") {
+    googleNotice = true;
+  }
+
+  if (copied.status === "copied") {
+    const { error: linkError } =
+      await supabase
+        .from("schedule_events")
+        .update({
+          google_calendar_id:
+            copied.calendarId,
+          google_event_id:
+            copied.eventId,
+        })
+        .eq("id", newEvent.id);
+
+    if (linkError) {
+      console.error(
+        "Could not store the Google Calendar event id"
+      );
+      await deleteGoogleCalendarEvent(
+        copied.calendarId,
+        copied.eventId
+      );
+      googleNotice = true;
+    }
+  }
+
+  const month =
+    startDate.slice(0, 7);
+
   redirect(
-    `/schedule?month=${startDate.slice(
-      0,
-      7
-    )}`
+    googleNotice
+      ? `/schedule?month=${month}&notice=google`
+      : `/schedule?month=${month}`
   );
+}
+
+export async function deleteScheduleEvent(
+  formData: FormData
+) {
+  const supabase =
+    await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const id =
+    String(formData.get("id") ?? "").trim();
+
+  const requestedMonth =
+    String(formData.get("month") ?? "").trim();
+
+  if (!id) {
+    redirect("/schedule");
+  }
+
+  const fullRead = await supabase
+    .from("schedule_events")
+    .select(`
+      id,
+      job_id,
+      contract_id,
+      client_id,
+      start_date,
+      google_calendar_id,
+      google_event_id
+    `)
+    .eq("id", id)
+    .maybeSingle();
+
+  let row = fullRead.data;
+  let readError = fullRead.error;
+
+  if (readError) {
+    const message = readError.message ?? "";
+    const missingColumn =
+      readError.code === "42703" ||
+      readError.code === "PGRST204" ||
+      /google_(event|calendar)_id/i.test(message);
+
+    if (!missingColumn) {
+      console.error(
+        "Schedule delete could not read the appointment"
+      );
+      redirect(
+        /^\d{4}-\d{2}$/.test(requestedMonth)
+          ? `/schedule?month=${requestedMonth}&error=delete`
+          : "/schedule?error=delete"
+      );
+    }
+
+    const plainRead = await supabase
+      .from("schedule_events")
+      .select(`
+        id,
+        job_id,
+        contract_id,
+        client_id,
+        start_date
+      `)
+      .eq("id", id)
+      .maybeSingle();
+
+    row = plainRead.data
+      ? {
+          ...plainRead.data,
+          google_calendar_id: null,
+          google_event_id: null,
+        }
+      : null;
+    readError = plainRead.error;
+  }
+
+  const month =
+    /^\d{4}-\d{2}$/.test(requestedMonth)
+      ? requestedMonth
+      : typeof row?.start_date === "string"
+        ? row.start_date.slice(0, 7)
+        : "";
+
+  const back = month
+    ? `/schedule?month=${month}`
+    : "/schedule";
+
+  if (readError || !row) {
+    console.error(
+      "Schedule delete could not read the appointment"
+    );
+    redirect(withQuery(back, "error=delete"));
+  }
+
+  if (row.google_event_id) {
+    const removed =
+      await deleteGoogleCalendarEvent(
+        row.google_calendar_id,
+        row.google_event_id
+      );
+
+    if (removed.status !== "deleted") {
+      redirect(withQuery(back, "error=google-delete"));
+    }
+
+    const effect = localGoogleEffect({
+      job_id: row.job_id,
+      contract_id: row.contract_id,
+    });
+
+    const result =
+      effect === "cancel"
+        ? await supabase
+            .from("schedule_events")
+            .update({ status: "Cancelled" })
+            .eq("id", row.id)
+        : await supabase
+            .from("schedule_events")
+            .delete()
+            .eq("id", row.id);
+
+    if (result.error) {
+      console.error(
+        "Schedule delete could not update the appointment"
+      );
+      redirect(withQuery(back, "error=delete"));
+    }
+  } else {
+    const { error } = await supabase
+      .from("schedule_events")
+      .delete()
+      .eq("id", row.id);
+
+    if (error) {
+      console.error(
+        "Schedule delete could not remove the appointment"
+      );
+      redirect(withQuery(back, "error=delete"));
+    }
+  }
+
+  revalidatePath("/schedule");
+  revalidatePath("/jobs");
+  revalidatePath("/contracts");
+
+  if (row.job_id) {
+    revalidatePath(`/jobs/${row.job_id}`);
+  }
+
+  if (row.client_id) {
+    revalidatePath(`/clients/${row.client_id}`);
+  }
+
+  if (row.contract_id) {
+    revalidatePath(`/contracts/${row.contract_id}`);
+  }
+
+  redirect(back);
+}
+
+function withQuery(path: string, query: string) {
+  return path.includes("?")
+    ? `${path}&${query}`
+    : `${path}?${query}`;
 }

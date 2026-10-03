@@ -1,11 +1,15 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import Sidebar from "@/components/Sidebar";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { scheduleColumnsReady } from "@/lib/google-calendar-sync";
 import { saveCalendarFeeds } from "./actions";
 
 type CalendarSettingsPageProps = {
   searchParams: Promise<{
     saved?: string;
     error?: string;
+    connected?: string;
   }>;
 };
 
@@ -30,12 +34,27 @@ insert into public.office_calendar_feeds (id)
 values (1)
 on conflict (id) do nothing;`;
 
+function readOauthSql() {
+  try {
+    return readFileSync(
+      path.join(process.cwd(), "supabase/office_google_oauth.sql"),
+      "utf8"
+    );
+  } catch {
+    return "Run supabase/office_google_oauth.sql in the Supabase SQL editor.";
+  }
+}
+
+
 export default async function CalendarSettingsPage({
   searchParams,
 }: CalendarSettingsPageProps) {
   const params = await searchParams;
   const workFromEnv = Boolean(process.env.GOOGLE_CALENDAR_ICS_URL?.trim());
   const familyFromEnv = Boolean(process.env.GOOGLE_FAMILY_CALENDAR_ICS_URL?.trim());
+  const googleClientConfigured = Boolean(process.env.GOOGLE_CLIENT_ID?.trim());
+  let googleConnected = false;
+  let googleStorageReady = false;
 
   let state: "ready" | "key" | "table" = "ready";
   let workSaved = false;
@@ -59,6 +78,24 @@ export default async function CalendarSettingsPage({
     state = "key";
   }
 
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("office_google_oauth")
+      .select("refresh_token")
+      .eq("id", 1)
+      .maybeSingle();
+    const columnsReady = await scheduleColumnsReady();
+    googleStorageReady = !error && columnsReady;
+    googleConnected =
+      googleStorageReady &&
+      typeof data?.refresh_token === "string" &&
+      data.refresh_token.trim().length > 0;
+  } catch {
+    googleConnected = false;
+    googleStorageReady = false;
+  }
+
   return (
     <div className="flex min-h-screen bg-slate-100">
       <Sidebar />
@@ -67,10 +104,87 @@ export default async function CalendarSettingsPage({
           <p className="text-sm font-medium text-slate-500">Settings</p>
           <h1 className="mt-1 text-3xl font-bold text-slate-900">Calendar</h1>
           <p className="mt-2 text-slate-500">
-            Show events from Google Calendar on the office schedule. Events are
-            read when the schedule opens. They are not saved as jobs, clients,
-            or appointments.
+            Show events from Google Calendar on the office schedule. The secret
+            iCal feed stays in use until a Google account is connected. After
+            that, Schedule copies new appointments to Google and deletions go
+            both ways.
           </p>
+
+          <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-slate-900">Google account</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Connecting uses read and write access to calendar events. The
+              refresh token stays on the server. It is not stored on the
+              numbering settings row.
+            </p>
+
+            {params.connected ? (
+              <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                Google Calendar connected.
+              </p>
+            ) : null}
+
+            {params.error === "config" ? (
+              <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                Google Calendar connection is not configured. Add GOOGLE_CLIENT_ID
+                and GOOGLE_CLIENT_SECRET on the server.
+              </p>
+            ) : null}
+
+            {params.error === "google" ? (
+              <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                Google Calendar could not be connected. Try again.
+              </p>
+            ) : null}
+
+            {params.error === "setup" ? (
+              <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                The connection could not be saved. Run the SQL below, then try again.
+              </p>
+            ) : null}
+
+            {googleConnected ? (
+              <p className="mt-4 text-sm text-slate-600">
+                Google Calendar is connected. New appointments are created on the
+                primary calendar unless a calendar id is stored. Family is only
+                included when a family calendar id is stored.
+              </p>
+            ) : googleClientConfigured ? (
+              <a
+                href="/api/google/start"
+                className="mt-4 inline-block rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700"
+              >
+                Connect Google Calendar
+              </a>
+            ) : (
+              <div className="mt-4">
+                <button
+                  type="button"
+                  disabled
+                  className="rounded-lg bg-slate-300 px-5 py-3 text-sm font-semibold text-slate-600"
+                >
+                  Connect Google Calendar
+                </button>
+                <p className="mt-3 text-sm text-slate-600">
+                  Google Calendar connection is not configured. Add GOOGLE_CLIENT_ID
+                  and GOOGLE_CLIENT_SECRET on the server, then reload this page.
+                </p>
+              </div>
+            )}
+
+            {!googleStorageReady ? (
+              <div className="mt-6">
+                <h3 className="text-sm font-semibold text-amber-950">One-time setup</h3>
+                <p className="mt-2 text-sm text-slate-600">
+                  Run this in the Supabase SQL editor, then refresh. The refresh
+                  token is not readable from the browser.
+                </p>
+                <pre className="mt-4 overflow-x-auto rounded-xl bg-slate-950 p-4 text-xs leading-5 text-slate-100">
+                  {readOauthSql()}
+                </pre>
+              </div>
+            ) : null}
+          </section>
 
           {params.saved ? (
             <p className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
