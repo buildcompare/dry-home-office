@@ -72,6 +72,9 @@ export default function Sidebar() {
   const [menuOpen, setMenuOpen] =
     useState(false);
 
+  const [chatOpen, setChatOpen] =
+    useState(false);
+
   useEffect(() => {
     setMenuOpen(false);
   }, [pathname]);
@@ -166,6 +169,18 @@ export default function Sidebar() {
               );
             }
           )}
+          <button
+            type="button"
+            onClick={() => setChatOpen((open) => !open)}
+            className={`block w-full rounded-lg px-4 py-3 text-left text-sm font-semibold transition ${
+              chatOpen
+                ? "bg-white text-slate-950"
+                : "text-slate-300 hover:bg-slate-800 hover:text-white"
+            }`}
+            aria-expanded={chatOpen}
+          >
+            Chat
+          </button>
           <SidebarTodos />
         </div>
 
@@ -222,7 +237,7 @@ export default function Sidebar() {
         Sign Out
       </button>
     </aside>
-    <ChatWidget />
+    <ChatWidget open={chatOpen} onOpenChange={setChatOpen} showLauncher={false} />
     </>
   );
 }

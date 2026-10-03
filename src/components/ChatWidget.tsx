@@ -7,8 +7,28 @@ type ChatMessage = {
   text: string;
 };
 
-export default function ChatWidget() {
-  const [open, setOpen] = useState(false);
+type ChatWidgetProps = {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  showLauncher?: boolean;
+};
+
+export default function ChatWidget({
+  open: openProp,
+  onOpenChange,
+  showLauncher = true,
+}: ChatWidgetProps = {}) {
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = openProp ?? uncontrolledOpen;
+
+  function setOpen(next: boolean | ((current: boolean) => boolean)) {
+    const value = typeof next === "function" ? next(open) : next;
+    onOpenChange?.(value);
+
+    if (openProp === undefined) {
+      setUncontrolledOpen(value);
+    }
+  }
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
@@ -93,15 +113,17 @@ export default function ChatWidget() {
         </section>
       )}
 
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className="rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-slate-700"
-        aria-expanded={open}
-        aria-label={open ? "Close chat" : "Open chat"}
-      >
-        Chat
-      </button>
+      {showLauncher && (
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className="rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-slate-700"
+          aria-expanded={open}
+          aria-label={open ? "Close chat" : "Open chat"}
+        >
+          Chat
+        </button>
+      )}
     </div>
   );
 }
