@@ -4,27 +4,8 @@ import { FormEvent, useState } from "react";
 
 type ChatMessage = {
   id: number;
-  role: "user" | "bot";
   text: string;
 };
-
-function replyFor(text: string) {
-  const lower = text.toLowerCase();
-
-  if (lower.includes("invoice")) {
-    return "I can talk through an invoice, but I won't create or change one from this chat.";
-  }
-
-  if (lower.includes("quote")) {
-    return "Quotes are still made on the Quotes page. I won't create one from this chat.";
-  }
-
-  if (lower.includes("contract")) {
-    return "Contracts are still made on the Contracts page. I won't change one from this chat.";
-  }
-
-  return `Got it. You said: “${text}”. I haven't changed any office records.`;
-}
 
 type ChatWidgetProps = {
   open?: boolean;
@@ -60,19 +41,11 @@ export default function ChatWidget({
       return;
     }
 
-    const sentAt = Date.now();
-
     setMessages((current) => [
       ...current,
       {
-        id: sentAt,
-        role: "user",
+        id: Date.now(),
         text,
-      },
-      {
-        id: sentAt + 1,
-        role: "bot",
-        text: replyFor(text),
       },
     ]);
     setDraft("");
@@ -89,7 +62,7 @@ export default function ChatWidget({
             <div>
               <p className="text-sm font-semibold">Messages</p>
               <p className="text-xs text-slate-400">
-                Replies in this panel only
+                Only visible in this session
               </p>
             </div>
             <button
@@ -111,17 +84,8 @@ export default function ChatWidget({
               messages.map((message) => (
                 <div
                   key={message.id}
-                  className={
-                    message.role === "user"
-                      ? "ml-8 rounded-2xl rounded-br-md bg-slate-900 px-3 py-2 text-sm text-white"
-                      : "mr-8 rounded-2xl rounded-bl-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-                  }
+                  className="ml-8 rounded-2xl rounded-br-md bg-slate-900 px-3 py-2 text-sm text-white"
                 >
-                  {message.role === "bot" && (
-                    <p className="mb-1 text-xs font-semibold text-slate-500">
-                      Office
-                    </p>
-                  )}
                   {message.text}
                 </div>
               ))
