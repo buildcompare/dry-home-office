@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
 import { createClient } from "@/lib/supabase/server";
+import { loadGoogleScheduleEvents } from "@/lib/calendar-feeds";
 
 type SchedulePageProps = {
   searchParams: Promise<{
@@ -79,6 +80,20 @@ export default async function SchedulePage({
     console.error(error);
   }
 
+  const googleCalendar =
+    await loadGoogleScheduleEvents(
+      monthStart,
+      monthEnd
+    );
+
+  const calendarEvents = [
+    ...(events ?? []).map((event) => ({
+      ...event,
+      source: "office" as const,
+    })),
+    ...googleCalendar.events,
+  ];
+
   const firstDay = new Date(
     Date.UTC(year, monthIndex, 1)
   ).getUTCDay();
@@ -156,6 +171,12 @@ export default async function SchedulePage({
               <p className="mt-2 text-slate-500">
                 Surveys, jobs and appointments.
               </p>
+
+              {googleCalendar.warning ? (
+                <p className="mt-2 text-sm text-amber-700">
+                  A Google calendar could not be read. Office events are still shown.
+                </p>
+              ) : null}
             </div>
 
             <Link
@@ -230,14 +251,25 @@ export default async function SchedulePage({
                       }
 
                       const dayEvents =
-                        (events ?? []).filter(
-                          (event) =>
-                            occursOnDate(
-                              event.start_date,
-                              event.end_date,
-                              date
-                            )
+                        calendarEvents.filter((event) =>
+                          occursOnDate(
+                            event.start_date,
+                            event.end_date,
+                            date
+                          )
                         );
+
+                      if (googleCalendar.events.length > 0) {
+                        dayEvents.sort((a, b) => {
+                          if (Boolean(a.all_day) !== Boolean(b.all_day)) {
+                            return a.all_day ? -1 : 1;
+                          }
+
+                          return String(a.start_time ?? "").localeCompare(
+                            String(b.start_time ?? "")
+                          );
+                        });
+                      }
 
                       const dayNumber =
                         Number(date.slice(-2));
@@ -333,6 +365,15 @@ export default async function SchedulePage({
                                         {event.location}
                                       </p>
                                     )}
+
+                                    {"source" in event &&
+                                      event.source === "google" && (
+                                        <p className="mt-1 font-semibold uppercase tracking-wide opacity-70">
+                                          {event.event_type === "Google Family"
+                                            ? "Google · Family"
+                                            : "Google"}
+                                        </p>
+                                      )}
                                   </div>
                                 );
                               }
@@ -379,6 +420,12 @@ function eventClass(type: string) {
 
     case "Follow-up":
       return "border-emerald-200 bg-emerald-50 text-emerald-900";
+
+    case "Google":
+      return "border-sky-200 bg-sky-50 text-sky-950";
+
+    case "Google Family":
+      return "border-rose-200 bg-rose-50 text-rose-950";
 
     default:
       return "border-slate-200 bg-slate-50 text-slate-800";

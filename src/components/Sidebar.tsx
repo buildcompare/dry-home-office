@@ -57,6 +57,10 @@ const settingsNavItems = [
     label: "Numbering",
     href: "/settings/numbering",
   },
+  {
+    label: "Calendar",
+    href: "/settings/calendar",
+  },
 ];
 
 export default function Sidebar() {
