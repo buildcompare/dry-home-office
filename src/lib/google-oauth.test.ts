@@ -24,15 +24,26 @@ assert.equal(authUrl.includes(encodeURIComponent(GOOGLE_REDIRECT_URI)), true);
 assert.equal(authUrl.includes("access_type=offline"), true);
 assert.equal(authUrl.includes("state-value"), true);
 
-assert.equal(writeCalendarId(null), DEFAULT_GOOGLE_CALENDAR_ID);
+assert.equal(DEFAULT_GOOGLE_CALENDAR_ID, "primary");
+assert.equal(writeCalendarId(null), "primary");
+assert.equal(writeCalendarId(""), "primary");
+assert.equal(writeCalendarId("   "), "primary");
 assert.equal(writeCalendarId("  cal-id  "), "cal-id");
 assert.deepEqual(
   calendarsToRead({
     refreshToken: "refresh-token-value",
     calendarId: null,
     familyCalendarId: null,
-  }).map((calendar) => calendar.label),
-  ["Work"]
+  }).map((calendar) => [calendar.id, calendar.label]),
+  [["primary", "Work"]]
+);
+assert.deepEqual(
+  calendarsToRead({
+    refreshToken: "refresh-token-value",
+    calendarId: "  ",
+    familyCalendarId: null,
+  }).map((calendar) => calendar.id),
+  ["primary"]
 );
 assert.deepEqual(
   calendarsToRead({

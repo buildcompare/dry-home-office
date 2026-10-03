@@ -199,7 +199,8 @@ export default async function SchedulePage({
 
               {googleSync.warning ? (
                 <p className="mt-2 text-sm text-amber-700">
-                  Google Calendar could not be synced. The secret iCal feed is still shown when it is set.
+                  Google Calendar could not be synced
+                  {googleSync.status !== null ? ` (${googleSync.status})` : ""}. The secret iCal feed is still shown when it is set.
                 </p>
               ) : null}
 

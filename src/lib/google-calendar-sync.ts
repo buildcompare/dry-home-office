@@ -28,6 +28,7 @@ export type GoogleSyncResult = {
   workSynced: boolean;
   familySynced: boolean;
   warning: boolean;
+  status: number | null;
 };
 
 export type GoogleOAuthRead =
@@ -145,7 +146,7 @@ export async function syncGoogleCalendarMonth(
   monthStart: string,
   monthEnd: string
 ): Promise<GoogleSyncResult> {
-  const idle = { workSynced: false, familySynced: false, warning: false };
+  const idle = { workSynced: false, familySynced: false, warning: false, status: null };
   if (!googleCredentialsConfigured()) return idle;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(monthStart) || !/^\d{4}-\d{2}-\d{2}$/.test(monthEnd)) {
     return idle;
@@ -154,15 +155,22 @@ export async function syncGoogleCalendarMonth(
   const stored = await readGoogleOAuth();
   if (!stored.ready || !stored.connection?.refreshToken) return idle;
 
-  const accessToken = await accessTokenFor(stored.connection.refreshToken);
-  if (!accessToken) {
-    return { workSynced: false, familySynced: false, warning: true };
+  const access = await accessTokenFor(stored.connection.refreshToken);
+  if (!access.token) {
+    return {
+      workSynced: false,
+      familySynced: false,
+      warning: true,
+      status: access.status,
+    };
   }
+  const accessToken = access.token;
 
   const bounds = londonRangeBounds(monthStart, monthEnd);
   let workSynced = false;
   let familySynced = false;
   let warning = false;
+  let status: number | null = null;
 
   for (const calendar of calendarsToRead(stored.connection)) {
     try {
@@ -182,13 +190,16 @@ export async function syncGoogleCalendarMonth(
       }
       if (calendar.label === "Work") workSynced = true;
       else familySynced = true;
-    } catch {
+    } catch (error) {
       console.error("Google Calendar sync failed");
       warning = true;
+      if (status === null && error instanceof GoogleListError) {
+        status = error.status;
+      }
     }
   }
 
-  return { workSynced, familySynced, warning };
+  return { workSynced, familySynced, warning, status };
 }
 
 export async function copyAppointmentToGoogle(
@@ -202,8 +213,9 @@ export async function copyAppointmentToGoogle(
   const stored = await readGoogleOAuth();
   if (!stored.ready || !stored.connection?.refreshToken) return { status: "skipped" };
 
-  const accessToken = await accessTokenFor(stored.connection.refreshToken);
-  if (!accessToken) return { status: "failed" };
+  const access = await accessTokenFor(stored.connection.refreshToken);
+  if (!access.token) return { status: "failed" };
+  const accessToken = access.token;
 
   const calendarId = writeCalendarId(stored.connection.calendarId);
 
@@ -250,8 +262,9 @@ export async function deleteGoogleCalendarEvent(
   const stored = await readGoogleOAuth();
   if (!stored.ready || !stored.connection?.refreshToken) return { status: "skipped" };
 
-  const accessToken = await accessTokenFor(stored.connection.refreshToken);
-  if (!accessToken) return { status: "failed" };
+  const access = await accessTokenFor(stored.connection.refreshToken);
+  if (!access.token) return { status: "failed" };
+  const accessToken = access.token;
 
   const calendar = calendarId?.trim() || writeCalendarId(stored.connection.calendarId);
 
@@ -278,7 +291,20 @@ export async function deleteGoogleCalendarEvent(
   }
 }
 
-async function accessTokenFor(refreshToken: string) {
+class GoogleListError extends Error {
+  status: number | null;
+
+  constructor(status: number | null) {
+    super("Google Calendar list failed");
+    this.name = "GoogleListError";
+    this.status = status;
+  }
+}
+
+async function accessTokenFor(refreshToken: string): Promise<{
+  token: string | null;
+  status: number | null;
+}> {
   try {
     const response = await fetch(TOKEN_URL, {
       method: "POST",
@@ -298,14 +324,14 @@ async function accessTokenFor(refreshToken: string) {
 
     if (!response.ok) {
       console.error("Google Calendar token refresh failed", response.status);
-      return null;
+      return { token: null, status: response.status };
     }
 
     const body: unknown = await response.json();
-    return accessTokenFromTokenResponse(body);
+    return { token: accessTokenFromTokenResponse(body), status: null };
   } catch {
     console.error("Google Calendar token refresh failed");
-    return null;
+    return { token: null, status: null };
   }
 }
 
@@ -340,7 +366,7 @@ async function listCalendarEvents(
 
     if (!response.ok) {
       console.error("Google Calendar list failed", response.status);
-      throw new Error("list");
+      throw new GoogleListError(response.status);
     }
 
     const body: unknown = await response.json();
