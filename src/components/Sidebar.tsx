@@ -146,7 +146,7 @@ export default function Sidebar() {
       {/* MAIN NAVIGATION */}
 
       <nav className="flex-1">
-        <div className="space-y-2">
+        <div className="border-t border-slate-800">
           {mainNavItems.map(
             (item) => {
               const active =
@@ -157,28 +157,30 @@ export default function Sidebar() {
                     );
 
               return (
-                <Link
-                  key={
-                    item.href
-                  }
-                  href={
-                    item.href
-                  }
-                  className={`block rounded-lg px-4 py-3 text-xs font-semibold transition ${
-                    active
-                      ? "bg-white text-slate-950"
-                      : "text-slate-300 hover:bg-slate-800 hover:text-white"
-                  }`}
+                <div
+                  key={item.href}
+                  className="border-b border-slate-800"
                 >
-                  {
-                    item.label
-                  }
-                </Link>
+                  <Link
+                    href={
+                      item.href
+                    }
+                    className={`block rounded-lg px-4 py-3 text-xs font-semibold transition ${
+                      active
+                        ? "bg-white text-slate-950"
+                        : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                    }`}
+                  >
+                    {
+                      item.label
+                    }
+                  </Link>
+                </div>
               );
             }
           )}
-          <SidebarTodos />
         </div>
+        <SidebarTodos />
 
         {/* SETTINGS */}
 
