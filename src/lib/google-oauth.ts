@@ -4,7 +4,7 @@ export const GOOGLE_REDIRECT_URI =
 export const GOOGLE_CALENDAR_SCOPE =
   "https://www.googleapis.com/auth/calendar.events";
 
-export const DEFAULT_GOOGLE_CALENDAR_ID = "jamestelford82@outlook.com";
+export const DEFAULT_GOOGLE_CALENDAR_ID = "primary";
 
 const LONDON = "Europe/London";
 
