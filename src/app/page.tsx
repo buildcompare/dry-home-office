@@ -625,7 +625,7 @@ export default async function DashboardPage() {
               TOP CARDS
               ================================================= */}
 
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             <DashboardCard
               title="Invoiced This Month"
               value={formatCurrency(
@@ -1100,7 +1100,7 @@ function DashboardCard({
   return (
     <Link
       href={href}
-      className="mx-auto flex aspect-square w-full max-w-44 flex-col items-center justify-center rounded-full border-2 border-[#be1e2d] bg-white px-5 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+      className="mx-auto flex aspect-square w-full flex-col items-center justify-center rounded-full border-2 border-[#be1e2d] bg-white px-5 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
     >
       <p className="text-xs font-medium leading-tight text-slate-500">
         {title}
