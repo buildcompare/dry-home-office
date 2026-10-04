@@ -124,7 +124,7 @@ export default function Sidebar() {
 
       {/* LOGO */}
 
-      <div className="mb-12 flex flex-col items-center px-2">
+      <div className="mb-2 flex flex-col items-center px-2 pt-4">
         {/* PNG is 500x500 with the mark inset (y 152–348). Clip that transparent band so OFFICE sits just under the artwork. */}
         <div className="h-[calc(12rem*197/500)] w-48 overflow-hidden">
           <Image
@@ -145,7 +145,7 @@ export default function Sidebar() {
 
       {/* MAIN NAVIGATION */}
 
-      <nav className="flex-1">
+      <nav className="flex flex-1 flex-col justify-center">
         <div className="border-t border-slate-800">
           {mainNavItems.map(
             (item) => {
