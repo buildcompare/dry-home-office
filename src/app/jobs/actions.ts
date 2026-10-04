@@ -7,19 +7,17 @@ import { createClient } from "@/lib/supabase/server";
 import { allocateDocumentNumber } from "@/lib/numbering";
 
 
-function isMissingJobType(
+function isNotNullColumn(
   error: {
     code?: string;
     message?: string;
-  }
+  },
+  column: string
 ) {
-  const message =
-    error.message ?? "";
-
   return (
     error.code === "23502" &&
-    message.includes(
-      "job_type"
+    (error.message ?? "").includes(
+      column
     )
   );
 }
@@ -127,13 +125,6 @@ export async function addJob(
 
       title,
 
-      status:
-        String(
-          formData.get(
-            "status"
-          ) ?? "Enquiry"
-        ),
-
       address_line_1:
         enteredAddress1 ||
         client.address_line_1 ||
@@ -158,20 +149,6 @@ export async function addJob(
         enteredPostcode ||
         client.postcode ||
         null,
-
-      survey_date:
-        String(
-          formData.get(
-            "survey_date"
-          ) ?? ""
-        ) || null,
-
-      start_date:
-        String(
-          formData.get(
-            "start_date"
-          ) ?? ""
-        ) || null,
 
       description:
         String(
@@ -198,7 +175,30 @@ export async function addJob(
 
   if (
     error &&
-    isMissingJobType(error)
+    isNotNullColumn(
+      error,
+      "job_type"
+    ) &&
+    isNotNullColumn(
+      error,
+      "status"
+    )
+  ) {
+    error = (
+      await supabase
+        .from("jobs")
+        .insert({
+          ...job,
+          job_type: "Other",
+          status: "Enquiry",
+        })
+    ).error;
+  } else if (
+    error &&
+    isNotNullColumn(
+      error,
+      "job_type"
+    )
   ) {
     const retry =
       await supabase
@@ -209,6 +209,58 @@ export async function addJob(
         });
 
     error = retry.error;
+
+    if (
+      error &&
+      isNotNullColumn(
+        error,
+        "status"
+      )
+    ) {
+      error = (
+        await supabase
+          .from("jobs")
+          .insert({
+            ...job,
+            job_type: "Other",
+            status: "Enquiry",
+          })
+      ).error;
+    }
+  } else if (
+    error &&
+    isNotNullColumn(
+      error,
+      "status"
+    )
+  ) {
+    const retry =
+      await supabase
+        .from("jobs")
+        .insert({
+          ...job,
+          status: "Enquiry",
+        });
+
+    error = retry.error;
+
+    if (
+      error &&
+      isNotNullColumn(
+        error,
+        "job_type"
+      )
+    ) {
+      error = (
+        await supabase
+          .from("jobs")
+          .insert({
+            ...job,
+            job_type: "Other",
+            status: "Enquiry",
+          })
+      ).error;
+    }
   }
 
   if (error) {

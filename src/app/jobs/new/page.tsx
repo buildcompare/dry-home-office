@@ -95,37 +95,18 @@ export default async function NewJobPage({
                 />
               </div>
 
-              <div>
+              <div className="md:col-span-2">
                 <label className="mb-2 block text-sm font-medium text-slate-700">
-                  Status
+                  Description
                 </label>
 
-                <select
-                  name="status"
-                  defaultValue="Enquiry"
-                  className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900"
-                >
-                  <option>Enquiry</option>
-                  <option>Survey Booked</option>
-                  <option>Quoted</option>
-                  <option>Accepted</option>
-                  <option>In Progress</option>
-                  <option>Completed</option>
-                  <option>Cancelled</option>
-                </select>
+                <textarea
+                  name="description"
+                  rows={5}
+                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900"
+                  placeholder="Describe the work required..."
+                />
               </div>
-
-              <Field
-                label="Survey date"
-                name="survey_date"
-                type="date"
-              />
-
-              <Field
-                label="Start date"
-                name="start_date"
-                type="date"
-              />
 
               <div className="md:col-span-2 mt-4">
                 <h2 className="text-lg font-semibold text-slate-900">
@@ -165,19 +146,6 @@ export default async function NewJobPage({
                 label="Postcode"
                 name="postcode"
               />
-
-              <div className="md:col-span-2">
-                <label className="mb-2 block text-sm font-medium text-slate-700">
-                  Description
-                </label>
-
-                <textarea
-                  name="description"
-                  rows={5}
-                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900"
-                  placeholder="Describe the work required..."
-                />
-              </div>
 
               <div className="md:col-span-2">
                 <label className="mb-2 block text-sm font-medium text-slate-700">
