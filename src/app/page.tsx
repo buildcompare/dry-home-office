@@ -575,7 +575,7 @@ export default async function DashboardPage() {
   );
 
   return (
-    <div className="flex min-h-screen bg-slate-100">
+    <div className="flex min-h-screen bg-[#f4f6f8]">
       <Sidebar />
 
       <main className="flex-1 p-8">
@@ -694,7 +694,7 @@ export default async function DashboardPage() {
               TODAY / TOMORROW
               ================================================= */}
 
-          <div className="mt-8 grid gap-6 xl:grid-cols-2">
+          <div className="mt-10 grid gap-6 xl:grid-cols-2">
             {renderSchedulePanel(
               "What's on Today?",
               formatLongDate(
@@ -718,7 +718,7 @@ export default async function DashboardPage() {
               OVERDUE INVOICES
               ================================================= */}
 
-          <section className="mt-8 overflow-hidden rounded-2xl bg-white shadow-sm">
+          <section className="mt-10 overflow-hidden rounded-2xl bg-white shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-6 py-5">
               <div>
                 <h2 className="text-xl font-semibold text-slate-900">
@@ -764,7 +764,7 @@ export default async function DashboardPage() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-red-50">
+                  <thead className="bg-slate-50">
                     <tr>
                       <Heading>
                         Invoice
@@ -907,7 +907,7 @@ export default async function DashboardPage() {
               ACTIVE JOBS
               ================================================= */}
 
-          <section className="mt-8 overflow-hidden rounded-2xl bg-white shadow-sm">
+          <section className="mt-10 overflow-hidden rounded-2xl bg-white shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-6 py-5">
               <div>
                 <h2 className="text-xl font-semibold text-slate-900">
@@ -1100,7 +1100,7 @@ function DashboardCard({
   return (
     <Link
       href={href}
-      className={`rounded-2xl p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+      className={`rounded-2xl p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
         danger
           ? "border border-red-200 bg-red-50"
           : "bg-white"
@@ -1117,7 +1117,7 @@ function DashboardCard({
       </p>
 
       <p
-        className={`mt-3 text-3xl font-bold ${
+        className={`mt-3 text-2xl font-bold ${
           danger
             ? "text-red-800"
             : "text-slate-900"
