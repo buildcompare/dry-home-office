@@ -47,10 +47,6 @@ type QuotePdfDocumentProps = {
 
 const LOGO_RED = "#be1e2d";
 
-// public/dryhome-logo-light.png is 750x750. The mark sits at x 156–617, y 229–521.
-const LOGO_FULL = 168;
-const LOGO_SCALE = LOGO_FULL / 750;
-
 const COMPANY_LINES = [
   "Fullbrook Avenue",
   "Spencers Wood",
@@ -88,17 +84,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
 
-  logoFrame: {
-    width: Math.round((617 - 156 + 1) * LOGO_SCALE),
-    height: Math.round((521 - 229 + 1) * LOGO_SCALE),
-    overflow: "hidden",
-  },
-
   logo: {
-    width: LOGO_FULL,
-    height: LOGO_FULL,
-    marginLeft: Math.round(-156 * LOGO_SCALE),
-    marginTop: Math.round(-229 * LOGO_SCALE),
+    width: 104,
+    height: 104,
+    objectFit: "contain",
   },
 
   companyName: {
@@ -275,7 +264,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     paddingTop: 6,
     borderTopWidth: 1.5,
-    borderTopColor: LOGO_RED,
+    borderTopColor: "#0f172a",
   },
 
   totalLabel: {
@@ -290,7 +279,7 @@ const styles = StyleSheet.create({
   grandTotal: {
     fontSize: 12,
     fontFamily: "Helvetica-Bold",
-    color: LOGO_RED,
+    color: "#0f172a",
   },
 
   terms: {
@@ -355,9 +344,7 @@ export default function QuotePdfDocument({
         <View style={styles.header}>
           <View style={styles.brandRow}>
             {logoDataUri ? (
-              <View style={styles.logoFrame}>
-                <Image src={logoDataUri} style={styles.logo} />
-              </View>
+              <Image src={logoDataUri} style={styles.logo} />
             ) : null}
 
             <View>
