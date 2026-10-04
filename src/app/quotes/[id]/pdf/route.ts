@@ -46,6 +46,7 @@ export async function GET(
           last_name,
           email,
           phone,
+          company_name,
           address_line_1,
           address_line_2,
           town,
@@ -55,7 +56,12 @@ export async function GET(
         jobs (
           id,
           job_number,
-          title
+          title,
+          address_line_1,
+          address_line_2,
+          town,
+          county,
+          postcode
         )
       `)
       .eq("id", id)
@@ -123,16 +129,26 @@ export async function GET(
       .join(" ") ||
     "Customer";
 
-  const clientAddressLines = [
+  const clientAddressLines = filledAddress([
     client?.address_line_1,
     client?.address_line_2,
     client?.town,
     client?.county,
     client?.postcode,
-  ].filter(
-    (value): value is string =>
-      Boolean(value)
-  );
+  ]);
+
+  const jobAddressLines = filledAddress([
+    job?.address_line_1,
+    job?.address_line_2,
+    job?.town,
+    job?.county,
+    job?.postcode,
+  ]);
+
+  const siteAddressLines =
+    jobAddressLines.length > 0
+      ? jobAddressLines
+      : clientAddressLines;
 
   const labourItems =
     quoteItems
@@ -192,6 +208,9 @@ export async function GET(
 
         clientName,
 
+        clientCompanyName:
+          client?.company_name || null,
+
         clientEmail:
           client?.email || null,
 
@@ -205,6 +224,8 @@ export async function GET(
 
         jobTitle:
           job?.title || null,
+
+        siteAddressLines,
 
         labourItems,
         materialItems,
@@ -267,6 +288,15 @@ export async function GET(
       },
     }
   );
+}
+
+
+function filledAddress(
+  values: Array<string | null | undefined>
+) {
+  return values
+    .map((value) => value?.trim() ?? "")
+    .filter((value) => value.length > 0);
 }
 
 async function loadLogoFromDisk():

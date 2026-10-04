@@ -27,12 +27,14 @@ type QuotePdfDocumentProps = {
   validUntil: string | null;
 
   clientName: string;
+  clientCompanyName: string | null;
   clientEmail: string | null;
   clientPhone: string | null;
   clientAddressLines: string[];
 
   jobNumber: string | null;
   jobTitle: string | null;
+  siteAddressLines: string[];
 
   labourItems: QuoteItem[];
   materialItems: QuoteItem[];
@@ -150,7 +152,21 @@ const styles = StyleSheet.create({
   },
 
   normalText: {
-    lineHeight: 1.4,
+    lineHeight: 1.25,
+  },
+
+  addressText: {
+    fontSize: 9.5,
+    lineHeight: 1.2,
+    color: "#334155",
+  },
+
+  siteLabel: {
+    marginTop: 8,
+    fontSize: 8,
+    color: "#94a3b8",
+    textTransform: "uppercase",
+    marginBottom: 2,
   },
 
   boldText: {
@@ -333,6 +349,15 @@ const styles = StyleSheet.create({
   },
 });
 
+
+function filledLines(
+  values: Array<string | null | undefined>
+) {
+  return values
+    .map((value) => value?.trim() ?? "")
+    .filter((value) => value.length > 0);
+}
+
 export default function QuotePdfDocument({
   logoDataUri,
   quoteNumber,
@@ -341,11 +366,13 @@ export default function QuotePdfDocument({
   quoteDate,
   validUntil,
   clientName,
+  clientCompanyName,
   clientEmail,
   clientPhone,
   clientAddressLines,
   jobNumber,
   jobTitle,
+  siteAddressLines,
   labourItems,
   materialItems,
   subtotal,
@@ -356,6 +383,14 @@ export default function QuotePdfDocument({
   customerMessage,
   terms,
 }: QuotePdfDocumentProps) {
+  const companyLine = clientCompanyName?.trim() || "";
+  const preparedLines = filledLines([
+    ...clientAddressLines,
+    clientEmail,
+    clientPhone,
+  ]);
+  const siteLines = filledLines(siteAddressLines);
+
   return (
     <Document
       title={`${quoteNumber} - ${title}`}
@@ -399,16 +434,13 @@ export default function QuotePdfDocument({
           <View style={styles.column}>
             <Text style={styles.smallLabel}>Prepared For</Text>
             <Text style={styles.boldText}>{clientName}</Text>
-            {clientAddressLines.map((line) => (
-              <Text key={line} style={styles.normalText}>
-                {line}
-              </Text>
-            ))}
-            {clientEmail && (
-              <Text style={styles.normalText}>{clientEmail}</Text>
+            {companyLine && (
+              <Text style={styles.addressText}>{companyLine}</Text>
             )}
-            {clientPhone && (
-              <Text style={styles.normalText}>{clientPhone}</Text>
+            {preparedLines.length > 0 && (
+              <Text style={styles.addressText}>
+                {preparedLines.join("\n")}
+              </Text>
             )}
           </View>
 
@@ -423,6 +455,14 @@ export default function QuotePdfDocument({
               </>
             ) : (
               <Text style={styles.normalText}>No linked job</Text>
+            )}
+            {siteLines.length > 0 && (
+              <>
+                <Text style={styles.siteLabel}>Site</Text>
+                <Text style={styles.addressText}>
+                  {siteLines.join("\n")}
+                </Text>
+              </>
             )}
           </View>
         </View>
