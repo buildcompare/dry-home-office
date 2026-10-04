@@ -578,7 +578,7 @@ export default async function DashboardPage() {
     <div className="flex min-h-screen bg-[#f4f6f8]">
       <Sidebar />
 
-      <main className="flex-1 p-8">
+      <main className="min-w-0 flex-1 overflow-x-auto p-4 pt-20 md:overflow-visible md:p-8">
         <div className="mx-auto max-w-7xl">
 
           {/* =================================================
@@ -625,7 +625,7 @@ export default async function DashboardPage() {
               TOP CARDS
               ================================================= */}
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="grid w-full min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-5">
             <DashboardCard
               title="Invoiced This Month"
               value={formatCurrency(
@@ -1100,7 +1100,7 @@ function DashboardCard({
   return (
     <Link
       href={href}
-      className="mx-auto flex aspect-square w-full flex-col items-center justify-center rounded-full border-2 border-[#be1e2d] bg-white px-5 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+      className="mx-auto flex aspect-square w-full max-w-full min-w-0 flex-col items-center justify-center overflow-hidden rounded-full border-2 border-[#be1e2d] bg-white px-4 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:px-5"
     >
       <p className="text-xs font-medium leading-tight text-slate-500">
         {title}
