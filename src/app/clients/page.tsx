@@ -1,8 +1,27 @@
 import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
 import { createClient } from "@/lib/supabase/server";
+import ImportClientsButton from "./import-button";
 
-export default async function ClientsPage() {
+type ClientsPageProps = {
+  searchParams: Promise<{
+    imported?: string;
+    skipped?: string;
+    error?: string;
+  }>;
+};
+
+export default async function ClientsPage({
+  searchParams,
+}: ClientsPageProps) {
+  const params = await searchParams;
+  const imported = Number(params.imported);
+  const skipped = Number(params.skipped);
+  const showResult =
+    params.imported !== undefined &&
+    params.skipped !== undefined &&
+    Number.isInteger(imported) &&
+    Number.isInteger(skipped);
   const supabase = await createClient();
 
   const { data: clients, error } = await supabase
@@ -33,7 +52,7 @@ export default async function ClientsPage() {
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
-          <div className="mb-8 flex items-center justify-between">
+          <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="text-sm font-medium text-slate-500">
                 DryHome Office
@@ -48,13 +67,38 @@ export default async function ClientsPage() {
               </p>
             </div>
 
-            <Link
-              href="/clients/new"
-              className="rounded-lg bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-700"
-            >
-              + Add Client
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              <form action="/clients/export" method="get">
+                <button
+                  type="submit"
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Export
+                </button>
+              </form>
+
+              <ImportClientsButton />
+
+              <Link
+                href="/clients/new"
+                className="rounded-lg bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-700"
+              >
+                + Add Client
+              </Link>
+            </div>
           </div>
+
+          {params.error && (
+            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm font-medium text-red-700">
+              {decodeURIComponent(params.error)}
+            </div>
+          )}
+
+          {showResult && (
+            <div className="mb-6 rounded-xl border border-slate-200 bg-white px-5 py-4 text-sm font-medium text-slate-700">
+              Imported {imported}, skipped {skipped}.
+            </div>
+          )}
 
           <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
             {!clients || clients.length === 0 ? (
