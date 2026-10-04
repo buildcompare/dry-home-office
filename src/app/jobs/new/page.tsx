@@ -2,6 +2,7 @@ import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
 import { createClient } from "@/lib/supabase/server";
 import { addJob } from "../actions";
+import ClientPicker from "./client-picker";
 
 type NewJobPageProps = {
   searchParams: Promise<{
@@ -22,7 +23,8 @@ export default async function NewJobPage({
       id,
       display_name,
       first_name,
-      last_name
+      last_name,
+      company_name
     `)
     .order("display_name");
 
@@ -69,33 +71,19 @@ export default async function NewJobPage({
                   Client *
                 </label>
 
-                <select
-                  name="client_id"
-                  required
-                  defaultValue=""
-                  className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-slate-900"
-                >
-                  <option value="" disabled>
-                    Select client
-                  </option>
-
-                  {clients?.map((client) => {
-                    const name =
+                <ClientPicker
+                  clients={(clients ?? []).map((client) => ({
+                    id: client.id,
+                    name:
                       client.display_name ||
                       [client.first_name, client.last_name]
                         .filter(Boolean)
-                        .join(" ");
-
-                    return (
-                      <option
-                        key={client.id}
-                        value={client.id}
-                      >
-                        {name}
-                      </option>
-                    );
-                  })}
-                </select>
+                        .join(" ") ||
+                      client.company_name ||
+                      "Unnamed client",
+                    company: client.company_name,
+                  }))}
+                />
               </div>
 
               <div className="md:col-span-2">
@@ -105,30 +93,6 @@ export default async function NewJobPage({
                   placeholder="e.g. Damp Survey - Ground Floor"
                   required
                 />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-slate-700">
-                  Job type
-                </label>
-
-                <select
-                  name="job_type"
-                  className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900"
-                >
-                  <option value="">Select job type</option>
-                  <option>Damp Survey</option>
-                  <option>Rising Damp</option>
-                  <option>Penetrating Damp</option>
-                  <option>Mould & Condensation</option>
-                  <option>Woodworm</option>
-                  <option>Wet Rot</option>
-                  <option>Dry Rot</option>
-                  <option>Internal Wall Insulation</option>
-                  <option>External Wall Insulation</option>
-                  <option>Plastering</option>
-                  <option>Other</option>
-                </select>
               </div>
 
               <div>
@@ -161,13 +125,6 @@ export default async function NewJobPage({
                 label="Start date"
                 name="start_date"
                 type="date"
-              />
-
-              <Field
-                label="Estimated value"
-                name="estimated_value"
-                type="number"
-                placeholder="0.00"
               />
 
               <div className="md:col-span-2 mt-4">
