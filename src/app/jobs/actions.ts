@@ -6,6 +6,24 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { allocateDocumentNumber } from "@/lib/numbering";
 
+
+function isMissingJobType(
+  error: {
+    code?: string;
+    message?: string;
+  }
+) {
+  const message =
+    error.message ?? "";
+
+  return (
+    error.code === "23502" &&
+    message.includes(
+      "job_type"
+    )
+  );
+}
+
 /* =========================================================
    CREATE JOB
    ========================================================= */
@@ -27,13 +45,6 @@ export async function addJob(
     String(
       formData.get(
         "title"
-      ) ?? ""
-    ).trim();
-
-  const jobType =
-    String(
-      formData.get(
-        "job_type"
       ) ?? ""
     ).trim();
 
@@ -108,21 +119,13 @@ export async function addJob(
       ) ?? ""
     ).trim();
 
-  const {
-    error,
-  } = await supabase
-    .from("jobs")
-    .insert({
+  const job = {
       job_number:
         await allocateDocumentNumber("job"),
       client_id:
         clientId,
 
       title,
-
-      job_type:
-        jobType ||
-        null,
 
       status:
         String(
@@ -185,15 +188,28 @@ export async function addJob(
           ) ?? ""
         ).trim() ||
         null,
+  };
 
-      estimated_value:
-        String(
-          formData.get(
-            "estimated_value"
-          ) ?? ""
-        ).trim() ||
-        null,
-    });
+  let {
+    error,
+  } = await supabase
+    .from("jobs")
+    .insert(job);
+
+  if (
+    error &&
+    isMissingJobType(error)
+  ) {
+    const retry =
+      await supabase
+        .from("jobs")
+        .insert({
+          ...job,
+          job_type: "Other",
+        });
+
+    error = retry.error;
+  }
 
   if (error) {
     console.error(
