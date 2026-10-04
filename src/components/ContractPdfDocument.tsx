@@ -10,6 +10,8 @@ import {
   View,
 } from "@react-pdf/renderer";
 
+import { QUOTE_STANDARD_TERMS } from "@/lib/quote-standard-terms";
+
 type ContractPdfDocumentProps = {
   logoDataUri?: string | null;
 
@@ -19,6 +21,7 @@ type ContractPdfDocumentProps = {
   contractDate: string | null;
 
   clientName: string;
+  clientCompanyName?: string | null;
   clientEmail: string | null;
   clientPhone: string | null;
   clientAddressLines: string[];
@@ -42,6 +45,20 @@ type ContractPdfDocumentProps = {
 
   customerUrl: string;
 };
+
+
+const LOGO_RED = "#be1e2d";
+
+const COMPANY_LINES = [
+  "Fullbrook Avenue",
+  "Spencers Wood",
+  "Reading",
+  "Berkshire",
+  "RG7 1FE",
+  "0118 9740 020",
+  "Contact@dryhomedampproofing.co.uk",
+  "Company number 16804053",
+];
 
 const styles = StyleSheet.create({
   page: {
@@ -336,6 +353,140 @@ const styles = StyleSheet.create({
     color: "#64748b",
   },
 
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: LOGO_RED,
+  },
+
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+
+  logoFull: {
+    width: 104,
+    height: 104,
+    objectFit: "contain",
+  },
+
+  companyNameDark: {
+    fontSize: 10,
+    fontFamily: "Helvetica-Bold",
+    color: "#0f172a",
+  },
+
+  companyDetail: {
+    fontSize: 8,
+    lineHeight: 1.35,
+    color: "#475569",
+  },
+
+  docHeader: {
+    width: 150,
+    alignItems: "flex-end",
+  },
+
+  docLabel: {
+    fontSize: 8,
+    color: "#64748b",
+    textTransform: "uppercase",
+  },
+
+  docNumber: {
+    marginTop: 2,
+    fontSize: 13,
+    fontFamily: "Helvetica-Bold",
+    color: "#0f172a",
+  },
+
+  docDate: {
+    marginTop: 2,
+    fontSize: 8.5,
+    color: "#64748b",
+  },
+
+  detailsRow: {
+    marginTop: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 20,
+  },
+
+  column: {
+    width: "48%",
+  },
+
+  addressText: {
+    fontSize: 9.5,
+    lineHeight: 1.2,
+    color: "#334155",
+  },
+
+  siteLabel: {
+    marginTop: 8,
+    fontSize: 8,
+    color: "#94a3b8",
+    textTransform: "uppercase",
+    marginBottom: 2,
+  },
+
+  workTitle: {
+    marginTop: 14,
+    fontFamily: "Helvetica-Bold",
+    fontSize: 14,
+    color: "#0f172a",
+  },
+
+  valueBlock: {
+    marginTop: 12,
+    alignItems: "flex-end",
+  },
+
+  valueNote: {
+    marginTop: 3,
+    fontSize: 9,
+    color: "#334155",
+  },
+
+  termsWrap: {
+    marginTop: 4,
+  },
+
+  termsTitle: {
+    fontSize: 14,
+    fontFamily: "Helvetica-Bold",
+    color: "#0f172a",
+    marginBottom: 10,
+  },
+
+  termsHeading: {
+    marginTop: 9,
+    fontSize: 10.5,
+    fontFamily: "Helvetica-Bold",
+    color: "#0f172a",
+    lineHeight: 1.35,
+  },
+
+  termsBody: {
+    marginTop: 3,
+    fontSize: 9,
+    color: "#334155",
+    lineHeight: 1.4,
+  },
+
+  termsGap: {
+    height: 6,
+  },
+
+  additionalTerms: {
+    marginTop: 16,
+  },
+
   footer: {
     position: "absolute",
     left: 40,
@@ -360,13 +511,13 @@ export default function ContractPdfDocument({
   contractDate,
 
   clientName,
+  clientCompanyName,
   clientEmail,
   clientPhone,
   clientAddressLines,
 
   jobNumber,
   jobTitle,
-  jobType,
   propertyAddressLines,
 
   quoteNumber,
@@ -387,6 +538,15 @@ export default function ContractPdfDocument({
     status === "Signed" ||
     Boolean(signedAt);
 
+  const companyLine = clientCompanyName?.trim() || "";
+  const customerLines = filledLines([
+    ...clientAddressLines,
+    clientEmail,
+    clientPhone,
+  ]);
+  const siteLines = filledLines(propertyAddressLines);
+  const additionalTerms = terms?.trim() || "";
+
   return (
     <Document
       title={`${contractNumber} - ${title}`}
@@ -397,166 +557,85 @@ export default function ContractPdfDocument({
         size="A4"
         style={styles.page}
       >
-        <View style={styles.hero}>
-          <View style={styles.heroRow}>
-            <View style={styles.branding}>
-              {logoDataUri ? (
-                <Image
-                  src={logoDataUri}
-                  style={styles.logo}
-                />
-              ) : (
-                <Text style={styles.companyName}>
-                  Dry Home Damp Proofing Solutions LTD
-                </Text>
-              )}
+        <View style={styles.header}>
+          <View style={styles.brandRow}>
+            {logoDataUri ? (
+              <Image src={logoDataUri} style={styles.logoFull} />
+            ) : null}
 
-              <Text style={styles.companyWebsite}>
-                dryhomedampproofing.co.uk
+            <View>
+              <Text style={styles.companyNameDark}>
+                Dry Home Damp Proofing Solutions Ltd
               </Text>
-            </View>
-
-            <View style={styles.heroRight}>
-              <Text style={styles.documentLabel}>
-                Works Contract
-              </Text>
-
-              <Text style={styles.contractNumber}>
-                {contractNumber}
-              </Text>
-
-              {contractDate && (
-                <Text style={styles.contractDate}>
-                  {formatDate(contractDate)}
-                </Text>
-              )}
-            </View>
-          </View>
-
-          <View style={styles.titleArea}>
-            <Text style={styles.eyebrow}>
-              Contract for Works
-            </Text>
-
-            <Text style={styles.contractTitle}>
-              {title || "Customer Contract"}
-            </Text>
-
-            <View style={styles.statusBadge}>
-              <Text style={styles.statusText}>
-                {signed
-                  ? "Signed"
-                  : status || "Contract"}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.detailsGrid}>
-          <View style={styles.detailsCard}>
-            <Text style={styles.smallLabel}>
-              Customer
-            </Text>
-
-            <Text style={styles.strongText}>
-              {clientName}
-            </Text>
-
-            {clientAddressLines.map(
-              (line, index) => (
-                <Text
-                  key={`${line}-${index}`}
-                  style={styles.text}
-                >
+              {COMPANY_LINES.map((line) => (
+                <Text key={line} style={styles.companyDetail}>
                   {line}
                 </Text>
-              )
-            )}
-
-            {clientEmail && (
-              <Text
-                style={[
-                  styles.text,
-                  styles.detailSpacing,
-                ]}
-              >
-                {clientEmail}
-              </Text>
-            )}
-
-            {clientPhone && (
-              <Text style={styles.text}>
-                {clientPhone}
-              </Text>
-            )}
+              ))}
+            </View>
           </View>
 
-          <View style={styles.detailsCard}>
-            <Text style={styles.smallLabel}>
-              Property / Job
-            </Text>
-
-            {jobNumber && (
-              <Text style={styles.strongText}>
-                {jobNumber}
+          <View style={styles.docHeader}>
+            <Text style={styles.docLabel}>Contract</Text>
+            <Text style={styles.docNumber}>{contractNumber}</Text>
+            {contractDate && (
+              <Text style={styles.docDate}>
+                Date: {formatDate(contractDate)}
               </Text>
-            )}
-
-            {jobTitle && (
-              <Text style={styles.text}>
-                {jobTitle}
-              </Text>
-            )}
-
-            {jobType && (
-              <Text style={styles.text}>
-                {jobType}
-              </Text>
-            )}
-
-            {propertyAddressLines.length >
-              0 && (
-              <View style={styles.detailSpacing}>
-                {propertyAddressLines.map(
-                  (line, index) => (
-                    <Text
-                      key={`${line}-${index}`}
-                      style={styles.text}
-                    >
-                      {line}
-                    </Text>
-                  )
-                )}
-              </View>
-            )}
-
-            {quoteNumber && (
-              <View style={styles.detailSpacing}>
-                <Text style={styles.smallLabel}>
-                  Original Quotation
-                </Text>
-
-                <Text style={styles.strongText}>
-                  {quoteNumber}
-                </Text>
-              </View>
             )}
           </View>
         </View>
 
-        <View style={styles.valuePanel}>
-          <View>
-            <Text style={styles.valueLabel}>
-              Contract Value
-            </Text>
-
-            <Text style={styles.valueSubtext}>
-              Agreed value of the contracted works
-            </Text>
+        <View style={styles.detailsRow}>
+          <View style={styles.column}>
+            <Text style={styles.smallLabel}>Customer</Text>
+            <Text style={styles.strongText}>{clientName}</Text>
+            {companyLine && (
+              <Text style={styles.addressText}>{companyLine}</Text>
+            )}
+            {customerLines.length > 0 && (
+              <Text style={styles.addressText}>
+                {customerLines.join("\n")}
+              </Text>
+            )}
           </View>
 
+          <View style={styles.column}>
+            <Text style={styles.smallLabel}>Job</Text>
+            {jobNumber ? (
+              <Text style={styles.strongText}>{jobNumber}</Text>
+            ) : (
+              <Text style={styles.text}>No linked job</Text>
+            )}
+            {jobTitle && (
+              <Text style={styles.text}>{jobTitle}</Text>
+            )}
+            {siteLines.length > 0 && (
+              <>
+                <Text style={styles.siteLabel}>Site</Text>
+                <Text style={styles.addressText}>
+                  {siteLines.join("\n")}
+                </Text>
+              </>
+            )}
+            {quoteNumber && (
+              <Text style={[styles.text, { marginTop: 6 }]}>
+                Quotation {quoteNumber}
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {title && (
+          <Text style={styles.workTitle}>{title}</Text>
+        )}
+
+        <View style={styles.valueBlock}>
           <Text style={styles.valueAmount}>
             {formatCurrency(total)}
+          </Text>
+          <Text style={styles.valueNote}>
+            In conjunction with our standard terms.
           </Text>
         </View>
 
@@ -564,13 +643,6 @@ export default function ContractPdfDocument({
           <Text style={styles.sectionText}>
             {description ||
               "No scope of works has been recorded."}
-          </Text>
-        </PdfSection>
-
-        <PdfSection title="Terms & Conditions">
-          <Text style={styles.sectionText}>
-            {terms ||
-              "No terms and conditions have been recorded."}
           </Text>
         </PdfSection>
 
@@ -656,10 +728,12 @@ export default function ContractPdfDocument({
 
         <Text style={styles.legalNote}>
           This document records the scope, value and terms of the
-          works agreed with Dry Home Damp Proofing Solutions LTD.
+          works agreed with Dry Home Damp Proofing Solutions Ltd.
           Any agreed changes to the works should be recorded
           separately as an authorised variation.
         </Text>
+
+        <StandardTerms additional={additionalTerms} />
 
         <View
           fixed
@@ -681,6 +755,58 @@ export default function ContractPdfDocument({
         </View>
       </Page>
     </Document>
+  );
+}
+
+
+function filledLines(
+  values: Array<string | null | undefined>
+) {
+  return values
+    .map((value) => value?.trim() ?? "")
+    .filter((value) => value.length > 0);
+}
+
+function StandardTerms({
+  additional,
+}: {
+  additional: string;
+}) {
+  const lines = QUOTE_STANDARD_TERMS.split("\n");
+
+  return (
+    <View break style={styles.termsWrap}>
+      <Text style={styles.termsTitle}>Terms and conditions</Text>
+      {lines.map((line, index) => {
+        if (line === "") {
+          return <View key={index} style={styles.termsGap} />;
+        }
+
+        const isHeading =
+          /^\d+\.\s/.test(line) && !/^\d+\.\d+/.test(line);
+
+        return (
+          <Text
+            key={index}
+            style={isHeading ? styles.termsHeading : styles.termsBody}
+          >
+            {line}
+          </Text>
+        );
+      })}
+      {additional ? (
+        <View style={styles.additionalTerms}>
+          <Text style={styles.termsHeading}>
+            Additional terms and conditions
+          </Text>
+          {additional.split("\n").map((line, index) => (
+            <Text key={index} style={styles.termsBody}>
+              {line || " "}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+    </View>
   );
 }
 

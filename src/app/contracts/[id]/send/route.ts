@@ -534,6 +534,10 @@ export async function POST(
 
           clientName,
 
+          clientCompanyName:
+            client?.company_name ||
+            null,
+
           clientEmail:
             client?.email ||
             null,
@@ -842,6 +846,7 @@ async function loadContractContext(
           last_name,
           email,
           phone,
+          company_name,
           address_line_1,
           address_line_2,
           town,
