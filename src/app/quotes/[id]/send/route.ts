@@ -648,12 +648,24 @@ export async function POST(
     client?.town,
     client?.county,
     client?.postcode,
-  ].filter(
-    (
-      value
-    ): value is string =>
-      Boolean(value)
-  );
+  ]
+    .map((value) => value?.trim() ?? "")
+    .filter((value) => value.length > 0);
+
+  const jobAddressLines = [
+    job?.address_line_1,
+    job?.address_line_2,
+    job?.town,
+    job?.county,
+    job?.postcode,
+  ]
+    .map((value) => value?.trim() ?? "")
+    .filter((value) => value.length > 0);
+
+  const siteAddressLines =
+    jobAddressLines.length > 0
+      ? jobAddressLines
+      : clientAddressLines;
 
   /* =========================================================
      PDF
@@ -689,6 +701,10 @@ export async function POST(
 
           clientName,
 
+          clientCompanyName:
+            client?.company_name ||
+            null,
+
           clientEmail:
             client?.email ||
             null,
@@ -706,6 +722,8 @@ export async function POST(
           jobTitle:
             job?.title ||
             null,
+
+          siteAddressLines,
 
           labourItems,
 
@@ -997,6 +1015,7 @@ async function loadQuoteContext(
           last_name,
           email,
           phone,
+          company_name,
           address_line_1,
           address_line_2,
           town,
@@ -1007,7 +1026,12 @@ async function loadQuoteContext(
         jobs (
           id,
           job_number,
-          title
+          title,
+          address_line_1,
+          address_line_2,
+          town,
+          county,
+          postcode
         )
       `)
       .eq(
