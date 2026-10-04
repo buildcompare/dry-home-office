@@ -54,8 +54,8 @@ const COMPANY_LINES = [
   "Berkshire",
   "RG7 1FE",
   "0118 9740 020",
-  "Company number 16804053",
   "Contact@dryhomedampproofing.co.uk",
+  "Company number 16804053",
 ];
 
 const styles = StyleSheet.create({
