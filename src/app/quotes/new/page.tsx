@@ -363,13 +363,13 @@ export default async function NewQuotePage({
             {/* Terms */}
             <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">
-                Terms
+                Additional terms and conditions
               </h2>
 
               <textarea
                 name="terms"
                 rows={5}
-                defaultValue="This quotation is valid for 30 days from the date shown. Any additional works not included within this quotation will be discussed and agreed before proceeding."
+                placeholder="Optional. Leave blank to use only the standard terms."
                 className="mt-5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
               />
             </section>

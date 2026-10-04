@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { additionalQuoteTerms } from "@/lib/quote-additional-terms";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -377,14 +378,14 @@ export default async function CustomerQuotePage({
           )}
 
           {/* Terms */}
-          {quote.terms && (
+          {additionalQuoteTerms(quote.terms) && (
             <section className="border-t border-slate-200 p-6 sm:p-10">
               <h2 className="text-lg font-bold text-slate-900">
-                Terms
+                Additional terms and conditions
               </h2>
 
               <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-600">
-                {quote.terms}
+                {additionalQuoteTerms(quote.terms)}
               </p>
             </section>
           )}

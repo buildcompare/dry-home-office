@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { additionalQuoteTerms } from "@/lib/quote-additional-terms";
 import { notFound } from "next/navigation";
 
 import Sidebar from "@/components/Sidebar";
@@ -999,12 +1000,12 @@ export default async function QuotePage({
 
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">
-                Terms
+                Additional terms and conditions
               </h2>
 
               <p className="mt-5 whitespace-pre-wrap text-sm leading-6 text-slate-700">
-                {quote.terms ||
-                  "No terms recorded."}
+                {additionalQuoteTerms(quote.terms) ||
+                  "No additional terms."}
               </p>
             </section>
           </div>
