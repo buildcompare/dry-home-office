@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { additionalQuoteTerms } from "@/lib/quote-additional-terms";
+import { QUOTE_STANDARD_TERMS } from "@/lib/quote-standard-terms";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -378,17 +379,25 @@ export default async function CustomerQuotePage({
           )}
 
           {/* Terms */}
-          {additionalQuoteTerms(quote.terms) && (
-            <section className="border-t border-slate-200 p-6 sm:p-10">
-              <h2 className="text-lg font-bold text-slate-900">
-                Additional terms and conditions
-              </h2>
+          <section className="border-t border-slate-200 p-6 sm:p-10">
+            <h2 className="text-lg font-bold text-slate-900">
+              Terms and conditions
+            </h2>
 
-              <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-600">
-                {additionalQuoteTerms(quote.terms)}
-              </p>
-            </section>
-          )}
+            <StandardTerms />
+
+            {additionalQuoteTerms(quote.terms) && (
+              <div className="mt-8 border-t border-slate-200 pt-6">
+                <h3 className="text-base font-semibold text-slate-900">
+                  Additional terms and conditions
+                </h3>
+
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                  {additionalQuoteTerms(quote.terms)}
+                </p>
+              </div>
+            )}
+          </section>
 
           {/* Accept / Decline */}
           <section className="border-t border-slate-200 bg-slate-50 p-6 sm:p-10">
@@ -611,6 +620,37 @@ function SmallLabel({
     <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
       {children}
     </p>
+  );
+}
+
+
+function StandardTerms() {
+  const lines = QUOTE_STANDARD_TERMS.split("\n");
+
+  return (
+    <div className="mt-4 text-sm leading-6 text-slate-700">
+      {lines.map((line, index) => {
+        if (line === "") {
+          return <div key={index} className="h-3" />;
+        }
+
+        const isHeading =
+          /^\d+\.\s/.test(line) && !/^\d+\.\d+/.test(line);
+
+        return (
+          <p
+            key={index}
+            className={
+              isHeading
+                ? "pt-2 font-semibold text-slate-900"
+                : ""
+            }
+          >
+            {line}
+          </p>
+        );
+      })}
+    </div>
   );
 }
 
