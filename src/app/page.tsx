@@ -1100,24 +1100,14 @@ function DashboardCard({
   return (
     <Link
       href={href}
-      className={`rounded-2xl p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-        danger
-          ? "border border-red-200 bg-red-50"
-          : "bg-white"
-      }`}
+      className="mx-auto flex aspect-square w-full max-w-44 flex-col items-center justify-center rounded-full border-2 border-[#be1e2d] bg-white px-5 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
     >
-      <p
-        className={`text-sm font-medium ${
-          danger
-            ? "text-red-600"
-            : "text-slate-500"
-        }`}
-      >
+      <p className="text-xs font-medium leading-tight text-slate-500">
         {title}
       </p>
 
       <p
-        className={`mt-3 text-2xl font-bold ${
+        className={`mt-1 text-2xl font-bold leading-none ${
           danger
             ? "text-red-800"
             : "text-slate-900"
@@ -1126,13 +1116,7 @@ function DashboardCard({
         {value}
       </p>
 
-      <p
-        className={`mt-2 text-sm ${
-          danger
-            ? "text-red-500"
-            : "text-slate-400"
-        }`}
-      >
+      <p className="mt-1 text-xs leading-tight text-slate-400">
         {description}
       </p>
     </Link>
