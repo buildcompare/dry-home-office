@@ -1,16 +1,12 @@
-import React from "react";
-import path from "path";
-import { readFile } from "fs/promises";
-
 import { NextRequest } from "next/server";
 import { Resend } from "resend";
-import {
-  renderToBuffer,
-} from "@react-pdf/renderer";
 
 import { createClient } from "@/lib/supabase/server";
-import ContractPdfDocument from "@/components/ContractPdfDocument";
-import build from "next/dist/build";
+import {
+  contractClientName,
+  contractPdfFilename,
+  renderContractPdf,
+} from "@/lib/contract-pdf";
 
 export const runtime = "nodejs";
 
@@ -139,7 +135,7 @@ export async function GET(
   }
 
   const clientName =
-    getClientName(client);
+    contractClientName(client);
 
   const jobTitle =
     job?.title ||
@@ -304,7 +300,7 @@ export async function POST(
   }
 
   const clientName =
-    getClientName(client);
+    contractClientName(client);
 
   const jobTitle =
     job?.title ||
@@ -490,114 +486,17 @@ export async function POST(
      CONTRACT PDF
      ========================================================= */
 
-  const clientAddressLines =
-    getAddressLines(
-      client
-    );
-
-  const jobAddressLines =
-    getAddressLines(
-      job
-    );
-
-  const propertyAddressLines =
-    jobAddressLines.length >
-    0
-      ? jobAddressLines
-      : clientAddressLines;
-
-  const logoDataUri =
-    await loadLogoFromDisk();
-
   let pdfBuffer: Buffer;
 
   try {
-    const pdfDocument =
-      React.createElement(
-        ContractPdfDocument,
-        {
-          logoDataUri,
-
-          contractNumber:
-            contract.contract_number,
-
-          title:
-            contract.title ||
-            "Customer Contract",
-
-          status:
-            contract.status ||
-            "Contract",
-
-          contractDate:
-            contract.contract_date,
-
-          clientName,
-
-          clientCompanyName:
-            client?.company_name ||
-            null,
-
-          clientEmail:
-            client?.email ||
-            null,
-
-          clientPhone:
-            client?.phone ||
-            null,
-
-          clientAddressLines,
-
-          jobNumber:
-            job?.job_number ||
-            null,
-
-          jobTitle:
-            job?.title ||
-            null,
-
-          jobType:
-            job?.job_type ||
-            null,
-
-          propertyAddressLines,
-
-          quoteNumber:
-            quote?.quote_number ||
-            null,
-
-          description:
-            contract.description,
-
-          terms:
-            contract.terms,
-
-          customerMessage:
-            contract.customer_message,
-
-          total:
-            Number(
-              contract.amount ??
-                0
-            ),
-
-          signedAt:
-            contract.signed_at,
-
-          signedName:
-            contract.signed_name,
-
-          signedEmail:
-            contract.signed_email,
-
-          customerUrl,
-        }
-      );
-
     pdfBuffer =
-      await renderToBuffer(
-        pdfDocument
-      );
+      await renderContractPdf({
+        contract,
+        client,
+        job,
+        quote,
+        customerUrl,
+      });
   } catch (pdfError) {
     console.error(
       "Unable to generate contract PDF:",
@@ -612,10 +511,9 @@ export async function POST(
   }
 
   const pdfFilename =
-    makePdfFilename(
+    contractPdfFilename(
       contract.contract_number,
-      contract.title ||
-        "Contract"
+      contract.title
     );
 
   /* =========================================================
@@ -972,114 +870,6 @@ async function loadContractContext(
 }
 
 /* =========================================================
-   PDF LOGO
-   ========================================================= */
-
-async function loadLogoFromDisk():
-  Promise<string | null> {
-  try {
-    const logoPath =
-      path.join(
-        process.cwd(),
-        "public",
-        "dryhome-logo.png"
-      );
-
-    const logoBuffer =
-      await readFile(
-        logoPath
-      );
-
-    return `data:image/png;base64,${logoBuffer.toString(
-      "base64"
-    )}`;
-  } catch (error) {
-    console.error(
-      "Unable to load contract PDF logo:",
-      error
-    );
-
-    return null;
-  }
-}
-
-/* =========================================================
-   CLIENT / ADDRESS
-   ========================================================= */
-
-function getClientName(
-  client:
-    | {
-        display_name?:
-          | string
-          | null;
-
-        first_name?:
-          | string
-          | null;
-
-        last_name?:
-          | string
-          | null;
-      }
-    | null
-    | undefined
-) {
-  return (
-    client?.display_name ||
-    [
-      client?.first_name,
-      client?.last_name,
-    ]
-      .filter(Boolean)
-      .join(" ") ||
-    "Customer"
-  );
-}
-
-function getAddressLines(
-  record:
-    | {
-        address_line_1?:
-          | string
-          | null;
-
-        address_line_2?:
-          | string
-          | null;
-
-        town?:
-          | string
-          | null;
-
-        county?:
-          | string
-          | null;
-
-        postcode?:
-          | string
-          | null;
-      }
-    | null
-    | undefined
-) {
-  return [
-    record?.address_line_1,
-    record?.address_line_2,
-    record?.town,
-    record?.county,
-    record?.postcode,
-  ].filter(
-    (
-      value
-    ): value is string =>
-      Boolean(
-        value?.trim()
-      )
-  );
-}
-
-/* =========================================================
    TEMPLATE
    ========================================================= */
 
@@ -1393,29 +1183,6 @@ function sanitiseAttachmentFilename(
     cleaned ||
     "attachment"
   );
-}
-
-function makePdfFilename(
-  contractNumber: string,
-  title: string
-) {
-  return `${contractNumber}-${title}`
-    .replace(
-      /[^a-zA-Z0-9-_ ]/g,
-      ""
-    )
-    .replace(
-      /\s+/g,
-      "-"
-    )
-    .replace(
-      /-+/g,
-      "-"
-    )
-    .replace(
-      /^-|-$/g,
-      ""
-    );
 }
 
 /* =========================================================

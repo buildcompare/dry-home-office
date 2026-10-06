@@ -10,6 +10,8 @@ import {
   View,
 } from "@react-pdf/renderer";
 
+import { contractSpecialTerms } from "@/lib/contract-special-terms";
+import { PDF_LOGO_STYLE } from "@/lib/pdf-logo-style";
 import { QUOTE_STANDARD_TERMS } from "@/lib/quote-standard-terms";
 
 type ContractPdfDocumentProps = {
@@ -368,11 +370,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
 
-  logoFull: {
-    width: 104,
-    height: 104,
-    objectFit: "contain",
-  },
+  /* Same logo size/fit as the quote PDF. */
+  logoFull: PDF_LOGO_STYLE,
 
   companyNameDark: {
     fontSize: 10,
@@ -483,10 +482,6 @@ const styles = StyleSheet.create({
     height: 6,
   },
 
-  additionalTerms: {
-    marginTop: 16,
-  },
-
   footer: {
     position: "absolute",
     left: 40,
@@ -545,7 +540,7 @@ export default function ContractPdfDocument({
     clientPhone,
   ]);
   const siteLines = filledLines(propertyAddressLines);
-  const additionalTerms = terms?.trim() || "";
+  const specialTerms = contractSpecialTerms(terms);
 
   return (
     <Document
@@ -646,6 +641,14 @@ export default function ContractPdfDocument({
           </Text>
         </PdfSection>
 
+        {specialTerms && (
+          <PdfSection title="Special terms">
+            <Text style={styles.sectionText}>
+              {specialTerms}
+            </Text>
+          </PdfSection>
+        )}
+
         {customerMessage && (
           <View style={styles.messageBox}>
             <Text style={styles.messageTitle}>
@@ -659,7 +662,7 @@ export default function ContractPdfDocument({
         )}
 
         {signed ? (
-          <View style={styles.signedBox}>
+          <View wrap={false} style={styles.signedBox}>
             <Text style={styles.signedTitle}>
               Agreement Confirmed
             </Text>
@@ -706,7 +709,7 @@ export default function ContractPdfDocument({
             </View>
           </View>
         ) : (
-          <View style={styles.acceptanceBox}>
+          <View wrap={false} style={styles.acceptanceBox}>
             <Text style={styles.acceptanceTitle}>
               Review & Sign Online
             </Text>
@@ -733,7 +736,8 @@ export default function ContractPdfDocument({
           separately as an authorised variation.
         </Text>
 
-        <StandardTerms additional={additionalTerms} />
+        {/* Standard terms always come last, on their own page. */}
+        <StandardTerms />
 
         <View
           fixed
@@ -767,11 +771,7 @@ function filledLines(
     .filter((value) => value.length > 0);
 }
 
-function StandardTerms({
-  additional,
-}: {
-  additional: string;
-}) {
+function StandardTerms() {
   const lines = QUOTE_STANDARD_TERMS.split("\n");
 
   return (
@@ -794,18 +794,6 @@ function StandardTerms({
           </Text>
         );
       })}
-      {additional ? (
-        <View style={styles.additionalTerms}>
-          <Text style={styles.termsHeading}>
-            Additional terms and conditions
-          </Text>
-          {additional.split("\n").map((line, index) => (
-            <Text key={index} style={styles.termsBody}>
-              {line || " "}
-            </Text>
-          ))}
-        </View>
-      ) : null}
     </View>
   );
 }

@@ -1,5 +1,7 @@
 import Image from "next/image";
 import { notFound } from "next/navigation";
+import StandardTermsText from "@/components/StandardTermsText";
+import { contractSpecialTerms } from "@/lib/contract-special-terms";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type CustomerContractPageProps = {
@@ -138,6 +140,11 @@ export default async function CustomerContractPage({
   const isSigned =
     contract.status ===
     "Signed";
+
+  const specialTerms =
+    contractSpecialTerms(
+      contract.terms
+    );
 
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-8 sm:px-6 lg:px-8">
@@ -306,16 +313,17 @@ export default async function CustomerContractPage({
               </p>
             </section>
 
-            <section className="mt-10 border-t border-slate-200 pt-8">
-              <h2 className="text-xl font-bold text-slate-900">
-                Terms & Conditions
-              </h2>
+            {specialTerms && (
+              <section className="mt-10 border-t border-slate-200 pt-8">
+                <h2 className="text-xl font-bold text-slate-900">
+                  Special terms
+                </h2>
 
-              <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-700">
-                {contract.terms ||
-                  "No terms have been recorded."}
-              </p>
-            </section>
+                <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                  {specialTerms}
+                </p>
+              </section>
+            )}
 
             {contract.customer_message && (
               <section className="mt-10 rounded-xl bg-slate-50 p-6">
@@ -330,6 +338,14 @@ export default async function CustomerContractPage({
                 </p>
               </section>
             )}
+
+            <section className="mt-10 border-t border-slate-200 pt-8">
+              <h2 className="text-xl font-bold text-slate-900">
+                Terms and conditions
+              </h2>
+
+              <StandardTermsText />
+            </section>
 
             <section className="mt-10 rounded-xl bg-slate-950 p-6 text-white sm:p-8">
               {isSigned ? (
