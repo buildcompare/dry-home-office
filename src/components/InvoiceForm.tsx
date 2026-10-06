@@ -512,6 +512,7 @@ export default function InvoiceForm({
 
       {hasMaximum && (
         <input
+          spellCheck={false}
           type="number"
           value={total.toFixed(
             2
@@ -615,6 +616,7 @@ export default function InvoiceForm({
                   </label>
 
                   <input
+                    spellCheck
                     type="text"
                     value={
                       item.description
@@ -640,6 +642,7 @@ export default function InvoiceForm({
                   </label>
 
                   <input
+                    spellCheck={false}
                     type="number"
                     min="0"
                     step="0.01"
@@ -666,6 +669,7 @@ export default function InvoiceForm({
                   </label>
 
                   <input
+                    spellCheck={false}
                     type="text"
                     value={
                       item.unit
@@ -696,6 +700,7 @@ export default function InvoiceForm({
                     </span>
 
                     <input
+                      spellCheck={false}
                       type="number"
                       min="0"
                       step="0.01"
@@ -781,6 +786,7 @@ export default function InvoiceForm({
                   </label>
 
                   <input
+                    spellCheck
                     type="text"
                     value={
                       item.description
@@ -806,6 +812,7 @@ export default function InvoiceForm({
                   </label>
 
                   <input
+                    spellCheck={false}
                     type="number"
                     min="0"
                     step="0.01"
@@ -832,6 +839,7 @@ export default function InvoiceForm({
                   </label>
 
                   <input
+                    spellCheck={false}
                     type="text"
                     value={
                       item.unit
@@ -862,6 +870,7 @@ export default function InvoiceForm({
                     </span>
 
                     <input
+                      spellCheck={false}
                       type="number"
                       min="0"
                       step="0.01"
@@ -938,6 +947,7 @@ export default function InvoiceForm({
                 </label>
 
                 <input
+                  spellCheck={false}
                   type="number"
                   min="0"
                   step="0.01"

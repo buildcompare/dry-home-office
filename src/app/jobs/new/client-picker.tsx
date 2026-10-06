@@ -47,6 +47,7 @@ export default function ClientPicker({
   return (
     <div className="relative">
       <input
+        spellCheck={false}
         type="text"
         name="client_id"
         value={clientId}
@@ -61,6 +62,7 @@ export default function ClientPicker({
       <div className="flex gap-2">
         <div className="relative min-w-0 flex-1">
           <input
+            spellCheck={false}
             type="search"
             value={query}
             placeholder="Search clients by name or company"

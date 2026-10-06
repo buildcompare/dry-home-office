@@ -48,6 +48,7 @@ export default async function TodosPage() {
           {!error && (
             <form action={addTodo} className="mt-6 flex gap-3">
               <input
+                spellCheck
                 name="title"
                 placeholder="Jot something down"
                 className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-slate-500"

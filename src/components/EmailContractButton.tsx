@@ -492,6 +492,7 @@ export default function EmailContractButton({
                     </label>
 
                     <input
+                      spellCheck={false}
                       id={`contract-email-to-${contractId}`}
                       type="email"
                       value={
@@ -529,6 +530,7 @@ export default function EmailContractButton({
                     </label>
 
                     <input
+                      spellCheck={false}
                       id={`contract-email-secondary-${contractId}`}
                       type="email"
                       value={
@@ -558,6 +560,7 @@ export default function EmailContractButton({
                     </label>
 
                     <input
+                      spellCheck
                       id={`contract-email-subject-${contractId}`}
                       type="text"
                       value={
@@ -601,6 +604,7 @@ export default function EmailContractButton({
                     </div>
 
                     <textarea
+                      spellCheck
                       id={`contract-email-body-${contractId}`}
                       value={
                         body

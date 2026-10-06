@@ -461,6 +461,7 @@ export default async function VariationPage({
                   </label>
 
                   <input
+                    spellCheck
                     id="accepted_by"
                     type="text"
                     name="accepted_by"

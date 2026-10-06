@@ -12,8 +12,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en-GB">
+      {/* Browser-native spell checking (British English via lang) for all editable fields by default. */}
+      <body spellCheck>{children}</body>
     </html>
   );
 }

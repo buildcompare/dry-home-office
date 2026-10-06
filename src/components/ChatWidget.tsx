@@ -97,6 +97,7 @@ export default function ChatWidget({
             className="flex gap-2 border-t border-slate-200 p-3"
           >
             <input
+              spellCheck
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               placeholder="Type a message"

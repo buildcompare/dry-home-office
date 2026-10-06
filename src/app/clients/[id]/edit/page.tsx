@@ -399,6 +399,7 @@ export default async function EditClientPage({
                 <Field
                   label="Postcode"
                   name="postcode"
+                  spellCheck={false}
                   defaultValue={
                     client.postcode
                   }
@@ -418,6 +419,7 @@ export default async function EditClientPage({
               </p>
 
               <textarea
+                spellCheck
                 name="notes"
                 defaultValue={
                   client.notes ??
@@ -580,6 +582,7 @@ function Field({
   defaultValue,
   type = "text",
   required = false,
+  spellCheck = type === "text",
 }: {
   label: string;
   name: string;
@@ -590,6 +593,7 @@ function Field({
 
   type?: string;
   required?: boolean;
+  spellCheck?: boolean;
 }) {
   return (
     <label className="block">
@@ -610,6 +614,9 @@ function Field({
         }
         required={
           required
+        }
+        spellCheck={
+          spellCheck
         }
         className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-slate-500"
       />

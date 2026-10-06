@@ -572,6 +572,7 @@ export default async function NewScheduleEventPage({
                 </label>
 
                 <textarea
+                  spellCheck
                   name="notes"
                   rows={4}
                   className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900"
@@ -611,6 +612,7 @@ function Field({
   required = false,
   placeholder,
   defaultValue,
+  spellCheck = type === "text",
 }: {
   label: string;
   name: string;
@@ -618,6 +620,7 @@ function Field({
   required?: boolean;
   placeholder?: string;
   defaultValue?: string;
+  spellCheck?: boolean;
 }) {
   return (
     <div>
@@ -643,6 +646,9 @@ function Field({
         }
         defaultValue={
           defaultValue
+        }
+        spellCheck={
+          spellCheck
         }
         className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900 outline-none focus:border-slate-900"
       />

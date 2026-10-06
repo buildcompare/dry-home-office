@@ -518,6 +518,7 @@ export default async function InvoicePage({
                       </span>
 
                       <input
+                        spellCheck={false}
                         id="payment_amount"
                         name="payment_amount"
                         type="number"
@@ -547,6 +548,7 @@ export default async function InvoicePage({
                     </label>
 
                     <input
+                      spellCheck={false}
                       id="payment_date"
                       name="payment_date"
                       type="date"
@@ -601,6 +603,7 @@ export default async function InvoicePage({
                     </label>
 
                     <input
+                      spellCheck={false}
                       id="payment_reference"
                       name="payment_reference"
                       type="text"
@@ -618,6 +621,7 @@ export default async function InvoicePage({
                     </label>
 
                     <textarea
+                      spellCheck
                       id="payment_notes"
                       name="payment_notes"
                       rows={3}

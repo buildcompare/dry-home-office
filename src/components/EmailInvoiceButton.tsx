@@ -496,6 +496,7 @@ export default function EmailInvoiceButton({
                     </label>
 
                     <input
+                      spellCheck={false}
                       id={`invoice-email-to-${invoiceId}`}
                       type="email"
                       value={
@@ -535,6 +536,7 @@ export default function EmailInvoiceButton({
                     </label>
 
                     <input
+                      spellCheck={false}
                       id={`invoice-email-secondary-${invoiceId}`}
                       type="email"
                       value={
@@ -566,6 +568,7 @@ export default function EmailInvoiceButton({
                     </label>
 
                     <input
+                      spellCheck
                       id={`invoice-email-subject-${invoiceId}`}
                       type="text"
                       value={
@@ -613,6 +616,7 @@ export default function EmailInvoiceButton({
                     </div>
 
                     <textarea
+                      spellCheck
                       id={`invoice-email-body-${invoiceId}`}
                       value={
                         body

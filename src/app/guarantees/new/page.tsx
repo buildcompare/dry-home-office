@@ -1012,6 +1012,7 @@ export default async function NewGuaranteePage({
                   </label>
 
                   <input
+                    spellCheck
                     id="title"
                     name="title"
                     type="text"
@@ -1032,6 +1033,7 @@ export default async function NewGuaranteePage({
                   </label>
 
                   <input
+                    spellCheck={false}
                     id="issue_date"
                     name="issue_date"
                     type="date"
@@ -1096,6 +1098,7 @@ export default async function NewGuaranteePage({
                   </label>
 
                   <input
+                    spellCheck={false}
                     id="expiry_date"
                     name="expiry_date"
                     type="date"
@@ -1126,6 +1129,7 @@ export default async function NewGuaranteePage({
               </p>
 
               <textarea
+                spellCheck
                 name="covered_works"
                 rows={
                   7
@@ -1147,6 +1151,7 @@ export default async function NewGuaranteePage({
               </h2>
 
               <textarea
+                spellCheck
                 name="terms"
                 rows={
                   7
@@ -1168,6 +1173,7 @@ export default async function NewGuaranteePage({
               </h2>
 
               <textarea
+                spellCheck
                 name="exclusions"
                 rows={
                   6
@@ -1189,6 +1195,7 @@ export default async function NewGuaranteePage({
               </h2>
 
               <textarea
+                spellCheck
                 name="customer_message"
                 rows={
                   4
@@ -1210,6 +1217,7 @@ export default async function NewGuaranteePage({
               </h2>
 
               <textarea
+                spellCheck
                 name="internal_notes"
                 rows={
                   4

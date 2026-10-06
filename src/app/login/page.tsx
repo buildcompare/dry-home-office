@@ -44,6 +44,7 @@ export default async function LoginPage({
             </label>
 
             <input
+              spellCheck={false}
               id="email"
               name="email"
               type="email"
@@ -63,6 +64,7 @@ export default async function LoginPage({
             </label>
 
             <input
+              spellCheck={false}
               id="password"
               name="password"
               type="password"

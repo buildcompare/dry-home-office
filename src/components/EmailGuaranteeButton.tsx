@@ -500,6 +500,7 @@ export default function EmailGuaranteeButton({
                     </label>
 
                     <input
+                      spellCheck={false}
                       id={`guarantee-email-to-${guaranteeId}`}
                       type="email"
                       value={
@@ -537,6 +538,7 @@ export default function EmailGuaranteeButton({
                     </label>
 
                     <input
+                      spellCheck={false}
                       id={`guarantee-email-secondary-${guaranteeId}`}
                       type="email"
                       value={
@@ -568,6 +570,7 @@ export default function EmailGuaranteeButton({
                     </label>
 
                     <input
+                      spellCheck
                       id={`guarantee-email-subject-${guaranteeId}`}
                       type="text"
                       value={
@@ -613,6 +616,7 @@ export default function EmailGuaranteeButton({
                     </div>
 
                     <textarea
+                      spellCheck
                       id={`guarantee-email-body-${guaranteeId}`}
                       value={
                         body
