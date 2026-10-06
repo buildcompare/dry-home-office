@@ -3,6 +3,12 @@ import { Resend } from "resend";
 import { renderToBuffer } from "@react-pdf/renderer";
 
 import { createClient } from "@/lib/supabase/server";
+import {
+  buildRecipientList,
+  formatSentTo,
+  toResendRecipients,
+} from "@/lib/email-recipients";
+import { loadClientSecondaryEmail } from "@/lib/client-secondary-email";
 import { loadPdfLogoDataUri } from "@/lib/pdf-logo";
 import QuotePdfDocument from "@/components/QuotePdfDocument";
 
@@ -111,8 +117,23 @@ export async function GET(
     template,
   } = context;
 
-  const recipient =
-    client?.email?.trim();
+  const secondaryEmail =
+    await loadClientSecondaryEmail(
+      supabase,
+      client?.id
+    );
+
+  /*
+   * Primary email first, then the secondary email (if any).
+   */
+
+  const [
+    recipient,
+    secondaryRecipient = "",
+  ] = buildRecipientList(
+    client?.email,
+    secondaryEmail
+  );
 
   if (!recipient) {
     return Response.json(
@@ -205,6 +226,7 @@ export async function GET(
 
   return Response.json({
     recipient,
+    secondaryRecipient,
     subject,
     body,
 
@@ -307,9 +329,19 @@ export async function POST(
       null;
   }
 
-  const defaultRecipient =
-    client?.email?.trim() ||
-    "";
+  const secondaryEmail =
+    await loadClientSecondaryEmail(
+      supabase,
+      client?.id
+    );
+
+  const [
+    defaultRecipient = "",
+    defaultSecondaryRecipient = "",
+  ] = buildRecipientList(
+    client?.email,
+    secondaryEmail
+  );
 
   const recipient =
     String(
@@ -317,6 +349,20 @@ export async function POST(
         "recipient"
       ) ??
         defaultRecipient
+    ).trim();
+
+  /*
+   * The composer always sends this field (blank when removed).
+   * If it is missing entirely, fall back to the client's
+   * secondary email.
+   */
+
+  const secondaryRecipient =
+    String(
+      formData?.get(
+        "secondary_recipient"
+      ) ??
+        defaultSecondaryRecipient
     ).trim();
 
   if (
@@ -332,6 +378,26 @@ export async function POST(
       400
     );
   }
+
+  if (
+    secondaryRecipient &&
+    !isValidEmail(
+      secondaryRecipient
+    )
+  ) {
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "Please enter a valid secondary email address.",
+      400
+    );
+  }
+
+  const recipients =
+    buildRecipientList(
+      recipient,
+      secondaryRecipient
+    );
 
   const clientName =
     getClientName(
@@ -848,7 +914,9 @@ export async function POST(
         fromAddress,
 
       to:
-        recipient,
+        toResendRecipients(
+          recipients
+        ),
 
       subject,
 
@@ -918,7 +986,9 @@ export async function POST(
           : "Sent",
 
       sent_to:
-        recipient,
+        formatSentTo(
+          recipients
+        ),
 
       sent_at:
         sentAt,

@@ -6,14 +6,21 @@ import {
   useState,
 } from "react";
 
+import {
+  buildRecipientList,
+  describeRecipients,
+} from "@/lib/email-recipients";
+
 type EmailInvoiceButtonProps = {
   invoiceId: string;
   recipient: string | null;
+  secondaryRecipient?: string | null;
   status: string;
 };
 
 type ComposerData = {
   recipient: string;
+  secondaryRecipient?: string;
   subject: string;
   body: string;
 };
@@ -26,6 +33,7 @@ const MAX_TOTAL_ATTACHMENT_SIZE =
 export default function EmailInvoiceButton({
   invoiceId,
   recipient,
+  secondaryRecipient,
   status,
 }: EmailInvoiceButtonProps) {
   const [open, setOpen] =
@@ -46,6 +54,13 @@ export default function EmailInvoiceButton({
     useState(
       recipient || ""
     );
+
+  const [
+    secondaryEmailTo,
+    setSecondaryEmailTo,
+  ] = useState(
+    secondaryRecipient || ""
+  );
 
   const [subject, setSubject] =
     useState("");
@@ -70,6 +85,14 @@ export default function EmailInvoiceButton({
 
   const hasEmail =
     Boolean(recipient);
+
+  const clientRecipients =
+    describeRecipients(
+      buildRecipientList(
+        recipient,
+        secondaryRecipient
+      )
+    );
 
   async function openComposer() {
     if (!recipient) {
@@ -113,6 +136,12 @@ export default function EmailInvoiceButton({
       setEmailTo(
         composerData.recipient ||
           recipient
+      );
+
+      setSecondaryEmailTo(
+        composerData.secondaryRecipient ??
+          secondaryRecipient ??
+          ""
       );
 
       setSubject(
@@ -276,11 +305,19 @@ export default function EmailInvoiceButton({
       return;
     }
 
+    const sendingTo =
+      describeRecipients(
+        buildRecipientList(
+          emailTo,
+          secondaryEmailTo
+        )
+      );
+
     const confirmed =
       window.confirm(
         status === "Draft"
-          ? `Send this invoice to ${emailTo}?`
-          : `Send this invoice again to ${emailTo}?`
+          ? `Send this invoice to ${sendingTo}?`
+          : `Send this invoice again to ${sendingTo}?`
       );
 
     if (!confirmed) {
@@ -296,6 +333,11 @@ export default function EmailInvoiceButton({
       formData.set(
         "recipient",
         emailTo.trim()
+      );
+
+      formData.set(
+        "secondary_recipient",
+        secondaryEmailTo.trim()
       );
 
       formData.set(
@@ -376,7 +418,7 @@ export default function EmailInvoiceButton({
         }`}
         title={
           hasEmail
-            ? `Send to ${recipient}`
+            ? `Send to ${clientRecipients}`
             : "The client does not have an email address"
         }
       >
@@ -477,6 +519,40 @@ export default function EmailInvoiceButton({
                     <p className="mt-1 text-xs text-slate-400">
                       Changing this address only affects this email. It does not change the client record.
                     </p>
+                  </div>
+
+                  {/* SECONDARY EMAIL */}
+
+                  <div className="mt-5">
+                    <label
+                      htmlFor={`invoice-email-secondary-${invoiceId}`}
+                      className="block text-sm font-semibold text-slate-700"
+                    >
+                      Also send to{" "}
+                      <span className="font-normal text-slate-400">
+                        (secondary email, optional)
+                      </span>
+                    </label>
+
+                    <input
+                      id={`invoice-email-secondary-${invoiceId}`}
+                      type="email"
+                      value={
+                        secondaryEmailTo
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        setSecondaryEmailTo(
+                          event.target.value
+                        )
+                      }
+                      disabled={
+                        sending
+                      }
+                      placeholder="Leave blank to send to the main address only"
+                      className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:border-slate-500"
+                    />
                   </div>
 
                   {/* SUBJECT */}

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import Sidebar from "@/components/Sidebar";
 import { createClient } from "@/lib/supabase/server";
+import { loadClientSecondaryEmail } from "@/lib/client-secondary-email";
 
 type ClientPageProps = {
   params: Promise<{
@@ -12,6 +13,7 @@ type ClientPageProps = {
   searchParams: Promise<{
     updated?: string;
     error?: string;
+    secondary_email_not_saved?: string;
   }>;
 };
 
@@ -36,6 +38,7 @@ export default async function ClientPage({
     invoicesResult,
     contractsResult,
     guaranteesResult,
+    secondaryEmail,
   ] = await Promise.all([
     supabase
       .from("clients")
@@ -182,6 +185,11 @@ export default async function ClientPage({
             false,
         }
       ),
+
+    loadClientSecondaryEmail(
+      supabase,
+      id
+    ),
   ]);
 
   const client =
@@ -238,6 +246,16 @@ export default async function ClientPage({
             "1" && (
             <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
               Client details updated successfully.
+            </div>
+          )}
+
+          {query.secondary_email_not_saved ===
+            "1" && (
+            <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-medium text-amber-800">
+              The client was saved, but the secondary email could not be
+              stored yet because the database has not been updated with the
+              new secondary email field. Please try again once it has been
+              added.
             </div>
           )}
 
@@ -371,6 +389,15 @@ export default async function ClientPage({
                     client.email
                   }
                 />
+
+                {secondaryEmail && (
+                  <DetailRow
+                    label="Secondary Email"
+                    value={
+                      secondaryEmail
+                    }
+                  />
+                )}
 
                 <DetailRow
                   label="Phone"

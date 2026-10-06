@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import EmailGuaranteeButton from "@/components/EmailGuaranteeButton";
 import { createClient } from "@/lib/supabase/server";
+import { loadClientSecondaryEmail } from "@/lib/client-secondary-email";
 
 type GuaranteePageProps = {
   params: Promise<{
@@ -98,6 +99,12 @@ export default async function GuaranteePage({
     )
       ? guarantee.clients[0]
       : guarantee.clients;
+
+  const clientSecondaryEmail =
+    await loadClientSecondaryEmail(
+      supabase,
+      guarantee.client_id
+    );
 
   const job =
     Array.isArray(
@@ -420,6 +427,9 @@ export default async function GuaranteePage({
                   recipient={
                     client?.email ||
                     null
+                  }
+                  secondaryRecipient={
+                    clientSecondaryEmail
                   }
                   status={
                     guarantee.status

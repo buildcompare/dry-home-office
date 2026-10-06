@@ -1,19 +1,21 @@
 import { NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
+import { isMissingSecondaryEmailColumn } from "@/lib/client-secondary-email";
 
 import { clientsToCsv } from "../csv";
 
 export async function GET() {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  const withSecondaryEmail = await supabase
     .from("clients")
     .select(`
       display_name,
       friendly_name,
       company_name,
       email,
+      secondary_email,
       phone,
       address_line_1,
       address_line_2,
@@ -23,6 +25,33 @@ export async function GET() {
       notes
     `)
     .order("display_name", { ascending: true });
+
+  let data: Parameters<typeof clientsToCsv>[0] | null =
+    withSecondaryEmail.data;
+  let error = withSecondaryEmail.error;
+
+  if (isMissingSecondaryEmailColumn(error)) {
+    // Database not migrated yet: export without secondary emails.
+    const withoutSecondaryEmail = await supabase
+      .from("clients")
+      .select(`
+        display_name,
+        friendly_name,
+        company_name,
+        email,
+        phone,
+        address_line_1,
+        address_line_2,
+        town,
+        county,
+        postcode,
+        notes
+      `)
+      .order("display_name", { ascending: true });
+
+    data = withoutSecondaryEmail.data;
+    error = withoutSecondaryEmail.error;
+  }
 
   if (error) {
     console.error("Client export error:", error);

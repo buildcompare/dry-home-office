@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import EmailInvoiceButton from "@/components/EmailInvoiceButton";
 import { createClient } from "@/lib/supabase/server";
+import { loadClientSecondaryEmail } from "@/lib/client-secondary-email";
 import { recordInvoicePayment } from "../actions";
 
 type InvoicePageProps = {
@@ -138,6 +139,12 @@ export default async function InvoicePage({
     ? invoice.clients[0]
     : invoice.clients;
 
+  const clientSecondaryEmail =
+    await loadClientSecondaryEmail(
+      supabase,
+      invoice.client_id
+    );
+
   const job = Array.isArray(invoice.jobs)
     ? invoice.jobs[0]
     : invoice.jobs;
@@ -262,6 +269,9 @@ export default async function InvoicePage({
                 <EmailInvoiceButton
                   invoiceId={invoice.id}
                   recipient={client?.email || null}
+                  secondaryRecipient={
+                    clientSecondaryEmail
+                  }
                   status={displayStatus}
                 />
 

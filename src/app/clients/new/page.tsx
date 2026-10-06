@@ -138,6 +138,27 @@ export default async function NewClientPage({
                     className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
                   />
                 </div>
+
+                <div>
+                  <label
+                    htmlFor="secondary_email"
+                    className="mb-2 block text-sm font-medium text-slate-700"
+                  >
+                    Secondary Email
+                  </label>
+
+                  <input
+                    id="secondary_email"
+                    name="secondary_email"
+                    type="email"
+                    placeholder="Optional"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
+                  />
+
+                  <p className="mt-1 text-xs text-slate-400">
+                    Quotes, contracts, invoices and other emails are sent to both addresses.
+                  </p>
+                </div>
               </div>
             </section>
 

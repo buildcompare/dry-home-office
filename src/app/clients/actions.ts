@@ -4,6 +4,27 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { isValidEmailAddress } from "@/lib/email-recipients";
+import { isMissingSecondaryEmailColumn } from "@/lib/client-secondary-email";
+
+/* =========================================================
+   SECONDARY EMAIL
+   ========================================================= */
+
+function readSecondaryEmail(
+  formData: FormData
+) {
+  return (
+    String(
+      formData.get(
+        "secondary_email"
+      ) || ""
+    )
+      .trim()
+      .toLowerCase() ||
+    null
+  );
+}
 
 /* =========================================================
    ADD CLIENT
@@ -98,47 +119,112 @@ export async function addClient(
       ) || ""
     ).trim() || null;
 
+  const hasSecondaryEmailField =
+    formData.has(
+      "secondary_email"
+    );
+
+  const secondaryEmail =
+    readSecondaryEmail(
+      formData
+    );
+
   if (!displayName) {
     redirect(
       "/clients/new?error=Please%20enter%20a%20client%20name"
     );
   }
 
-  const {
+  if (
+    secondaryEmail &&
+    !isValidEmailAddress(
+      secondaryEmail
+    )
+  ) {
+    redirect(
+      "/clients/new?error=Please%20enter%20a%20valid%20secondary%20email%20address"
+    );
+  }
+
+  const baseRow = {
+    display_name:
+      displayName,
+
+    friendly_name:
+      friendlyName,
+
+    company_name:
+      companyName,
+
+    email,
+
+    phone,
+
+    address_line_1:
+      addressLine1,
+
+    address_line_2:
+      addressLine2,
+
+    town,
+
+    county,
+
+    postcode,
+
+    notes,
+  };
+
+  let secondaryEmailNotSaved =
+    false;
+
+  let {
     data: client,
     error,
   } = await supabase
     .from("clients")
     .insert({
-      display_name:
-        displayName,
+      ...baseRow,
 
-      friendly_name:
-        friendlyName,
-
-      company_name:
-        companyName,
-
-      email,
-
-      phone,
-
-      address_line_1:
-        addressLine1,
-
-      address_line_2:
-        addressLine2,
-
-      town,
-
-      county,
-
-      postcode,
-
-      notes,
+      ...(hasSecondaryEmailField &&
+      secondaryEmail
+        ? {
+            secondary_email:
+              secondaryEmail,
+          }
+        : {}),
     })
     .select("id")
     .single();
+
+  if (
+    isMissingSecondaryEmailColumn(
+      error
+    )
+  ) {
+    /*
+     * The secondary_email column has not been added to the
+     * database yet. Save everything else so the client is not lost.
+     */
+
+    console.error(
+      "clients.secondary_email column is missing; saving client without it."
+    );
+
+    secondaryEmailNotSaved =
+      Boolean(
+        secondaryEmail
+      );
+
+    ({
+      data: client,
+      error,
+    } = await supabase
+      .from("clients")
+      .insert(baseRow)
+      .select("id")
+      .single());
+  }
 
   if (
     error ||
@@ -159,7 +245,9 @@ export async function addClient(
   );
 
   redirect(
-    `/clients/${client.id}`
+    secondaryEmailNotSaved
+      ? `/clients/${client.id}?secondary_email_not_saved=1`
+      : `/clients/${client.id}`
   );
 }
 
@@ -263,6 +351,16 @@ export async function updateClient(
       ) || ""
     ).trim() || null;
 
+  const hasSecondaryEmailField =
+    formData.has(
+      "secondary_email"
+    );
+
+  const secondaryEmail =
+    readSecondaryEmail(
+      formData
+    );
+
   if (!clientId) {
     redirect(
       "/clients?error=Client%20ID%20is%20missing"
@@ -275,42 +373,98 @@ export async function updateClient(
     );
   }
 
-  const {
+  if (
+    secondaryEmail &&
+    !isValidEmailAddress(
+      secondaryEmail
+    )
+  ) {
+    redirect(
+      `/clients/${clientId}/edit?error=Please%20enter%20a%20valid%20secondary%20email%20address`
+    );
+  }
+
+  const baseUpdate = {
+    display_name:
+      displayName,
+
+    friendly_name:
+      friendlyName,
+
+    company_name:
+      companyName,
+
+    email,
+
+    phone,
+
+    address_line_1:
+      addressLine1,
+
+    address_line_2:
+      addressLine2,
+
+    town,
+
+    county,
+
+    postcode,
+
+    notes,
+  };
+
+  let secondaryEmailNotSaved =
+    false;
+
+  /*
+   * Only touch secondary_email when the form actually sent the
+   * field, so other callers can never blank it by accident.
+   */
+
+  let {
     error,
   } = await supabase
     .from("clients")
     .update({
-      display_name:
-        displayName,
+      ...baseUpdate,
 
-      friendly_name:
-        friendlyName,
-
-      company_name:
-        companyName,
-
-      email,
-
-      phone,
-
-      address_line_1:
-        addressLine1,
-
-      address_line_2:
-        addressLine2,
-
-      town,
-
-      county,
-
-      postcode,
-
-      notes,
+      ...(hasSecondaryEmailField
+        ? {
+            secondary_email:
+              secondaryEmail,
+          }
+        : {}),
     })
     .eq(
       "id",
       clientId
     );
+
+  if (
+    hasSecondaryEmailField &&
+    isMissingSecondaryEmailColumn(
+      error
+    )
+  ) {
+    console.error(
+      "clients.secondary_email column is missing; updating client without it."
+    );
+
+    secondaryEmailNotSaved =
+      Boolean(
+        secondaryEmail
+      );
+
+    ({
+      error,
+    } = await supabase
+      .from("clients")
+      .update(baseUpdate)
+      .eq(
+        "id",
+        clientId
+      ));
+  }
 
   if (error) {
     console.error(
@@ -328,7 +482,9 @@ export async function updateClient(
   );
 
   redirect(
-    `/clients/${clientId}?updated=1`
+    secondaryEmailNotSaved
+      ? `/clients/${clientId}?updated=1&secondary_email_not_saved=1`
+      : `/clients/${clientId}?updated=1`
   );
 }
 

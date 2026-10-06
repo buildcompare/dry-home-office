@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import Sidebar from "@/components/Sidebar";
 import { createClient } from "@/lib/supabase/server";
+import { loadClientSecondaryEmail } from "@/lib/client-secondary-email";
 import {
   deleteClient,
   updateClient,
@@ -39,6 +40,7 @@ export default async function EditClientPage({
     invoicesResult,
     contractsResult,
     guaranteesResult,
+    secondaryEmail,
   ] = await Promise.all([
     supabase
       .from("clients")
@@ -146,6 +148,11 @@ export default async function EditClientPage({
         "client_id",
         id
       ),
+
+    loadClientSecondaryEmail(
+      supabase,
+      id
+    ),
   ]);
 
   const client =
@@ -321,6 +328,21 @@ export default async function EditClientPage({
                     client.phone
                   }
                 />
+
+                <div>
+                  <Field
+                    label="Secondary Email"
+                    name="secondary_email"
+                    type="email"
+                    defaultValue={
+                      secondaryEmail
+                    }
+                  />
+
+                  <p className="mt-1 text-xs text-slate-400">
+                    Optional. Customer emails are sent to both addresses.
+                  </p>
+                </div>
               </div>
             </section>
 

@@ -8,6 +8,7 @@ type ClientsPageProps = {
     imported?: string;
     skipped?: string;
     error?: string;
+    secondary_email_not_saved?: string;
   }>;
 };
 
@@ -22,6 +23,9 @@ export default async function ClientsPage({
     params.skipped !== undefined &&
     Number.isInteger(imported) &&
     Number.isInteger(skipped);
+  const secondaryEmailsNotSaved = Number(
+    params.secondary_email_not_saved ?? 0
+  );
   const supabase = await createClient();
 
   const { data: clients, error } = await supabase
@@ -99,6 +103,17 @@ export default async function ClientsPage({
               Imported {imported}, skipped {skipped}.
             </div>
           )}
+
+          {showResult &&
+            Number.isInteger(secondaryEmailsNotSaved) &&
+            secondaryEmailsNotSaved > 0 && (
+              <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-medium text-amber-800">
+                {secondaryEmailsNotSaved} secondary email
+                {secondaryEmailsNotSaved === 1 ? " was" : "s were"} not saved
+                because the database has not been updated with the new
+                secondary email field yet.
+              </div>
+            )}
 
           <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
             {!clients || clients.length === 0 ? (
