@@ -5,6 +5,7 @@ import Sidebar from "@/components/Sidebar";
 import EmailVariationButton from "@/components/EmailVariationButton";
 
 import { createClient } from "@/lib/supabase/server";
+import { loadClientSecondaryEmail } from "@/lib/client-secondary-email";
 
 import {
   manuallyAcceptVariation,
@@ -164,6 +165,12 @@ export default async function VariationPage({
     )
       ? variation.clients[0]
       : variation.clients;
+
+  const clientSecondaryEmail =
+    await loadClientSecondaryEmail(
+      supabase,
+      variation.client_id
+    );
 
   const job =
     Array.isArray(
@@ -342,6 +349,9 @@ export default async function VariationPage({
                     recipient={
                       client?.email ||
                       null
+                    }
+                    secondaryRecipient={
+                      clientSecondaryEmail
                     }
                     status={
                       variation.status
@@ -840,6 +850,9 @@ export default async function VariationPage({
                     recipient={
                       client?.email ||
                       null
+                    }
+                    secondaryRecipient={
+                      clientSecondaryEmail
                     }
                     status={
                       variation.status

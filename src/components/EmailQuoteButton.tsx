@@ -6,14 +6,21 @@ import {
   useState,
 } from "react";
 
+import {
+  buildRecipientList,
+  describeRecipients,
+} from "@/lib/email-recipients";
+
 type EmailQuoteButtonProps = {
   quoteId: string;
   recipient: string | null;
+  secondaryRecipient?: string | null;
   status: string;
 };
 
 type ComposerData = {
   recipient: string;
+  secondaryRecipient?: string;
   subject: string;
   body: string;
   automaticAttachment: string;
@@ -26,6 +33,7 @@ const MAX_TOTAL_ATTACHMENT_SIZE =
 export default function EmailQuoteButton({
   quoteId,
   recipient,
+  secondaryRecipient,
   status,
 }: EmailQuoteButtonProps) {
   const [open, setOpen] =
@@ -46,6 +54,13 @@ export default function EmailQuoteButton({
     useState(
       recipient || ""
     );
+
+  const [
+    secondaryEmailTo,
+    setSecondaryEmailTo,
+  ] = useState(
+    secondaryRecipient || ""
+  );
 
   const [subject, setSubject] =
     useState("");
@@ -77,6 +92,14 @@ export default function EmailQuoteButton({
 
   const hasEmail =
     Boolean(recipient);
+
+  const clientRecipients =
+    describeRecipients(
+      buildRecipientList(
+        recipient,
+        secondaryRecipient
+      )
+    );
 
   async function openComposer() {
     if (!recipient) {
@@ -120,6 +143,12 @@ export default function EmailQuoteButton({
       setEmailTo(
         composerData.recipient ||
           recipient
+      );
+
+      setSecondaryEmailTo(
+        composerData.secondaryRecipient ??
+          secondaryRecipient ??
+          ""
       );
 
       setSubject(
@@ -290,11 +319,19 @@ export default function EmailQuoteButton({
       return;
     }
 
+    const sendingTo =
+      describeRecipients(
+        buildRecipientList(
+          emailTo,
+          secondaryEmailTo
+        )
+      );
+
     const confirmed =
       window.confirm(
         status === "Sent"
-          ? `Send this quotation again to ${emailTo}?`
-          : `Send this quotation to ${emailTo}?`
+          ? `Send this quotation again to ${sendingTo}?`
+          : `Send this quotation to ${sendingTo}?`
       );
 
     if (!confirmed) {
@@ -310,6 +347,11 @@ export default function EmailQuoteButton({
       formData.set(
         "recipient",
         emailTo.trim()
+      );
+
+      formData.set(
+        "secondary_recipient",
+        secondaryEmailTo.trim()
       );
 
       formData.set(
@@ -390,7 +432,7 @@ export default function EmailQuoteButton({
         }`}
         title={
           hasEmail
-            ? `Send to ${recipient}`
+            ? `Send to ${clientRecipients}`
             : "The client does not have an email address"
         }
       >
@@ -491,6 +533,40 @@ export default function EmailQuoteButton({
                     <p className="mt-1 text-xs text-slate-400">
                       Changing this address only affects this email. It does not change the client record.
                     </p>
+                  </div>
+
+                  {/* SECONDARY EMAIL */}
+
+                  <div className="mt-5">
+                    <label
+                      htmlFor={`quote-email-secondary-${quoteId}`}
+                      className="block text-sm font-semibold text-slate-700"
+                    >
+                      Also send to{" "}
+                      <span className="font-normal text-slate-400">
+                        (secondary email, optional)
+                      </span>
+                    </label>
+
+                    <input
+                      id={`quote-email-secondary-${quoteId}`}
+                      type="email"
+                      value={
+                        secondaryEmailTo
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        setSecondaryEmailTo(
+                          event.target.value
+                        )
+                      }
+                      disabled={
+                        sending
+                      }
+                      placeholder="Leave blank to send to the main address only"
+                      className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:border-slate-500"
+                    />
                   </div>
 
                   {/* SUBJECT */}

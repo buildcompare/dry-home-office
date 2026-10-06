@@ -3,6 +3,7 @@ export const CLIENT_CSV_COLUMNS = [
   "friendly_name",
   "company_name",
   "email",
+  "secondary_email",
   "phone",
   "address_line_1",
   "address_line_2",
@@ -13,6 +14,14 @@ export const CLIENT_CSV_COLUMNS = [
 ] as const;
 
 export type ClientCsvColumn = (typeof CLIENT_CSV_COLUMNS)[number];
+
+/*
+ * Columns that may be missing from older export files.
+ * They are read as empty when absent.
+ */
+export const OPTIONAL_CLIENT_CSV_COLUMNS: readonly ClientCsvColumn[] = [
+  "secondary_email",
+];
 
 export type ClientCsvRow = Record<ClientCsvColumn, string | null>;
 
@@ -103,7 +112,9 @@ export function rowsFromCsv(text: string): ClientCsvRow[] {
     header.trim().toLowerCase()
   );
   const missing = CLIENT_CSV_COLUMNS.filter(
-    (column) => !headers.includes(column)
+    (column) =>
+      !OPTIONAL_CLIENT_CSV_COLUMNS.includes(column) &&
+      !headers.includes(column)
   );
 
   if (missing.length > 0) {

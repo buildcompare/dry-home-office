@@ -6,14 +6,21 @@ import {
   useState,
 } from "react";
 
+import {
+  buildRecipientList,
+  describeRecipients,
+} from "@/lib/email-recipients";
+
 type EmailGuaranteeButtonProps = {
   guaranteeId: string;
   recipient: string | null;
+  secondaryRecipient?: string | null;
   status: string;
 };
 
 type ComposerData = {
   recipient: string;
+  secondaryRecipient?: string;
   subject: string;
   body: string;
 };
@@ -26,6 +33,7 @@ const MAX_TOTAL_ATTACHMENT_SIZE =
 export default function EmailGuaranteeButton({
   guaranteeId,
   recipient,
+  secondaryRecipient,
   status,
 }: EmailGuaranteeButtonProps) {
   const [open, setOpen] =
@@ -46,6 +54,13 @@ export default function EmailGuaranteeButton({
     useState(
       recipient || ""
     );
+
+  const [
+    secondaryEmailTo,
+    setSecondaryEmailTo,
+  ] = useState(
+    secondaryRecipient || ""
+  );
 
   const [subject, setSubject] =
     useState("");
@@ -70,6 +85,14 @@ export default function EmailGuaranteeButton({
 
   const hasEmail =
     Boolean(recipient);
+
+  const clientRecipients =
+    describeRecipients(
+      buildRecipientList(
+        recipient,
+        secondaryRecipient
+      )
+    );
 
   async function openComposer() {
     if (!recipient) {
@@ -113,6 +136,12 @@ export default function EmailGuaranteeButton({
       setEmailTo(
         composerData.recipient ||
           recipient
+      );
+
+      setSecondaryEmailTo(
+        composerData.secondaryRecipient ??
+          secondaryRecipient ??
+          ""
       );
 
       setSubject(
@@ -280,11 +309,19 @@ export default function EmailGuaranteeButton({
       status === "Issued" ||
       status === "Viewed";
 
+    const sendingTo =
+      describeRecipients(
+        buildRecipientList(
+          emailTo,
+          secondaryEmailTo
+        )
+      );
+
     const confirmed =
       window.confirm(
         alreadySent
-          ? `Send this guarantee again to ${emailTo}?`
-          : `Send this guarantee to ${emailTo}?`
+          ? `Send this guarantee again to ${sendingTo}?`
+          : `Send this guarantee to ${sendingTo}?`
       );
 
     if (!confirmed) {
@@ -300,6 +337,11 @@ export default function EmailGuaranteeButton({
       formData.set(
         "recipient",
         emailTo.trim()
+      );
+
+      formData.set(
+        "secondary_recipient",
+        secondaryEmailTo.trim()
       );
 
       formData.set(
@@ -380,7 +422,7 @@ export default function EmailGuaranteeButton({
         }`}
         title={
           hasEmail
-            ? `Send to ${recipient}`
+            ? `Send to ${clientRecipients}`
             : "The client does not have an email address"
         }
       >
@@ -479,6 +521,40 @@ export default function EmailGuaranteeButton({
                     <p className="mt-1 text-xs text-slate-400">
                       Changing this address only affects this email. It does not change the client record.
                     </p>
+                  </div>
+
+                  {/* SECONDARY EMAIL */}
+
+                  <div className="mt-5">
+                    <label
+                      htmlFor={`guarantee-email-secondary-${guaranteeId}`}
+                      className="block text-sm font-semibold text-slate-700"
+                    >
+                      Also send to{" "}
+                      <span className="font-normal text-slate-400">
+                        (secondary email, optional)
+                      </span>
+                    </label>
+
+                    <input
+                      id={`guarantee-email-secondary-${guaranteeId}`}
+                      type="email"
+                      value={
+                        secondaryEmailTo
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        setSecondaryEmailTo(
+                          event.target.value
+                        )
+                      }
+                      disabled={
+                        sending
+                      }
+                      placeholder="Leave blank to send to the main address only"
+                      className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:border-slate-500"
+                    />
                   </div>
 
                   {/* SUBJECT */}

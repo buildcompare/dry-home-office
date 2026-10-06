@@ -6,6 +6,13 @@ import {
 import { Resend } from "resend";
 
 import { createClient } from "@/lib/supabase/server";
+import {
+  buildRecipientList,
+  formatSentTo,
+  isValidEmailAddress,
+  toResendRecipients,
+} from "@/lib/email-recipients";
+import { loadClientSecondaryEmail } from "@/lib/client-secondary-email";
 
 export const runtime =
   "nodejs";
@@ -157,10 +164,29 @@ export async function GET(
       )
       .trim();
 
+  const secondaryEmail =
+    await loadClientSecondaryEmail(
+      supabase,
+      client?.id ??
+        variation.client_id
+    );
+
+  /*
+   * Primary email first, then the secondary email (if any).
+   */
+
+  const [
+    recipient = "",
+    secondaryRecipient = "",
+  ] = buildRecipientList(
+    client?.email,
+    secondaryEmail
+  );
+
   return NextResponse.json({
-    recipient:
-      client?.email?.trim() ||
-      "",
+    recipient,
+
+    secondaryRecipient,
 
     subject,
 
@@ -304,6 +330,30 @@ export async function POST(
       ) ?? ""
     ).trim();
 
+  /*
+   * The composer always sends this field (blank when removed).
+   * If it is missing entirely, fall back to the client's
+   * secondary email.
+   */
+
+  const submittedSecondaryRecipient =
+    formData.get(
+      "secondary_recipient"
+    );
+
+  const secondaryRecipient =
+    (submittedSecondaryRecipient ===
+    null
+      ? (await loadClientSecondaryEmail(
+          supabase,
+          client?.id ??
+            variation.client_id
+        )) ?? ""
+      : String(
+          submittedSecondaryRecipient
+        )
+    ).trim();
+
   const subject =
     String(
       formData.get(
@@ -334,6 +384,29 @@ export async function POST(
       }
     );
   }
+
+  if (
+    secondaryRecipient &&
+    !isValidEmailAddress(
+      secondaryRecipient
+    )
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Please enter a valid secondary email address.",
+      },
+      {
+        status: 400,
+      }
+    );
+  }
+
+  const recipients =
+    buildRecipientList(
+      recipient,
+      secondaryRecipient
+    );
 
   if (!subject) {
     return NextResponse.json(
@@ -506,7 +579,9 @@ export async function POST(
         fromAddress,
 
       to:
-        recipient,
+        toResendRecipients(
+          recipients
+        ),
 
       ...(replyTo
         ? {
@@ -571,7 +646,9 @@ export async function POST(
         newStatus,
 
       sent_to:
-        recipient,
+        formatSentTo(
+          recipients
+        ),
 
       sent_at:
         new Date()
@@ -608,7 +685,9 @@ export async function POST(
   return NextResponse.json({
     success: true,
     sentTo:
-      recipient,
+      formatSentTo(
+        recipients
+      ),
     messageId:
       sendResult.data?.id ??
       null,

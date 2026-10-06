@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import EmailQuoteButton from "@/components/EmailQuoteButton";
 import { createClient } from "@/lib/supabase/server";
+import { loadClientSecondaryEmail } from "@/lib/client-secondary-email";
 import { manuallyAcceptQuote } from "../actions";
 
 type QuotePageProps = {
@@ -182,6 +183,12 @@ export default async function QuotePage({
     )
       ? quote.clients[0]
       : quote.clients;
+
+  const clientSecondaryEmail =
+    await loadClientSecondaryEmail(
+      supabase,
+      quote.client_id
+    );
 
   const jobData =
     Array.isArray(
@@ -403,6 +410,9 @@ export default async function QuotePage({
                   recipient={
                     clientData?.email ||
                     null
+                  }
+                  secondaryRecipient={
+                    clientSecondaryEmail
                   }
                   status={
                     quote.status

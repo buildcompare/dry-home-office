@@ -6,14 +6,18 @@ import {
   useState,
 } from "react";
 
+import { isValidEmailAddress } from "@/lib/email-recipients";
+
 type EmailVariationButtonProps = {
   variationId: string;
   recipient?: string | null;
+  secondaryRecipient?: string | null;
   status: string;
 };
 
 type ComposerPreview = {
   recipient: string;
+  secondaryRecipient?: string;
   subject: string;
   body: string;
 };
@@ -25,6 +29,7 @@ const MAX_TOTAL_SIZE =
 export default function EmailVariationButton({
   variationId,
   recipient,
+  secondaryRecipient,
   status,
 }: EmailVariationButtonProps) {
   const [open, setOpen] =
@@ -43,6 +48,13 @@ export default function EmailVariationButton({
     useState(
       recipient ?? ""
     );
+
+  const [
+    secondaryTo,
+    setSecondaryTo,
+  ] = useState(
+    secondaryRecipient ?? ""
+  );
 
   const [subject, setSubject] =
     useState("");
@@ -111,6 +123,12 @@ export default function EmailVariationButton({
         setTo(
           preview.recipient ||
             recipient ||
+            ""
+        );
+
+        setSecondaryTo(
+          preview.secondaryRecipient ??
+            secondaryRecipient ??
             ""
         );
 
@@ -256,6 +274,9 @@ export default function EmailVariationButton({
       const cleanTo =
         to.trim();
 
+      const cleanSecondaryTo =
+        secondaryTo.trim();
+
       const cleanSubject =
         subject.trim();
 
@@ -276,6 +297,18 @@ export default function EmailVariationButton({
       ) {
         setError(
           "Please enter a valid email address."
+        );
+        return;
+      }
+
+      if (
+        cleanSecondaryTo &&
+        !isValidEmailAddress(
+          cleanSecondaryTo
+        )
+      ) {
+        setError(
+          "Please enter a valid secondary email address."
         );
         return;
       }
@@ -334,6 +367,11 @@ export default function EmailVariationButton({
         formData.set(
           "recipient",
           cleanTo
+        );
+
+        formData.set(
+          "secondary_recipient",
+          cleanSecondaryTo
         );
 
         formData.set(
@@ -517,6 +555,39 @@ export default function EmailVariationButton({
                     <p className="mt-2 text-xs text-slate-400">
                       Changing this address only affects this email. It will not change the client record.
                     </p>
+                  </div>
+
+                  {/* SECONDARY EMAIL */}
+
+                  <div className="mt-5">
+                    <label
+                      htmlFor="variation-email-secondary"
+                      className="mb-2 block text-sm font-semibold text-slate-700"
+                    >
+                      Also send to{" "}
+                      <span className="font-normal text-slate-400">
+                        (secondary email, optional)
+                      </span>
+                    </label>
+
+                    <input
+                      id="variation-email-secondary"
+                      type="email"
+                      value={
+                        secondaryTo
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        setSecondaryTo(
+                          event
+                            .target
+                            .value
+                        )
+                      }
+                      className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-amber-500"
+                      placeholder="Leave blank to send to the main address only"
+                    />
                   </div>
 
                   {/* SUBJECT */}

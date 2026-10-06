@@ -5,6 +5,7 @@ import Sidebar from "@/components/Sidebar";
 import EmailContractButton from "@/components/EmailContractButton";
 import { contractSpecialTerms } from "@/lib/contract-special-terms";
 import { createClient } from "@/lib/supabase/server";
+import { loadClientSecondaryEmail } from "@/lib/client-secondary-email";
 
 type ContractPageProps = {
   params: Promise<{
@@ -102,6 +103,12 @@ export default async function ContractPage({
     )
       ? contract.clients[0]
       : contract.clients;
+
+  const clientSecondaryEmail =
+    await loadClientSecondaryEmail(
+      supabase,
+      contract.client_id
+    );
 
   const job =
     Array.isArray(
@@ -316,6 +323,9 @@ export default async function ContractPage({
                   recipient={
                     client?.email ||
                     null
+                  }
+                  secondaryRecipient={
+                    clientSecondaryEmail
                   }
                   status={
                     contract.status

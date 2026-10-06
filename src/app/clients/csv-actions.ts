@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { isValidEmailAddress } from "@/lib/email-recipients";
+import { isMissingSecondaryEmailColumn } from "@/lib/client-secondary-email";
 
 import { rowsFromCsv, type ClientCsvRow } from "./csv";
 
@@ -125,6 +127,7 @@ export async function importClients(formData: FormData) {
         friendly_name: null,
         company_name: null,
         email: client.email,
+        secondary_email: null,
         phone: client.phone,
         address_line_1: null,
         address_line_2: null,
@@ -141,6 +144,8 @@ export async function importClients(formData: FormData) {
 
   let imported = 0;
   let skipped = 0;
+  let secondaryEmailColumnMissing = false;
+  let secondaryEmailsNotSaved = 0;
 
   for (const row of rows) {
     const displayName = row.display_name?.trim() ?? "";
@@ -152,6 +157,11 @@ export async function importClients(formData: FormData) {
 
     const email = emailKey(row.email);
     const postcode = postcodeKey(row.postcode);
+    const secondaryEmail = emailKey(row.secondary_email);
+    const validSecondaryEmail =
+      secondaryEmail && isValidEmailAddress(secondaryEmail)
+        ? secondaryEmail
+        : null;
     const insertRow = {
       display_name: displayName,
       friendly_name: row.friendly_name,
@@ -166,12 +176,36 @@ export async function importClients(formData: FormData) {
       notes: row.notes,
     };
 
-    const { error } = await supabase.from("clients").insert(insertRow);
+    let error = null;
+    let droppedSecondaryEmail = false;
+
+    if (validSecondaryEmail && !secondaryEmailColumnMissing) {
+      ({ error } = await supabase.from("clients").insert({
+        ...insertRow,
+        secondary_email: validSecondaryEmail,
+      }));
+
+      if (isMissingSecondaryEmailColumn(error)) {
+        console.error(
+          "clients.secondary_email column is missing; importing without it."
+        );
+        secondaryEmailColumnMissing = true;
+        droppedSecondaryEmail = true;
+        ({ error } = await supabase.from("clients").insert(insertRow));
+      }
+    } else {
+      droppedSecondaryEmail = Boolean(validSecondaryEmail);
+      ({ error } = await supabase.from("clients").insert(insertRow));
+    }
 
     if (error) {
       console.error("Client import insert error:", error);
       skipped++;
       continue;
+    }
+
+    if (droppedSecondaryEmail) {
+      secondaryEmailsNotSaved++;
     }
 
     remember(
@@ -184,6 +218,10 @@ export async function importClients(formData: FormData) {
   }
 
   revalidatePath("/clients");
-  redirect(`/clients?imported=${imported}&skipped=${skipped}`);
+  redirect(
+    secondaryEmailsNotSaved > 0
+      ? `/clients?imported=${imported}&skipped=${skipped}&secondary_email_not_saved=${secondaryEmailsNotSaved}`
+      : `/clients?imported=${imported}&skipped=${skipped}`
+  );
 }
 
