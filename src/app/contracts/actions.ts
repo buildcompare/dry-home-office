@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { allocateDocumentNumber } from "@/lib/numbering";
+import { contractSpecialTerms } from "@/lib/contract-special-terms";
 
 export async function addContract(
   formData: FormData
@@ -36,9 +37,11 @@ export async function addContract(
     ).trim() || null;
 
   const terms =
-    String(
-      formData.get("terms") || ""
-    ).trim() || null;
+    contractSpecialTerms(
+      String(
+        formData.get("terms") || ""
+      )
+    );
 
   const customerMessage =
     String(

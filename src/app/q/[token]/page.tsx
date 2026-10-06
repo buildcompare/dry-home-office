@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { additionalQuoteTerms } from "@/lib/quote-additional-terms";
-import { QUOTE_STANDARD_TERMS } from "@/lib/quote-standard-terms";
+import StandardTermsText from "@/components/StandardTermsText";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -384,7 +384,7 @@ export default async function CustomerQuotePage({
               Terms and conditions
             </h2>
 
-            <StandardTerms />
+            <StandardTermsText />
 
             {additionalQuoteTerms(quote.terms) && (
               <div className="mt-8 border-t border-slate-200 pt-6">
@@ -623,36 +623,6 @@ function SmallLabel({
   );
 }
 
-
-function StandardTerms() {
-  const lines = QUOTE_STANDARD_TERMS.split("\n");
-
-  return (
-    <div className="mt-4 text-sm leading-6 text-slate-700">
-      {lines.map((line, index) => {
-        if (line === "") {
-          return <div key={index} className="h-3" />;
-        }
-
-        const isHeading =
-          /^\d+\.\s/.test(line) && !/^\d+\.\d+/.test(line);
-
-        return (
-          <p
-            key={index}
-            className={
-              isHeading
-                ? "pt-2 font-semibold text-slate-900"
-                : ""
-            }
-          >
-            {line}
-          </p>
-        );
-      })}
-    </div>
-  );
-}
 
 function TotalRow({
   label,

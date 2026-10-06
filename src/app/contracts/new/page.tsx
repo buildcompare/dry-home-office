@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
+import { additionalQuoteTerms } from "@/lib/quote-additional-terms";
 import { createClient } from "@/lib/supabase/server";
 import { addContract } from "../actions";
 
@@ -449,25 +450,33 @@ export default async function NewContractPage({
               </div>
             </section>
 
-            {/* Terms */}
+            {/* Special terms */}
             <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-slate-900">
-                Terms & Conditions
-              </h2>
+              <label
+                htmlFor="terms"
+                className="block text-xl font-semibold text-slate-900"
+              >
+                Special terms for this job
+              </label>
 
               <p className="mt-1 text-sm text-slate-500">
-                These terms will later form
-                part of the customer-facing
-                contract.
+                Optional. Anything specific to this job, such as access
+                arrangements, exclusions or stage payments. Shown under
+                &ldquo;Special terms&rdquo; in the contract body. Our
+                standard terms and conditions are always added at the end
+                of the contract automatically.
               </p>
 
               <textarea
+                id="terms"
                 name="terms"
-                rows={10}
+                rows={6}
                 defaultValue={
-                  selectedQuote?.terms ||
-                  "The works will be carried out in accordance with the agreed quotation and scope of works. Any additional works or variations must be agreed before proceeding. Access to the property must be provided as reasonably required to complete the works."
+                  additionalQuoteTerms(
+                    selectedQuote?.terms
+                  ) || ""
                 }
+                placeholder="Leave blank if there are no special terms for this job."
                 className="mt-5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"
               />
             </section>

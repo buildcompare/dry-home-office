@@ -7,6 +7,7 @@ import {
   View,
 } from "@react-pdf/renderer";
 
+import { PDF_LOGO_STYLE } from "@/lib/pdf-logo-style";
 import { additionalQuoteTerms } from "@/lib/quote-additional-terms";
 
 type QuoteItem = {
@@ -88,11 +89,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
 
-  logo: {
-    width: 104,
-    height: 104,
-    objectFit: "contain",
-  },
+  logo: PDF_LOGO_STYLE,
 
   companyName: {
     fontSize: 10,

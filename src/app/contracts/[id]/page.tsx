@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import Sidebar from "@/components/Sidebar";
 import EmailContractButton from "@/components/EmailContractButton";
+import { contractSpecialTerms } from "@/lib/contract-special-terms";
 import { createClient } from "@/lib/supabase/server";
 
 type ContractPageProps = {
@@ -301,6 +302,13 @@ export default async function ContractPage({
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
+                <a
+                  href={`/contracts/${contract.id}/pdf`}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Download PDF
+                </a>
+
                 <EmailContractButton
                   contractId={
                     contract.id
@@ -546,16 +554,23 @@ export default async function ContractPage({
             </p>
           </section>
 
-          {/* TERMS */}
+          {/* SPECIAL TERMS */}
 
           <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold text-slate-900">
-              Terms & Conditions
+              Special terms for this job
             </h2>
 
+            <p className="mt-1 text-sm text-slate-500">
+              Printed under &ldquo;Special terms&rdquo; in the contract
+              body. The standard terms and conditions follow at the end.
+            </p>
+
             <p className="mt-5 whitespace-pre-wrap text-sm leading-7 text-slate-700">
-              {contract.terms ||
-                "No terms recorded."}
+              {contractSpecialTerms(
+                contract.terms
+              ) ||
+                "No special terms. Only the standard terms apply."}
             </p>
           </section>
 

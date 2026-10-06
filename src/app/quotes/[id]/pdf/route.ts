@@ -1,9 +1,8 @@
 import React from "react";
-import path from "path";
-import { readFile } from "fs/promises";
 import { renderToBuffer } from "@react-pdf/renderer";
 
 import { createClient } from "@/lib/supabase/server";
+import { loadPdfLogoDataUri } from "@/lib/pdf-logo";
 import QuotePdfDocument from "@/components/QuotePdfDocument";
 
 export const runtime = "nodejs";
@@ -183,7 +182,7 @@ export async function GET(
       })) ?? [];
 
   const logoDataUri =
-    await loadLogoFromDisk();
+    await loadPdfLogoDataUri();
 
   const document =
     React.createElement(
@@ -299,28 +298,3 @@ function filledAddress(
     .filter((value) => value.length > 0);
 }
 
-async function loadLogoFromDisk():
-  Promise<string | null> {
-  try {
-    const logoPath =
-      path.join(
-        process.cwd(),
-        "public",
-        "dryhome-logo-light.png"
-      );
-
-    const logoBuffer =
-      await readFile(logoPath);
-
-    return `data:image/png;base64,${logoBuffer.toString(
-      "base64"
-    )}`;
-  } catch (error) {
-    console.error(
-      "Unable to load PDF logo:",
-      error
-    );
-
-    return null;
-  }
-}
