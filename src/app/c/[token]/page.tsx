@@ -381,6 +381,7 @@ export default async function CustomerContractPage({
                     </label>
 
                     <input
+                      spellCheck
                       id="signed_name"
                       name="signed_name"
                       type="text"

@@ -62,6 +62,7 @@ export default async function NewClientPage({
                   </label>
 
                   <input
+                    spellCheck
                     id="display_name"
                     name="display_name"
                     type="text"
@@ -80,6 +81,7 @@ export default async function NewClientPage({
                   </label>
 
                   <input
+                    spellCheck
                     id="friendly_name"
                     name="friendly_name"
                     type="text"
@@ -97,6 +99,7 @@ export default async function NewClientPage({
                   </label>
 
                   <input
+                    spellCheck
                     id="company_name"
                     name="company_name"
                     type="text"
@@ -114,6 +117,7 @@ export default async function NewClientPage({
                   </label>
 
                   <input
+                    spellCheck={false}
                     id="email"
                     name="email"
                     type="email"
@@ -131,6 +135,7 @@ export default async function NewClientPage({
                   </label>
 
                   <input
+                    spellCheck={false}
                     id="phone"
                     name="phone"
                     type="tel"
@@ -148,6 +153,7 @@ export default async function NewClientPage({
                   </label>
 
                   <input
+                    spellCheck={false}
                     id="secondary_email"
                     name="secondary_email"
                     type="email"
@@ -178,6 +184,7 @@ export default async function NewClientPage({
                   </label>
 
                   <input
+                    spellCheck
                     id="address_line_1"
                     name="address_line_1"
                     type="text"
@@ -194,6 +201,7 @@ export default async function NewClientPage({
                   </label>
 
                   <input
+                    spellCheck
                     id="address_line_2"
                     name="address_line_2"
                     type="text"
@@ -210,6 +218,7 @@ export default async function NewClientPage({
                   </label>
 
                   <input
+                    spellCheck
                     id="town"
                     name="town"
                     type="text"
@@ -226,6 +235,7 @@ export default async function NewClientPage({
                   </label>
 
                   <input
+                    spellCheck
                     id="county"
                     name="county"
                     type="text"
@@ -243,6 +253,7 @@ export default async function NewClientPage({
                   </label>
 
                   <input
+                    spellCheck={false}
                     id="postcode"
                     name="postcode"
                     type="text"
@@ -263,6 +274,7 @@ export default async function NewClientPage({
               </p>
 
               <textarea
+                spellCheck
                 name="notes"
                 rows={5}
                 className="mt-5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"

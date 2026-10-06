@@ -534,6 +534,7 @@ export default function EmailVariationButton({
                     </label>
 
                     <input
+                      spellCheck={false}
                       id="variation-email-to"
                       type="email"
                       value={
@@ -571,6 +572,7 @@ export default function EmailVariationButton({
                     </label>
 
                     <input
+                      spellCheck={false}
                       id="variation-email-secondary"
                       type="email"
                       value={
@@ -601,6 +603,7 @@ export default function EmailVariationButton({
                     </label>
 
                     <input
+                      spellCheck
                       id="variation-email-subject"
                       type="text"
                       value={
@@ -642,6 +645,7 @@ export default function EmailVariationButton({
                     </div>
 
                     <textarea
+                      spellCheck
                       id="variation-email-body"
                       rows={14}
                       value={

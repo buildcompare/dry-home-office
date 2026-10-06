@@ -398,6 +398,7 @@ export default async function EmailTemplatesPage({
                           </label>
 
                           <input
+                            spellCheck
                             id={`subject-${template.id}`}
                             type="text"
                             name="subject"
@@ -420,6 +421,7 @@ export default async function EmailTemplatesPage({
                           </label>
 
                           <textarea
+                            spellCheck
                             id={`body-${template.id}`}
                             name="body"
                             required

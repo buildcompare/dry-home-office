@@ -101,6 +101,7 @@ export default async function NewJobPage({
                 </label>
 
                 <textarea
+                  spellCheck
                   name="description"
                   rows={5}
                   className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900"
@@ -145,6 +146,7 @@ export default async function NewJobPage({
               <Field
                 label="Postcode"
                 name="postcode"
+                spellCheck={false}
               />
 
               <div className="md:col-span-2">
@@ -153,6 +155,7 @@ export default async function NewJobPage({
                 </label>
 
                 <textarea
+                  spellCheck
                   name="notes"
                   rows={4}
                   className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900"
@@ -188,12 +191,14 @@ function Field({
   type = "text",
   required = false,
   placeholder,
+  spellCheck = type === "text",
 }: {
   label: string;
   name: string;
   type?: string;
   required?: boolean;
   placeholder?: string;
+  spellCheck?: boolean;
 }) {
   return (
     <div>
@@ -209,6 +214,7 @@ function Field({
         type={type}
         required={required}
         placeholder={placeholder}
+        spellCheck={spellCheck}
         step={type === "number" ? "0.01" : undefined}
         className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900 outline-none focus:border-slate-900"
       />

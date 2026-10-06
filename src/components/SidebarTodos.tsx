@@ -85,6 +85,7 @@ export default function SidebarTodos() {
         <>
           <form onSubmit={add} className="flex gap-2">
             <input
+              spellCheck
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Jot something down"

@@ -510,6 +510,7 @@ export default function EmailQuoteButton({
                     </label>
 
                     <input
+                      spellCheck={false}
                       id={`quote-email-to-${quoteId}`}
                       type="email"
                       value={
@@ -549,6 +550,7 @@ export default function EmailQuoteButton({
                     </label>
 
                     <input
+                      spellCheck={false}
                       id={`quote-email-secondary-${quoteId}`}
                       type="email"
                       value={
@@ -580,6 +582,7 @@ export default function EmailQuoteButton({
                     </label>
 
                     <input
+                      spellCheck
                       id={`quote-email-subject-${quoteId}`}
                       type="text"
                       value={
@@ -627,6 +630,7 @@ export default function EmailQuoteButton({
                     </div>
 
                     <textarea
+                      spellCheck
                       id={`quote-email-body-${quoteId}`}
                       value={
                         body

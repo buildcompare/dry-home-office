@@ -91,6 +91,7 @@ export default async function NumberingSettingsPage() {
                   <label className="block text-sm text-slate-600">
                     Prefix
                     <input
+                      spellCheck={false}
                       name={prefixKey}
                       defaultValue={settings[prefixKey]}
                       className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
@@ -99,6 +100,7 @@ export default async function NumberingSettingsPage() {
                   <label className="block text-sm text-slate-600">
                     Next number
                     <input
+                      spellCheck={false}
                       name={nextKey}
                       type="number"
                       min="1"

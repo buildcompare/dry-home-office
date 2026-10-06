@@ -364,6 +364,7 @@ export default async function NewContractPage({
                   </label>
 
                   <input
+                    spellCheck
                     id="title"
                     name="title"
                     type="text"
@@ -385,6 +386,7 @@ export default async function NewContractPage({
                   </label>
 
                   <input
+                    spellCheck={false}
                     id="contract_date"
                     name="contract_date"
                     type="date"
@@ -409,6 +411,7 @@ export default async function NewContractPage({
                     </span>
 
                     <input
+                      spellCheck={false}
                       id="amount"
                       name="amount"
                       type="number"
@@ -438,6 +441,7 @@ export default async function NewContractPage({
                 </label>
 
                 <textarea
+                  spellCheck
                   id="description"
                   name="description"
                   rows={8}
@@ -468,6 +472,7 @@ export default async function NewContractPage({
               </p>
 
               <textarea
+                spellCheck
                 id="terms"
                 name="terms"
                 rows={6}
@@ -488,6 +493,7 @@ export default async function NewContractPage({
               </h2>
 
               <textarea
+                spellCheck
                 name="customer_message"
                 rows={4}
                 defaultValue={
@@ -510,6 +516,7 @@ export default async function NewContractPage({
               </p>
 
               <textarea
+                spellCheck
                 name="internal_notes"
                 rows={4}
                 className="mt-5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"

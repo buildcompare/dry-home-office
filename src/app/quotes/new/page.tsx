@@ -271,6 +271,7 @@ export default async function NewQuotePage({
                 </label>
 
                 <input
+                  spellCheck
                   id="title"
                   name="title"
                   type="text"
@@ -293,6 +294,7 @@ export default async function NewQuotePage({
                 </label>
 
                 <textarea
+                  spellCheck
                   id="description"
                   name="description"
                   rows={6}
@@ -311,6 +313,7 @@ export default async function NewQuotePage({
                   </label>
 
                   <input
+                    spellCheck={false}
                     id="quote_date"
                     name="quote_date"
                     type="date"
@@ -329,6 +332,7 @@ export default async function NewQuotePage({
                   </label>
 
                   <input
+                    spellCheck={false}
                     id="valid_until"
                     name="valid_until"
                     type="date"
@@ -353,6 +357,7 @@ export default async function NewQuotePage({
               </h2>
 
               <textarea
+                spellCheck
                 name="customer_message"
                 rows={4}
                 defaultValue="Thank you for the opportunity to provide a quotation for the proposed works. Please find our quotation detailed below."
@@ -367,6 +372,7 @@ export default async function NewQuotePage({
               </h2>
 
               <textarea
+                spellCheck
                 name="terms"
                 rows={5}
                 placeholder="Optional. Leave blank to use only the standard terms."
@@ -387,6 +393,7 @@ export default async function NewQuotePage({
               </p>
 
               <textarea
+                spellCheck
                 name="internal_notes"
                 rows={4}
                 className="mt-5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none focus:border-slate-500"

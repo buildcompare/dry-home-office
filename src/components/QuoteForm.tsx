@@ -403,6 +403,7 @@ function QuoteItemRow({
           </label>
 
           <input
+            spellCheck
             type="text"
             value={item.description}
             onChange={(event) =>
@@ -428,6 +429,7 @@ function QuoteItemRow({
           </label>
 
           <input
+            spellCheck={false}
             type="number"
             min="0"
             step="0.01"
@@ -450,6 +452,7 @@ function QuoteItemRow({
           </label>
 
           <input
+            spellCheck={false}
             type="text"
             value={item.unit}
             onChange={(event) =>
@@ -476,6 +479,7 @@ function QuoteItemRow({
             </span>
 
             <input
+              spellCheck={false}
               type="number"
               min="0"
               step="0.01"

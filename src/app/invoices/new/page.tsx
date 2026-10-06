@@ -1351,6 +1351,7 @@ export default async function NewInvoicePage({
                 </label>
 
                 <input
+                  spellCheck
                   id="title"
                   name="title"
                   type="text"
@@ -1371,6 +1372,7 @@ export default async function NewInvoicePage({
                 </label>
 
                 <input
+                  spellCheck={false}
                   id="invoice_date"
                   name="invoice_date"
                   type="date"
@@ -1391,6 +1393,7 @@ export default async function NewInvoicePage({
                 </label>
 
                 <input
+                  spellCheck={false}
                   id="due_date"
                   name="due_date"
                   type="date"
@@ -1410,6 +1413,7 @@ export default async function NewInvoicePage({
                 </label>
 
                 <textarea
+                  spellCheck
                   id="description"
                   name="description"
                   rows={
@@ -1470,6 +1474,7 @@ export default async function NewInvoicePage({
                 </label>
 
                 <textarea
+                  spellCheck
                   id="customer_message"
                   name="customer_message"
                   rows={
@@ -1489,6 +1494,7 @@ export default async function NewInvoicePage({
                 </label>
 
                 <textarea
+                  spellCheck
                   id="payment_terms"
                   name="payment_terms"
                   rows={
@@ -1508,6 +1514,7 @@ export default async function NewInvoicePage({
                 </label>
 
                 <textarea
+                  spellCheck
                   id="internal_notes"
                   name="internal_notes"
                   rows={

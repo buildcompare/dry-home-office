@@ -458,6 +458,7 @@ export default async function NewVariationPage({
                 </label>
 
                 <input
+                  spellCheck
                   id="title"
                   name="title"
                   type="text"
@@ -476,6 +477,7 @@ export default async function NewVariationPage({
                 </label>
 
                 <textarea
+                  spellCheck
                   id="description"
                   name="description"
                   rows={7}
@@ -494,6 +496,7 @@ export default async function NewVariationPage({
                   </label>
 
                   <input
+                    spellCheck={false}
                     id="variation_date"
                     name="variation_date"
                     type="date"
@@ -514,6 +517,7 @@ export default async function NewVariationPage({
                   </label>
 
                   <input
+                    spellCheck={false}
                     id="valid_until"
                     name="valid_until"
                     type="date"
@@ -536,6 +540,7 @@ export default async function NewVariationPage({
               </h2>
 
               <textarea
+                spellCheck
                 name="customer_message"
                 rows={5}
                 defaultValue={`During the course of the works, additional works have been identified which fall outside the scope of the original quotation.
@@ -551,6 +556,7 @@ Please review the additional works and costs detailed below. We will not proceed
               </h2>
 
               <textarea
+                spellCheck
                 name="internal_notes"
                 rows={4}
                 className="mt-5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900"
