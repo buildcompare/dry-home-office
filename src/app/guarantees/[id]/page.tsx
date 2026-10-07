@@ -197,11 +197,20 @@ export default async function GuaranteePage({
               </p>
             </div>
 
-            <StatusBadge
-              status={
-                displayStatus
-              }
-            />
+            <div className="flex flex-wrap items-center gap-3">
+              <a
+                href={`/guarantees/${guarantee.id}/pdf`}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Download PDF
+              </a>
+
+              <StatusBadge
+                status={
+                  displayStatus
+                }
+              />
+            </div>
           </div>
 
           {!client?.email && (

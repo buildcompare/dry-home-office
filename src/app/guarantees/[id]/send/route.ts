@@ -8,6 +8,11 @@ import {
   toResendRecipients,
 } from "@/lib/email-recipients";
 import { loadClientSecondaryEmail } from "@/lib/client-secondary-email";
+import {
+  guaranteePdfFilename,
+  loadGuaranteePdfSource,
+  renderGuaranteePdf,
+} from "@/lib/guarantee-pdf";
 
 export const runtime =
   "nodejs";
@@ -581,6 +586,49 @@ export async function POST(
   }
 
   /* =========================================================
+     GUARANTEE PDF
+     Same builder as the /guarantees/[id]/pdf download route.
+     ========================================================= */
+
+  let pdfBuffer: Buffer;
+  let pdfFilename: string;
+
+  try {
+    const pdfSource =
+      await loadGuaranteePdfSource(
+        supabase,
+        id
+      );
+
+    if (!pdfSource) {
+      throw new Error(
+        "Guarantee PDF data could not be loaded."
+      );
+    }
+
+    pdfBuffer =
+      await renderGuaranteePdf(
+        pdfSource
+      );
+
+    pdfFilename =
+      guaranteePdfFilename(
+        pdfSource.guarantee.guarantee_number,
+        pdfSource.guarantee.title
+      );
+  } catch (pdfError) {
+    console.error(
+      "Unable to generate guarantee PDF:",
+      pdfError
+    );
+
+    return sendErrorResponse(
+      wantsJson,
+      "Unable to generate the guarantee PDF attachment."
+    );
+  }
+
+  /* =========================================================
      GUARANTEE DETAILS
      ========================================================= */
 
@@ -664,13 +712,19 @@ export async function POST(
           }
         : {}),
 
-      ...(extraAttachments.length >
-      0
-        ? {
-            attachments:
-              extraAttachments,
-          }
-        : {}),
+      attachments: [
+        {
+          filename:
+            `${pdfFilename}.pdf`,
+
+          content:
+            pdfBuffer.toString(
+              "base64"
+            ),
+        },
+
+        ...extraAttachments,
+      ],
     });
 
   if (

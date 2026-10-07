@@ -129,19 +129,21 @@ export default async function CustomerGuaranteePage({
       <div className="mx-auto max-w-4xl">
         <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
           <header className="bg-slate-950 px-6 py-8 sm:px-10">
-            <div className="flex flex-wrap items-start justify-between gap-6">
-              <div>
-                {/* Dark header: white logo (dryhome-logo.png). */}
-                <Image
-                  src="/dryhome-logo.png"
-                  alt="Dry Home Damp Proofing Solutions"
-                  width={220}
-                  height={70}
-                  priority
-                  className="h-auto w-auto max-w-[220px]"
-                />
+            {/* Dark header: white logo (dryhome-logo.png), centred, uncropped. */}
+            <div className="flex justify-center">
+              <Image
+                src="/dryhome-logo.png"
+                alt="Dry Home Damp Proofing Solutions"
+                width={220}
+                height={70}
+                priority
+                className="h-auto w-auto max-w-[220px]"
+              />
+            </div>
 
-                <p className="mt-5 text-sm font-semibold uppercase tracking-wider text-emerald-400">
+            <div className="mt-8 flex flex-wrap items-start justify-between gap-6">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-wider text-emerald-400">
                   Customer Guarantee
                 </p>
               </div>
