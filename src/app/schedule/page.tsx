@@ -2,6 +2,11 @@ import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
 import DeleteScheduleEventButton from "@/components/DeleteScheduleEventButton";
 import { createClient } from "@/lib/supabase/server";
+import { loadSurveyInvoicesByJob } from "@/lib/survey-payments";
+import {
+  SURVEY_EVENT_TYPE,
+  surveyPaymentState,
+} from "@/lib/survey";
 import { loadGoogleScheduleEvents } from "@/lib/calendar-feeds";
 import { syncGoogleCalendarMonth } from "@/lib/google-calendar-sync";
 import {
@@ -78,7 +83,8 @@ export default async function SchedulePage({
       jobs (
         id,
         job_number,
-        title
+        title,
+        job_type
       )
     `)
     .lte("start_date", monthEnd)
@@ -108,6 +114,39 @@ export default async function SchedulePage({
       ...event,
       source: "office" as const,
     }));
+
+  /*
+   * Survey appointments whose survey invoice is still unpaid get a
+   * small "Unpaid" tag.
+   */
+
+  const surveyJobs = officeEvents
+    .filter(
+      (event) => event.event_type === SURVEY_EVENT_TYPE
+    )
+    .map((event) =>
+      Array.isArray(event.jobs) ? event.jobs[0] : event.jobs
+    )
+    .filter(
+      (job): job is NonNullable<typeof job> => Boolean(job?.id)
+    );
+
+  const surveyInvoices = await loadSurveyInvoicesByJob(
+    supabase,
+    Array.from(new Set(surveyJobs.map((job) => String(job.id))))
+  );
+
+  const unpaidSurveyJobIds = new Set(
+    surveyJobs
+      .filter(
+        (job) =>
+          surveyPaymentState(
+            job,
+            surveyInvoices.get(String(job.id)) ?? []
+          ) === "unpaid"
+      )
+      .map((job) => String(job.id))
+  );
 
   const icalEvents = googleCalendar.events.filter(
     (event) => !hideIcalDuplicate(event, googleSync)
@@ -424,6 +463,15 @@ export default async function SchedulePage({
                                             )}
                                       </span>
                                     </div>
+
+                                    {event.source === "office" &&
+                                      event.event_type === SURVEY_EVENT_TYPE &&
+                                      jobData?.id &&
+                                      unpaidSurveyJobIds.has(String(jobData.id)) && (
+                                        <span className="mt-1 inline-flex rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700">
+                                          Unpaid
+                                        </span>
+                                      )}
 
                                     {jobData?.id &&
                                       jobData?.job_number && (

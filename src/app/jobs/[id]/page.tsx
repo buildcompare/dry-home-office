@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 
 import Sidebar from "@/components/Sidebar";
 import StatusBadge from "@/components/StatusBadge";
+import SurveyPaymentBadge from "@/components/SurveyPaymentBadge";
+import { surveyPaymentState } from "@/lib/survey";
 import { createClient } from "@/lib/supabase/server";
 import { updateJobStatus } from "@/app/jobs/actions";
 import {
@@ -21,12 +23,18 @@ type JobPageProps = {
   params: Promise<{
     id: string;
   }>;
+  searchParams: Promise<{
+    survey_notice?: string;
+    survey_warning?: string;
+  }>;
 };
 
 export default async function JobPage({
   params,
+  searchParams,
 }: JobPageProps) {
   const { id } = await params;
+  const query = await searchParams;
 
   const supabase = await createClient();
 
@@ -180,6 +188,7 @@ export default async function JobPage({
         contract_id,
         invoice_number,
         invoice_type,
+        title,
         status,
         amount,
         subtotal,
@@ -228,6 +237,12 @@ export default async function JobPage({
 
   const invoices =
     invoicesResult.data ?? [];
+
+  const surveyPayment =
+    surveyPaymentState(
+      job,
+      invoices
+    );
 
   const guarantees =
     guaranteesResult.data ?? [];
@@ -610,6 +625,26 @@ export default async function JobPage({
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
 
+          {/* BOOK SURVEY RESULT */}
+
+          {query.survey_notice && (
+            <div
+              role="status"
+              className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+            >
+              {query.survey_notice}
+            </div>
+          )}
+
+          {query.survey_warning && (
+            <div
+              role="alert"
+              className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            >
+              {query.survey_warning}
+            </div>
+          )}
+
           {/* HEADER */}
 
           <div className="mb-8">
@@ -636,6 +671,12 @@ export default async function JobPage({
                   <StatusBadge
                     status={
                       job.status
+                    }
+                  />
+
+                  <SurveyPaymentBadge
+                    state={
+                      surveyPayment
                     }
                   />
                 </div>

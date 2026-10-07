@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isValidEmailAddress } from "@/lib/email-recipients";
 import { isMissingSecondaryEmailColumn } from "@/lib/client-secondary-email";
+import { insertClientRow } from "@/lib/client-create";
 
 /* =========================================================
    SECONDARY EMAIL
@@ -175,56 +176,24 @@ export async function addClient(
     notes,
   };
 
-  let secondaryEmailNotSaved =
-    false;
-
-  let {
-    data: client,
+  const {
+    clientId: newClientId,
     error,
-  } = await supabase
-    .from("clients")
-    .insert({
-      ...baseRow,
+    secondaryEmailNotSaved,
+  } = await insertClientRow(
+    supabase,
+    baseRow,
+    hasSecondaryEmailField
+      ? secondaryEmail
+      : null
+  );
 
-      ...(hasSecondaryEmailField &&
-      secondaryEmail
-        ? {
-            secondary_email:
-              secondaryEmail,
-          }
-        : {}),
-    })
-    .select("id")
-    .single();
-
-  if (
-    isMissingSecondaryEmailColumn(
-      error
-    )
-  ) {
-    /*
-     * The secondary_email column has not been added to the
-     * database yet. Save everything else so the client is not lost.
-     */
-
-    console.error(
-      "clients.secondary_email column is missing; saving client without it."
-    );
-
-    secondaryEmailNotSaved =
-      Boolean(
-        secondaryEmail
-      );
-
-    ({
-      data: client,
-      error,
-    } = await supabase
-      .from("clients")
-      .insert(baseRow)
-      .select("id")
-      .single());
-  }
+  const client =
+    newClientId
+      ? {
+          id: newClientId,
+        }
+      : null;
 
   if (
     error ||

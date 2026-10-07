@@ -3,10 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import {
-  copyAppointmentToGoogle,
-  deleteGoogleCalendarEvent,
-} from "@/lib/google-calendar-sync";
+import { deleteGoogleCalendarEvent } from "@/lib/google-calendar-sync";
+import { createScheduleEventWithGoogle } from "@/lib/schedule-create";
 import { localGoogleEffect } from "@/lib/google-oauth";
 
 
@@ -202,71 +200,57 @@ export async function addScheduleEvent(
       formData.get("notes") ?? ""
     ).trim() || null;
 
-  const {
-    data: newEvent,
-    error,
-  } = await supabase
-    .from("schedule_events")
-    .insert({
-      job_id:
-        jobId,
+  const created =
+    await createScheduleEventWithGoogle(
+      supabase,
+      {
+        job_id:
+          jobId,
 
-      contract_id:
-        contractId,
+        contract_id:
+          contractId,
 
-      client_id:
-        clientId,
+        client_id:
+          clientId,
 
-      title,
+        title,
 
-      event_type:
-        eventType,
+        event_type:
+          eventType,
 
-      status,
+        status,
 
-      start_date:
-        startDate,
+        start_date:
+          startDate,
 
-      end_date:
-        endDate,
+        end_date:
+          endDate,
 
-      start_time:
-        startTime,
+        start_time:
+          startTime,
 
-      end_time:
-        endTime,
+        end_time:
+          endTime,
 
-      all_day:
-        allDay,
+        all_day:
+          allDay,
 
-      location,
+        location,
 
-      assigned_to:
-        String(
-          formData.get(
-            "assigned_to"
-          ) ?? ""
-        ).trim() || null,
+        assigned_to:
+          String(
+            formData.get(
+              "assigned_to"
+            ) ?? ""
+          ).trim() || null,
 
-      notes,
-    })
-    .select(`
-      id,
-      job_id,
-      client_id,
-      contract_id
-    `)
-    .single();
-
-  if (
-    error ||
-    !newEvent
-  ) {
-    console.error(
-      "Schedule save error:",
-      error
+        notes,
+      }
     );
 
+  if (
+    !created.ok
+  ) {
     redirect(
       `/schedule/new?date=${startDate}&error=Unable%20to%20save%20appointment`
     );
@@ -302,47 +286,8 @@ export async function addScheduleEvent(
     );
   }
 
-  const copied =
-    await copyAppointmentToGoogle({
-      title,
-      location,
-      notes,
-      start_date: startDate,
-      end_date: endDate,
-      start_time: startTime,
-      end_time: endTime,
-      all_day: allDay,
-    });
-
-  let googleNotice = false;
-
-  if (copied.status === "failed") {
-    googleNotice = true;
-  }
-
-  if (copied.status === "copied") {
-    const { error: linkError } =
-      await supabase
-        .from("schedule_events")
-        .update({
-          google_calendar_id:
-            copied.calendarId,
-          google_event_id:
-            copied.eventId,
-        })
-        .eq("id", newEvent.id);
-
-    if (linkError) {
-      console.error(
-        "Could not store the Google Calendar event id"
-      );
-      await deleteGoogleCalendarEvent(
-        copied.calendarId,
-        copied.eventId
-      );
-      googleNotice = true;
-    }
-  }
+  const googleNotice =
+    created.googleNotice;
 
   const month =
     startDate.slice(0, 7);
