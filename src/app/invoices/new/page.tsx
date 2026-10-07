@@ -176,25 +176,12 @@ function invoiceRowTotal(
   );
 }
 
+/*
+ * Used for both Invoice Date and Due Date: new invoices default to
+ * "Payment due on receipt.", so the due date is the invoice date.
+ */
 function todayDate() {
   return new Date()
-    .toISOString()
-    .slice(
-      0,
-      10
-    );
-}
-
-function defaultDueDate() {
-  const date =
-    new Date();
-
-  date.setDate(
-    date.getDate() +
-      7
-  );
-
-  return date
     .toISOString()
     .slice(
       0,
@@ -1398,7 +1385,7 @@ export default async function NewInvoicePage({
                   name="due_date"
                   type="date"
                   defaultValue={
-                    defaultDueDate()
+                    todayDate()
                   }
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 />
