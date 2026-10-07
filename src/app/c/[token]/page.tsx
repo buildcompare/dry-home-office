@@ -151,14 +151,17 @@ export default async function CustomerContractPage({
       <div className="mx-auto max-w-4xl">
         <div className="overflow-hidden rounded-2xl bg-white shadow-lg">
           <header className="bg-slate-950 px-6 py-8 text-white sm:px-10">
-            <Image
-              src="/dryhome-logo.png"
-              alt="Dry Home Damp Proofing Solutions"
-              width={230}
-              height={90}
-              className="h-auto w-52 object-contain"
-              priority
-            />
+            {/* Dark header: white logo (dryhome-logo.png), centred, uncropped. */}
+            <div className="flex justify-center">
+              <Image
+                src="/dryhome-logo.png"
+                alt="Dry Home Damp Proofing Solutions"
+                width={230}
+                height={90}
+                className="h-auto w-52 object-contain"
+                priority
+              />
+            </div>
 
             <div className="mt-8 flex flex-wrap items-end justify-between gap-6">
               <div>

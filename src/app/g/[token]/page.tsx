@@ -131,8 +131,9 @@ export default async function CustomerGuaranteePage({
           <header className="bg-slate-950 px-6 py-8 sm:px-10">
             <div className="flex flex-wrap items-start justify-between gap-6">
               <div>
+                {/* Dark header: white logo (dryhome-logo.png). */}
                 <Image
-                  src="/dryhome-logo-light.png"
+                  src="/dryhome-logo.png"
                   alt="Dry Home Damp Proofing Solutions"
                   width={220}
                   height={70}
