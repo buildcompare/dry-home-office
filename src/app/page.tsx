@@ -3,6 +3,8 @@ import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
 import StatusBadge from "@/components/StatusBadge";
 import { createClient } from "@/lib/supabase/server";
+import { loadUnpaidSurveys } from "@/lib/survey-payments";
+import { formatSurveyWhen, isSurveyDueSoon } from "@/lib/survey";
 import {
   money,
   formatCurrency,
@@ -256,6 +258,15 @@ export default async function DashboardPage() {
         }
       ),
   ]);
+
+  /*
+   * UNPAID SURVEYS (panel at the bottom, only when there are any)
+   */
+
+  const unpaidSurveys =
+    await loadUnpaidSurveys(
+      supabase
+    );
 
   /* =========================================================
      NORMALISE DATA
@@ -604,6 +615,13 @@ export default async function DashboardPage() {
               </div>
 
               <div className="flex flex-wrap gap-2">
+                <Link
+                  href="/surveys/new"
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Book Survey
+                </Link>
+
                 <Link
                   href="/jobs/new"
                   className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
@@ -1074,6 +1092,163 @@ export default async function DashboardPage() {
               </div>
             )}
           </section>
+
+          {/* =================================================
+              UNPAID SURVEYS
+              Only shown when a survey invoice is still unpaid.
+              ================================================= */}
+
+          {unpaidSurveys.length >
+            0 && (
+            <section className="mt-10 overflow-hidden rounded-2xl bg-white shadow-sm">
+              <div className="border-b border-slate-200 px-6 py-5">
+                <h2 className="text-xl font-semibold text-slate-900">
+                  Unpaid Surveys
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Survey invoices still waiting for payment. Surveys in the next 3 days are highlighted.
+                </p>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <Heading>
+                        Client
+                      </Heading>
+
+                      <Heading>
+                        Survey
+                      </Heading>
+
+                      <Heading>
+                        Invoice
+                      </Heading>
+
+                      <Heading right>
+                        Amount
+                      </Heading>
+
+                      <Heading right>
+                        Action
+                      </Heading>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-100">
+                    {unpaidSurveys.map(
+                      (survey) => {
+                        const dueSoon =
+                          isSurveyDueSoon(
+                            survey.surveyDate,
+                            today
+                          );
+
+                        return (
+                          <tr
+                            key={
+                              survey.invoiceId
+                            }
+                            className={
+                              dueSoon
+                                ? "bg-red-50"
+                                : "hover:bg-slate-50"
+                            }
+                          >
+                            <TableCell>
+                              <span className="font-semibold text-slate-900">
+                                {
+                                  survey.clientName
+                                }
+                              </span>
+
+                              {survey.jobNumber && (
+                                <p className="mt-1 text-xs text-slate-400">
+                                  {
+                                    survey.jobNumber
+                                  }
+                                </p>
+                              )}
+                            </TableCell>
+
+                            <TableCell>
+                              <span
+                                className={
+                                  dueSoon
+                                    ? "font-semibold text-[#be1e2d]"
+                                    : ""
+                                }
+                              >
+                                {survey.surveyDate
+                                  ? formatSurveyWhen(
+                                      survey.surveyDate,
+                                      survey.startTime,
+                                      survey.endTime
+                                    )
+                                  : "Not set"}
+                              </span>
+
+                              {dueSoon && (
+                                <p className="mt-1 text-xs font-semibold text-[#be1e2d]">
+                                  Unpaid – survey due soon
+                                </p>
+                              )}
+                            </TableCell>
+
+                            <TableCell>
+                              <Link
+                                href={`/invoices/${survey.invoiceId}`}
+                                className="font-semibold text-slate-900 hover:underline"
+                              >
+                                {
+                                  survey.invoiceNumber
+                                }
+                              </Link>
+                            </TableCell>
+
+                            <TableCell right>
+                              <span
+                                className={
+                                  dueSoon
+                                    ? "font-bold text-[#be1e2d]"
+                                    : "font-semibold text-slate-900"
+                                }
+                              >
+                                {formatCurrency(
+                                  survey.total
+                                )}
+                              </span>
+
+                              {survey.outstanding <
+                                survey.total && (
+                                <p className="mt-1 text-xs text-slate-500">
+                                  {formatCurrency(
+                                    survey.outstanding
+                                  )}{" "}
+                                  outstanding
+                                </p>
+                              )}
+                            </TableCell>
+
+                            <TableCell right>
+                              <Link
+                                href={`/jobs/${survey.jobId}`}
+                                className="inline-flex whitespace-nowrap rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-700"
+                              >
+                                Open Job
+                              </Link>
+                            </TableCell>
+                          </tr>
+                        );
+                      }
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
         </div>
       </main>
     </div>

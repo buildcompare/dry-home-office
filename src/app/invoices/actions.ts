@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { allocateDocumentNumber } from "@/lib/numbering";
+import { calculateInvoiceTotals, insertInvoiceWithItems } from "@/lib/invoice-create";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -441,21 +441,14 @@ export async function addInvoice(
      CALCULATE INVOICE TOTAL
      ======================================================= */
 
-  const subtotal =
-    money(
-      cleanedItems.reduce(
-        (
-          sum,
-          item
-        ) => {
-          return (
-            sum +
-            item.quantity *
-              item.unit_price
-          );
-        },
-        0
-      )
+  const {
+    subtotal,
+    total,
+  } =
+    calculateInvoiceTotals(
+      cleanedItems,
+      vatEnabled,
+      vatRate
     );
 
   if (
@@ -465,23 +458,6 @@ export async function addInvoice(
       "The invoice amount must be greater than £0."
     );
   }
-
-  const vatAmount =
-    vatEnabled
-      ? money(
-          subtotal *
-            (
-              vatRate /
-              100
-            )
-        )
-      : 0;
-
-  const total =
-    money(
-      subtotal +
-        vatAmount
-    );
 
   /* =======================================================
      APPROVED JOB VALUE
@@ -859,170 +835,32 @@ export async function addInvoice(
     }
   }
 
-  const invoiceNumber = await allocateDocumentNumber("invoice");
-
   /* =======================================================
-     INSERT INVOICE
+     INSERT INVOICE + ITEMS
+     Shared with the Book Survey flow.
      ======================================================= */
 
-  const {
-    data: invoice,
-    error:
-      invoiceError,
-  } =
-    await supabase
-      .from(
-        "invoices"
-      )
-      .insert({
-        invoice_number:
-          invoiceNumber,
-
-        client_id:
-          clientId,
-
-        job_id:
-          jobId,
-
-        quote_id:
-          quoteId,
-
-        contract_id:
-          contractId,
-
-        invoice_type:
-          invoiceType,
-
+  const invoice =
+    await insertInvoiceWithItems(
+      supabase,
+      {
+        clientId,
+        jobId,
+        quoteId,
+        contractId,
+        invoiceType,
         title,
-
         description,
-
-        invoice_date:
-          invoiceDate,
-
-        due_date:
-          dueDate,
-
-        status:
-          "Draft",
-
-        subtotal,
-
-        vat_enabled:
-          vatEnabled,
-
-        vat_rate:
-          vatEnabled
-            ? vatRate
-            : 0,
-
-        vat_amount:
-          vatAmount,
-
-        amount:
-          total,
-
-        amount_paid:
-          0,
-
-        customer_message:
-          customerMessage,
-
-        payment_terms:
-          paymentTerms,
-
-        internal_notes:
-          internalNotes,
-
-        public_token:
-          crypto.randomUUID(),
-      })
-      .select(
-        "id"
-      )
-      .single();
-
-  if (
-    invoiceError ||
-    !invoice
-  ) {
-    console.error(
-      invoiceError
+        invoiceDate,
+        dueDate,
+        customerMessage,
+        paymentTerms,
+        internalNotes,
+        vatEnabled,
+        vatRate,
+      },
+      cleanedItems
     );
-
-    throw new Error(
-      invoiceError?.message ||
-        "The invoice could not be created."
-    );
-  }
-
-  /* =======================================================
-     INVOICE ITEMS
-     ======================================================= */
-
-  const invoiceItems =
-    cleanedItems.map(
-      (
-        item,
-        index
-      ) => ({
-        invoice_id:
-          invoice.id,
-
-        description:
-          item.description,
-
-        quantity:
-          item.quantity,
-
-        unit:
-          item.unit,
-
-        unit_price:
-          item.unit_price,
-
-        item_type:
-          item.item_type,
-
-        sort_order:
-          index,
-      })
-    );
-
-  const {
-    error:
-      itemsError,
-  } =
-    await supabase
-      .from(
-        "invoice_items"
-      )
-      .insert(
-        invoiceItems
-      );
-
-  if (
-    itemsError
-  ) {
-    await supabase
-      .from(
-        "invoices"
-      )
-      .delete()
-      .eq(
-        "id",
-        invoice.id
-      );
-
-    console.error(
-      itemsError
-    );
-
-    throw new Error(
-      itemsError.message ||
-        "The invoice items could not be saved."
-    );
-  }
 
   /* =======================================================
      REFRESH

@@ -1,7 +1,10 @@
 import Link from "next/link";
 
 import Sidebar from "@/components/Sidebar";
+import SurveyPaymentBadge from "@/components/SurveyPaymentBadge";
 import { createClient } from "@/lib/supabase/server";
+import { loadSurveyInvoicesByJob } from "@/lib/survey-payments";
+import { isSurveyJob, surveyPaymentState } from "@/lib/survey";
 
 type JobsPageProps = {
   searchParams: Promise<{
@@ -75,6 +78,21 @@ export default async function JobsPage({
 
   const allJobs =
     jobs ?? [];
+
+  /*
+   * Survey jobs show a paid / unpaid badge from their survey invoice.
+   */
+
+  const surveyJobIds =
+    allJobs
+      .filter((job) => isSurveyJob(job))
+      .map((job) => String(job.id));
+
+  const surveyInvoices =
+    await loadSurveyInvoicesByJob(
+      supabase,
+      surveyJobIds
+    );
 
   /*
    * -------------------------------------------------------
@@ -200,12 +218,21 @@ export default async function JobsPage({
               </p>
             </div>
 
-            <Link
-              href="/jobs/new"
-              className="rounded-lg bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-700"
-            >
-              + Add Job
-            </Link>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href="/surveys/new"
+                className="rounded-lg border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Book Survey
+              </Link>
+
+              <Link
+                href="/jobs/new"
+                className="rounded-lg bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-700"
+              >
+                + Add Job
+              </Link>
+            </div>
           </div>
 
           {/* PIPELINE SUMMARY */}
@@ -490,11 +517,22 @@ export default async function JobsPage({
                             </TableCell>
 
                             <TableCell>
-                              <StatusBadge
-                                status={
-                                  job.status
-                                }
-                              />
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <StatusBadge
+                                  status={
+                                    job.status
+                                  }
+                                />
+
+                                <SurveyPaymentBadge
+                                  state={surveyPaymentState(
+                                    job,
+                                    surveyInvoices.get(
+                                      String(job.id)
+                                    ) ?? []
+                                  )}
+                                />
+                              </div>
                             </TableCell>
 
                             <TableCell>
