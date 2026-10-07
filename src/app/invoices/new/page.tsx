@@ -1500,7 +1500,7 @@ export default async function NewInvoicePage({
                   rows={
                     3
                   }
-                  defaultValue="Payment due within 7 days of invoice date."
+                  defaultValue="Payment due on receipt."
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 />
               </div>
