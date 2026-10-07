@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { invoicePaymentDetails } from "@/lib/company-payment-details";
 
 type CustomerInvoicePageProps = {
   params: Promise<{
@@ -179,6 +180,11 @@ export default async function CustomerInvoicePage({
     ) -
     Number(
       invoice.amount_paid ?? 0
+    );
+
+  const paymentDetails =
+    invoicePaymentDetails(
+      invoice.invoice_number
     );
 
   return (
@@ -435,6 +441,48 @@ export default async function CustomerInvoicePage({
                 </div>
               </div>
             </section>
+
+            {balance > 0.009 &&
+              paymentDetails && (
+              <section className="mt-10 border-t border-slate-200 pt-8">
+                <h2 className="text-xl font-bold text-slate-900">
+                  Payment Details
+                </h2>
+
+                {paymentDetails.heading && (
+                  <p className="mt-4 text-sm font-semibold text-slate-900">
+                    {paymentDetails.heading}
+                  </p>
+                )}
+
+                <dl className="mt-3 space-y-1 text-sm">
+                  {paymentDetails.rows.map(
+                    (row) => (
+                      <div
+                        key={row.label}
+                        className="flex gap-3"
+                      >
+                        <dt className="w-36 text-slate-500">
+                          {row.label}:
+                        </dt>
+
+                        <dd className="font-semibold text-slate-900">
+                          {row.value}
+                        </dd>
+                      </div>
+                    )
+                  )}
+                </dl>
+
+                {paymentDetails.referenceNote && (
+                  <p className="mt-3 text-sm text-slate-700">
+                    {
+                      paymentDetails.referenceNote
+                    }
+                  </p>
+                )}
+              </section>
+            )}
 
             {invoice.customer_message && (
               <section className="mt-10 rounded-xl bg-slate-50 p-6">

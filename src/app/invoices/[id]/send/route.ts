@@ -8,6 +8,11 @@ import {
   toResendRecipients,
 } from "@/lib/email-recipients";
 import { loadClientSecondaryEmail } from "@/lib/client-secondary-email";
+import {
+  invoicePdfFilename,
+  loadInvoicePdfSource,
+  renderInvoicePdf,
+} from "@/lib/invoice-pdf";
 
 export const runtime =
   "nodejs";
@@ -621,6 +626,51 @@ export async function POST(
   }
 
   /* =========================================================
+     INVOICE PDF
+     Same builder as the /invoices/[id]/pdf download route.
+     ========================================================= */
+
+  let pdfBuffer: Buffer;
+  let pdfFilename: string;
+
+  try {
+    const pdfSource =
+      await loadInvoicePdfSource(
+        supabase,
+        id
+      );
+
+    if (!pdfSource) {
+      throw new Error(
+        "Invoice PDF data could not be loaded."
+      );
+    }
+
+    pdfBuffer =
+      await renderInvoicePdf(
+        pdfSource
+      );
+
+    pdfFilename =
+      invoicePdfFilename(
+        pdfSource.invoice.invoice_number,
+        pdfSource.invoice.title ||
+          pdfSource.invoice.invoice_type
+      );
+  } catch (pdfError) {
+    console.error(
+      "Unable to generate invoice PDF:",
+      pdfError
+    );
+
+    return sendErrorResponse(
+      wantsJson,
+      id,
+      "Unable to generate the invoice PDF attachment."
+    );
+  }
+
+  /* =========================================================
      DISPLAY DATA
      ========================================================= */
 
@@ -702,13 +752,19 @@ export async function POST(
 
       html,
 
-      ...(extraAttachments.length >
-      0
-        ? {
-            attachments:
-              extraAttachments,
-          }
-        : {}),
+      attachments: [
+        {
+          filename:
+            `${pdfFilename}.pdf`,
+
+          content:
+            pdfBuffer.toString(
+              "base64"
+            ),
+        },
+
+        ...extraAttachments,
+      ],
     });
 
   if (

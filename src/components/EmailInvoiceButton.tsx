@@ -655,6 +655,24 @@ export default function EmailInvoiceButton({
                       Attachments
                     </h3>
 
+                    <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <p className="text-sm font-semibold text-emerald-900">
+                            Invoice PDF
+                          </p>
+
+                          <p className="mt-1 text-xs text-emerald-700">
+                            Automatically attached to every invoice email.
+                          </p>
+                        </div>
+
+                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                          PDF
+                        </span>
+                      </div>
+                    </div>
+
                     <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
                       <p className="text-sm font-semibold text-blue-900">
                         Secure Invoice Link
