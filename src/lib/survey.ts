@@ -433,24 +433,42 @@ export function isSurveyJob(job: {
   );
 }
 
-export function isSurveyInvoice(invoice: {
-  title?: string | null;
-} | null | undefined) {
-  return clean(invoice?.title)
-    .toLowerCase()
-    .startsWith(SURVEY_INVOICE_TITLE.toLowerCase());
-}
-
-type Numeric = number | string | null | undefined;
-
 export type SurveyInvoiceLike = {
   title?: string | null;
   status?: string | null;
+  invoice_type?: string | null;
+  quote_id?: string | null;
+  contract_id?: string | null;
   amount?: Numeric;
   subtotal?: Numeric;
   vat_amount?: Numeric;
   amount_paid?: Numeric;
 };
+
+/*
+ * A survey invoice is the stand-alone "Damp survey" invoice that Book
+ * Survey creates: not raised from a quote or contract, and not a
+ * Deposit or Interim invoice for works.
+ */
+export function isSurveyInvoice(invoice: SurveyInvoiceLike | null | undefined) {
+  if (!invoice) {
+    return false;
+  }
+
+  const type = clean(invoice.invoice_type).toLowerCase();
+
+  return (
+    clean(invoice.title)
+      .toLowerCase()
+      .startsWith(SURVEY_INVOICE_TITLE.toLowerCase()) &&
+    !invoice.quote_id &&
+    !invoice.contract_id &&
+    type !== "deposit" &&
+    type !== "interim"
+  );
+}
+
+type Numeric = number | string | null | undefined;
 
 function num(value: Numeric) {
   const parsed = Number(value ?? 0);
@@ -482,29 +500,57 @@ export function isInvoicePaid(invoice: SurveyInvoiceLike) {
   return invoiceTotal(invoice) > 0 && invoiceOutstanding(invoice) <= 0.009;
 }
 
+/* Statuses that mean the invoice has been issued to the client. */
+export const ISSUED_INVOICE_STATUSES = ["Sent", "Viewed", "Overdue", "Part Paid"];
+
+export type SurveyPaymentState = "paid" | "unpaid" | "draft";
+
 /**
- * "paid" / "unpaid" for a survey job from its linked survey
+ * Payment state of one survey invoice. Only an issued invoice counts as
+ * unpaid; a Draft is "draft"; cancelled / void invoices are ignored.
+ */
+export function surveyInvoiceState(
+  invoice: SurveyInvoiceLike
+): SurveyPaymentState | null {
+  const status = clean(invoice.status);
+  const lower = status.toLowerCase();
+
+  if (lower === "cancelled" || lower === "void" || lower === "voided") {
+    return null;
+  }
+
+  if (isInvoicePaid(invoice)) {
+    return "paid";
+  }
+
+  if (lower === "draft" || lower === "") {
+    return "draft";
+  }
+
+  return ISSUED_INVOICE_STATUSES.includes(status) ? "unpaid" : null;
+}
+
+/**
+ * "paid" / "unpaid" / "draft" for a survey job from its survey
  * invoice(s). null when there is no survey invoice to go on.
  */
 export function surveyPaymentState(
   job: { job_type?: string | null; title?: string | null } | null | undefined,
   invoices: SurveyInvoiceLike[]
-): "paid" | "unpaid" | null {
+): SurveyPaymentState | null {
   if (!isSurveyJob(job)) {
     return null;
   }
 
-  const surveyInvoices = invoices.filter(
-    (invoice) =>
-      invoice.status !== "Cancelled" &&
-      isSurveyInvoice(invoice)
-  );
+  const states = invoices
+    .filter((invoice) => isSurveyInvoice(invoice))
+    .map((invoice) => surveyInvoiceState(invoice))
+    .filter((state): state is SurveyPaymentState => state !== null);
 
-  if (surveyInvoices.length === 0) {
-    return null;
-  }
-
-  return surveyInvoices.every(isInvoicePaid) ? "paid" : "unpaid";
+  if (states.includes("unpaid")) return "unpaid";
+  if (states.includes("draft")) return "draft";
+  if (states.includes("paid")) return "paid";
+  return null;
 }
 
 /* =========================================================
@@ -571,4 +617,60 @@ export function buildSurveyBookedNotice({
     default:
       return `${first} Invoice ${invoiceNumber} created (not emailed).`;
   }
+}
+
+export type UpdateSurveyState = {
+  error: string | null;
+};
+
+/* Only allow redirects back into the Surveys pages. */
+export function safeSurveysPath(value: string | null | undefined, fallback: string) {
+  const path = String(value ?? "").trim();
+
+  return /^\/surveys(\/[A-Za-z0-9-]+)?(\?[A-Za-z0-9=&%._-]*)?$/.test(path)
+    ? path
+    : fallback;
+}
+
+export function withQueryParam(path: string, key: string, value: string) {
+  const [base, query = ""] = path.split("?");
+  const params = new URLSearchParams(query);
+  params.delete("notice");
+  params.delete("warning");
+  params.delete("error");
+  params.set(key, value);
+  return `${base}?${params.toString()}`;
+}
+
+/**
+ * Whether the survey fee can still be changed on the invoice, and why
+ * not when it can't.
+ */
+export function surveyFeeLock(invoice: {
+  status: string;
+  amountPaid: number;
+  state: SurveyPaymentState | null;
+  items: { id: string }[];
+} | null): string | null {
+  if (!invoice) {
+    return "There is no survey invoice to change.";
+  }
+
+  if (invoice.state === "paid") {
+    return "The invoice has been paid, so the fee is locked.";
+  }
+
+  if (invoice.amountPaid > 0 || invoice.status === "Part Paid") {
+    return "A payment has been recorded on the invoice, so the fee is locked.";
+  }
+
+  if (invoice.items.length === 0) {
+    return "The invoice has no line items, so change it on the invoice instead.";
+  }
+
+  if (invoice.items.length > 1) {
+    return "The invoice has more than one line, so change it on the invoice instead.";
+  }
+
+  return null;
 }

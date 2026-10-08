@@ -5,11 +5,17 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { allocateDocumentNumber } from "@/lib/numbering";
-import { isValidEmailAddress } from "@/lib/email-recipients";
+import { describeRecipients, isValidEmailAddress } from "@/lib/email-recipients";
 import { loadClientSecondaryEmail } from "@/lib/client-secondary-email";
 import { insertClientRow } from "@/lib/client-create";
-import { insertInvoiceWithItems } from "@/lib/invoice-create";
-import { createScheduleEventWithGoogle } from "@/lib/schedule-create";
+import { calculateInvoiceTotals, insertInvoiceWithItems } from "@/lib/invoice-create";
+import { applyInvoicePayment } from "@/lib/invoice-payment";
+import { loadSurveyRecord } from "@/lib/survey-records";
+import {
+  createScheduleEventWithGoogle,
+  removeScheduleEvent,
+  updateScheduleEventWithGoogle,
+} from "@/lib/schedule-create";
 import { emailInvoiceToClient } from "@/lib/invoice-email";
 import { getLondonDateKey } from "@/lib/dates";
 import {
@@ -30,10 +36,14 @@ import {
   isValidDateKey,
   isValidTime,
   parseSurveyFee,
+  safeSurveysPath,
+  surveyFeeLock,
+  withQueryParam,
   type AddressParts,
   type BookSurveyState,
   type SurveyClientOption,
   type SurveyEmailOutcome,
+  type UpdateSurveyState,
 } from "@/lib/survey";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -62,6 +72,20 @@ function errorText(error: PostgrestLikeError) {
 /* A value rejected by a check constraint or an enum type. */
 function isRejectedValue(error: PostgrestLikeError) {
   return error?.code === "23514" || error?.code === "22P02";
+}
+
+/* Short, safe reason for a failed insert, e.g. " (check constraint …)". */
+function describeDbError(error: unknown) {
+  const message =
+    error && typeof error === "object" && "message" in error
+      ? String((error as { message?: unknown }).message ?? "")
+      : error instanceof Error
+        ? error.message
+        : "";
+
+  const cleaned = message.replace(/\s+/g, " ").trim().slice(0, 160);
+
+  return cleaned ? ` (${cleaned})` : "";
 }
 
 function isMissingColumn(error: PostgrestLikeError, column: string) {
@@ -421,55 +445,12 @@ export async function bookSurvey(
   const warnings: string[] = [];
 
   /* -------------------------------------------------------
-     SCHEDULE (same path as the Schedule page, incl. Google copy)
-     ------------------------------------------------------- */
-
-  let scheduled = false;
-
-  try {
-    const event = await createScheduleEventWithGoogle(supabase, {
-      job_id: job.id,
-      contract_id: null,
-      client_id: client.id,
-      title: `${jobLabel} - ${title} (${client.name})`,
-      event_type: SURVEY_EVENT_TYPE,
-      status: "Scheduled",
-      start_date: surveyDate,
-      end_date: surveyDate,
-      start_time: startTime,
-      end_time: endTime,
-      all_day: false,
-      location: siteText,
-      assigned_to: null,
-      notes,
-    });
-
-    if (event.ok) {
-      scheduled = true;
-
-      if (event.googleNotice) {
-        warnings.push(
-          "The appointment is on the Schedule but could not be copied to Google Calendar."
-        );
-      }
-    } else {
-      warnings.push(
-        "The Schedule appointment could not be created. Please add it from the Schedule page."
-      );
-    }
-  } catch (error) {
-    console.error("Survey schedule error:", error);
-    warnings.push(
-      "The Schedule appointment could not be created. Please add it from the Schedule page."
-    );
-  }
-
-  /* -------------------------------------------------------
      INVOICE (shared invoice creation + numbering)
      ------------------------------------------------------- */
 
   const today = getLondonDateKey(new Date());
   let invoice: { id: string; invoiceNumber: string } | null = null;
+
 
   try {
     const createdInvoice = await insertInvoiceWithItems(
@@ -510,10 +491,85 @@ export async function bookSurvey(
     };
   } catch (error) {
     console.error("Survey invoice error:", error);
+
+    const reason =
+      error instanceof Error && error.message
+        ? ` (${error.message})`
+        : "";
+
+    /*
+     * No invoice: remove the job again so there is no half-booked
+     * survey. Nothing has been put on the Schedule yet.
+     */
+    const { error: rollbackError } = await supabase
+      .from("jobs")
+      .delete()
+      .eq("id", job.id);
+
+    if (rollbackError) {
+      console.error("Survey job rollback error:", rollbackError);
+
+      const params = new URLSearchParams();
+      params.set(
+        "warning",
+        `The invoice could not be created${reason}, and job ${jobLabel} could not be removed again. It is not on the Schedule and nothing was emailed. Please delete or finish it from the job page.`
+      );
+      redirect(`/surveys/${job.id}?${params.toString()}`);
+    }
+
+    return {
+      error: createdClient
+        ? `The invoice could not be created${reason}, so the survey was not booked (the job was removed again; nothing was added to the Schedule or emailed). Client ${createdClient.name} was added and is now selected; please try again.`
+        : `The invoice could not be created${reason}, so the survey was not booked. Nothing was saved, added to the Schedule or emailed.`,
+      newClient: createdClient,
+    };
+  }
+
+  /* -------------------------------------------------------
+     SCHEDULE (same path as the Schedule page, incl. Google copy)
+     ------------------------------------------------------- */
+
+  let scheduled = false;
+
+  try {
+    const event = await createScheduleEventWithGoogle(supabase, {
+      job_id: job.id,
+      contract_id: null,
+      client_id: client.id,
+      title: `${jobLabel} - ${title} (${client.name})`,
+      event_type: SURVEY_EVENT_TYPE,
+      status: "Scheduled",
+      start_date: surveyDate,
+      end_date: surveyDate,
+      start_time: startTime,
+      end_time: endTime,
+      all_day: false,
+      location: siteText,
+      assigned_to: null,
+      notes,
+    });
+
+    if (event.ok) {
+      scheduled = true;
+
+      if (event.googleNotice) {
+        warnings.push(
+          "The appointment is on the Schedule but could not be copied to Google Calendar."
+        );
+      }
+    } else {
+      warnings.push(
+        `The survey could not be added to the Schedule${describeDbError(
+          event.error
+        )}. Use "Add to Schedule" below to try again.`
+      );
+    }
+  } catch (error) {
+    console.error("Survey schedule error:", error);
     warnings.push(
-      `The invoice could not be created${
-        error instanceof Error && error.message ? ` (${error.message})` : ""
-      }, so nothing was emailed. Please create it from this job.`
+      `The survey could not be added to the Schedule${describeDbError(
+        error
+      )}. Use "Add to Schedule" below to try again.`
     );
   }
 
@@ -523,9 +579,7 @@ export async function bookSurvey(
 
   let email: SurveyEmailOutcome = { status: "not-requested" };
 
-  if (!invoice) {
-    email = { status: "no-invoice" };
-  } else if (sendEmail) {
+  if (sendEmail) {
     try {
       const secondaryEmail =
         clientMode === "existing"
@@ -569,26 +623,582 @@ export async function bookSurvey(
     revalidatePath("/schedule");
   }
 
-  if (invoice) {
-    revalidatePath(`/invoices/${invoice.id}`);
-  }
+  revalidatePath(`/invoices/${invoice.id}`);
+  revalidatePath("/surveys");
 
   const notice = buildSurveyBookedNotice({
     when,
-    invoiceNumber: invoice?.invoiceNumber ?? null,
+    invoiceNumber: invoice.invoiceNumber,
     email,
   });
 
   if (warnings.length > 0) {
-    warnings.push(`Created: ${created.join(", ")}${scheduled ? ", schedule appointment" : ""}${invoice ? `, invoice ${invoice.invoiceNumber}` : ""}.`);
+    warnings.push(`Created: ${created.join(", ")}${scheduled ? ", schedule appointment" : ""}${`, invoice ${invoice.invoiceNumber}`}.`);
   }
 
   const params = new URLSearchParams();
-  params.set("survey_notice", notice);
+  params.set("notice", notice);
 
   if (warnings.length > 0) {
-    params.set("survey_warning", warnings.join(" "));
+    params.set("warning", warnings.join(" "));
   }
 
-  redirect(`/jobs/${job.id}?${params.toString()}`);
+  redirect(`/surveys/${job.id}?${params.toString()}`);
+}
+
+/* =========================================================
+   SURVEY PAGES: SHARED
+   ========================================================= */
+
+async function requireUser(supabase: SupabaseServerClient) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+}
+
+function refreshSurveyPages(
+  jobId: string,
+  extra: { clientId?: string | null; invoiceId?: string | null } = {}
+) {
+  revalidatePath("/");
+  revalidatePath("/surveys");
+  revalidatePath(`/surveys/${jobId}`);
+  revalidatePath("/jobs");
+  revalidatePath(`/jobs/${jobId}`);
+  revalidatePath("/schedule");
+  revalidatePath("/invoices");
+
+  if (extra.invoiceId) {
+    revalidatePath(`/invoices/${extra.invoiceId}`);
+  }
+
+  if (extra.clientId) {
+    revalidatePath(`/clients/${extra.clientId}`);
+  }
+}
+
+function surveyEventTitle(
+  jobNumber: string | null,
+  title: string,
+  clientName: string | null
+) {
+  return `${jobNumber ? `${jobNumber} - ` : ""}${title}${
+    clientName ? ` (${clientName})` : ""
+  }`;
+}
+
+/* =========================================================
+   UPDATE SURVEY
+   Order: Google Calendar + Schedule first (so a failed Google push
+   changes nothing), then the job, then the invoice line if unpaid.
+   ========================================================= */
+
+export async function updateSurvey(
+  _previous: UpdateSurveyState,
+  formData: FormData
+): Promise<UpdateSurveyState> {
+  const supabase = await createClient();
+  await requireUser(supabase);
+
+  const jobId = text(formData, "job_id");
+  const record = jobId ? await loadSurveyRecord(supabase, jobId) : null;
+
+  if (!record) {
+    return { error: "This survey could not be found." };
+  }
+
+  if (record.cancelled) {
+    return { error: "This survey has been cancelled, so it can't be edited." };
+  }
+
+  const surveyDate = text(formData, "survey_date");
+
+  if (!isValidDateKey(surveyDate)) {
+    return { error: "Please choose the survey date." };
+  }
+
+  const event = record.event;
+  let startTime: string | null = null;
+  let endTime: string | null = null;
+  let allDay = false;
+
+  if (event) {
+    const start = text(formData, "start_time").slice(0, 5);
+    const end = text(formData, "end_time").slice(0, 5);
+
+    if (!start && event.all_day) {
+      allDay = true;
+    } else {
+      if (!isValidTime(start)) {
+        return { error: "Please choose the survey start time." };
+      }
+
+      if (!isValidTime(end) || !isEndAfterStart(start, end)) {
+        return { error: "The end time must be after the start time." };
+      }
+
+      startTime = start;
+      endTime = end;
+    }
+  }
+
+  const site: AddressParts = {
+    address_line_1: textOrNull(formData, "site_address_line_1"),
+    address_line_2: textOrNull(formData, "site_address_line_2"),
+    town: textOrNull(formData, "site_town"),
+    county: textOrNull(formData, "site_county"),
+    postcode: text(formData, "site_postcode").toUpperCase() || null,
+  };
+
+  const notes = textOrNull(formData, "notes");
+  const feeLock = surveyFeeLock(record.invoice);
+  let fee: number | null = null;
+
+  if (!feeLock && formData.has("survey_fee")) {
+    fee = parseSurveyFee(text(formData, "survey_fee"));
+
+    if (fee === null) {
+      return { error: "Please enter the survey fee in pounds, e.g. 250 or 250.00." };
+    }
+  }
+
+  const siteText = formatAddress(site) || null;
+
+  const keepsSurveyTitle = (record.jobTitle ?? "")
+    .toLowerCase()
+    .startsWith("damp survey");
+
+  const title = keepsSurveyTitle
+    ? buildSurveyJobTitle(site)
+    : record.jobTitle || buildSurveyJobTitle(site);
+
+  /* 1. Schedule + Google Calendar */
+
+  if (event) {
+    const updated = await updateScheduleEventWithGoogle(supabase, event, {
+      title: surveyEventTitle(record.jobNumber, title, record.client?.name ?? null),
+      location: siteText,
+      notes,
+      start_date: surveyDate,
+      end_date: surveyDate,
+      start_time: allDay ? null : startTime,
+      end_time: allDay ? null : endTime,
+      all_day: allDay,
+    });
+
+    if (!updated.ok) {
+      return {
+        error:
+          updated.reason === "google"
+            ? "Google Calendar could not be updated, so nothing was changed. Please try again."
+            : "The Schedule appointment could not be updated, so nothing was changed.",
+      };
+    }
+  }
+
+  /* 2. Job */
+
+  const { error: jobError } = await supabase
+    .from("jobs")
+    .update({
+      title,
+      survey_date: surveyDate,
+      address_line_1: site.address_line_1 ?? null,
+      address_line_2: site.address_line_2 ?? null,
+      town: site.town ?? null,
+      county: site.county ?? null,
+      postcode: site.postcode ?? null,
+      description: notes,
+    })
+    .eq("id", record.jobId);
+
+  if (jobError) {
+    console.error("Survey job update error:", jobError);
+    return {
+      error: event
+        ? "The Schedule appointment was updated, but the job could not be saved. Please try again."
+        : "The job could not be saved. Nothing was changed.",
+    };
+  }
+
+  /* 3. Invoice line, only while unpaid */
+
+  const notices = ["Survey saved."];
+  const warnings: string[] = [];
+  const invoice = record.invoice;
+
+  if (invoice && !feeLock && fee !== null) {
+    const item = invoice.items[0];
+    const when = formatSurveyWhen(surveyDate, startTime);
+    const description = buildSurveyItemDescription(surveyDate, startTime, site);
+    const priceChanged = Math.round(item.unit_price * 100) !== Math.round(fee * 100);
+
+    if (priceChanged || item.description !== description) {
+      const { error: itemError } = await supabase
+        .from("invoice_items")
+        .update({ unit_price: fee, description })
+        .eq("id", item.id);
+
+      if (itemError) {
+        console.error("Survey invoice item update error:", itemError);
+        warnings.push(
+          `The job and Schedule were saved, but invoice ${invoice.invoiceNumber} could not be updated.`
+        );
+      } else {
+        const totals = calculateInvoiceTotals(
+          [{ quantity: item.quantity || 1, unit_price: fee }],
+          invoice.vatEnabled,
+          invoice.vatRate || 20
+        );
+
+        const { error: invoiceError } = await supabase
+          .from("invoices")
+          .update({
+            subtotal: totals.subtotal,
+            vat_amount: totals.vatAmount,
+            amount: totals.total,
+            description: siteText
+              ? `Damp survey at ${siteText} on ${when}.`
+              : `Damp survey on ${when}.`,
+          })
+          .eq("id", invoice.id);
+
+        if (invoiceError) {
+          console.error("Survey invoice update error:", invoiceError);
+
+          // Put the line back so the invoice stays consistent.
+          await supabase
+            .from("invoice_items")
+            .update({ unit_price: item.unit_price, description: item.description })
+            .eq("id", item.id);
+
+          warnings.push(
+            `The job and Schedule were saved, but invoice ${invoice.invoiceNumber} could not be updated.`
+          );
+        } else if (priceChanged && invoice.sentAt) {
+          notices.push(
+            `Invoice ${invoice.invoiceNumber} now shows £${totals.total.toFixed(2)}. It was already emailed, so resend it to send the updated invoice.`
+          );
+        } else if (priceChanged) {
+          notices.push(`Invoice ${invoice.invoiceNumber} updated to £${totals.total.toFixed(2)}.`);
+        }
+      }
+    }
+  }
+
+  refreshSurveyPages(record.jobId, {
+    clientId: record.client?.id,
+    invoiceId: invoice?.id,
+  });
+
+  const params = new URLSearchParams();
+  params.set("notice", notices.join(" "));
+  if (warnings.length > 0) params.set("warning", warnings.join(" "));
+  redirect(`/surveys/${record.jobId}?${params.toString()}`);
+}
+
+/* =========================================================
+   ADD TO SCHEDULE (survey has no appointment)
+   ========================================================= */
+
+export async function addSurveyToSchedule(formData: FormData) {
+  const supabase = await createClient();
+  await requireUser(supabase);
+
+  const jobId = text(formData, "job_id");
+  const back = `/surveys/${jobId}`;
+  const record = jobId ? await loadSurveyRecord(supabase, jobId) : null;
+
+  if (!record) {
+    redirect("/surveys?error=This%20survey%20could%20not%20be%20found");
+  }
+
+  if (record.cancelled) {
+    redirect(withQueryParam(back, "error", "This survey has been cancelled."));
+  }
+
+  if (record.event) {
+    redirect(withQueryParam(back, "notice", "This survey is already on the Schedule."));
+  }
+
+  const surveyDate = text(formData, "survey_date");
+  const allDay = formData.get("all_day") === "on";
+  const startTime = text(formData, "start_time").slice(0, 5);
+  const endTime = text(formData, "end_time").slice(0, 5);
+
+  if (!isValidDateKey(surveyDate)) {
+    redirect(withQueryParam(back, "error", "Please choose the survey date."));
+  }
+
+  if (!allDay) {
+    if (!isValidTime(startTime)) {
+      redirect(withQueryParam(back, "error", 'Please enter a start time, or tick "All day".'));
+    }
+
+    if (!isValidTime(endTime) || !isEndAfterStart(startTime, endTime)) {
+      redirect(withQueryParam(back, "error", "The end time must be after the start time."));
+    }
+  }
+
+  const title = record.jobTitle || buildSurveyJobTitle(record.site);
+
+  const created = await createScheduleEventWithGoogle(supabase, {
+    job_id: record.jobId,
+    contract_id: null,
+    client_id: record.client?.id ?? null,
+    title: surveyEventTitle(record.jobNumber, title, record.client?.name ?? null),
+    event_type: SURVEY_EVENT_TYPE,
+    status: "Scheduled",
+    start_date: surveyDate,
+    end_date: surveyDate,
+    start_time: allDay ? null : startTime,
+    end_time: allDay ? null : endTime,
+    all_day: allDay,
+    location: record.siteText || null,
+    assigned_to: null,
+    notes: record.notes,
+  });
+
+  if (!created.ok) {
+    redirect(
+      withQueryParam(
+        back,
+        "error",
+        `The survey could not be added to the Schedule${describeDbError(created.error)}.`
+      )
+    );
+  }
+
+  if (record.surveyDate !== surveyDate) {
+    await supabase.from("jobs").update({ survey_date: surveyDate }).eq("id", record.jobId);
+  }
+
+  refreshSurveyPages(record.jobId, { clientId: record.client?.id });
+
+  redirect(
+    withQueryParam(
+      back,
+      created.googleNotice ? "warning" : "notice",
+      created.googleNotice
+        ? "Added to the Schedule, but it could not be copied to Google Calendar."
+        : "Added to the Schedule."
+    )
+  );
+}
+
+/* =========================================================
+   RESEND INVOICE (shared invoice send function)
+   ========================================================= */
+
+export async function resendSurveyInvoice(formData: FormData) {
+  const supabase = await createClient();
+  await requireUser(supabase);
+
+  const jobId = text(formData, "job_id");
+  const back = safeSurveysPath(text(formData, "back"), `/surveys/${jobId}`);
+  const record = jobId ? await loadSurveyRecord(supabase, jobId) : null;
+
+  if (!record?.invoice) {
+    redirect(withQueryParam(back, "error", "There is no survey invoice to send."));
+  }
+
+  const invoice = record.invoice;
+  const result = await emailInvoiceToClient(supabase, invoice.id);
+
+  refreshSurveyPages(record.jobId, { invoiceId: invoice.id });
+
+  if (result.status === "no-email") {
+    redirect(
+      withQueryParam(
+        back,
+        "error",
+        `Invoice ${invoice.invoiceNumber} was not sent because the client has no email address.`
+      )
+    );
+  }
+
+  if (result.status === "failed") {
+    redirect(
+      withQueryParam(
+        back,
+        "error",
+        `Invoice ${invoice.invoiceNumber} could not be emailed (${result.error}).`
+      )
+    );
+  }
+
+  redirect(
+    withQueryParam(
+      back,
+      result.warning ? "warning" : "notice",
+      `Invoice ${invoice.invoiceNumber} emailed to ${describeRecipients(result.recipients)}.${
+        result.warning ? ` ${result.warning}` : ""
+      }`
+    )
+  );
+}
+
+/* =========================================================
+   MARK PAID (same payment recording as the invoice page)
+   ========================================================= */
+
+export async function markSurveyPaid(formData: FormData) {
+  const supabase = await createClient();
+  await requireUser(supabase);
+
+  const jobId = text(formData, "job_id");
+  const back = safeSurveysPath(text(formData, "back"), `/surveys/${jobId}`);
+  const record = jobId ? await loadSurveyRecord(supabase, jobId) : null;
+
+  if (!record?.invoice) {
+    redirect(withQueryParam(back, "error", "There is no survey invoice to mark as paid."));
+  }
+
+  const invoice = record.invoice;
+
+  if (invoice.outstanding <= 0.009) {
+    redirect(withQueryParam(back, "notice", `Invoice ${invoice.invoiceNumber} is already paid.`));
+  }
+
+  const allowedMethods = ["Bank Transfer", "Card", "Cash", "Cheque", "Other"];
+  const method = text(formData, "payment_method");
+
+  try {
+    await applyInvoicePayment(supabase, {
+      invoiceId: invoice.id,
+      paymentAmount: invoice.outstanding,
+      paymentDate: getLondonDateKey(new Date()),
+      paymentMethod: allowedMethods.includes(method) ? method : "Bank Transfer",
+      paymentReference: null,
+      paymentNotes: "Marked paid from Surveys",
+    });
+  } catch (error) {
+    console.error("Survey mark paid error:", error);
+    redirect(
+      withQueryParam(
+        back,
+        "error",
+        `Invoice ${invoice.invoiceNumber} could not be marked as paid${
+          error instanceof Error && error.message ? ` (${error.message})` : ""
+        }.`
+      )
+    );
+  }
+
+  refreshSurveyPages(record.jobId, { clientId: record.client?.id, invoiceId: invoice.id });
+
+  redirect(
+    withQueryParam(
+      back,
+      "notice",
+      `Invoice ${invoice.invoiceNumber} marked as paid (£${invoice.outstanding.toFixed(2)} received today).`
+    )
+  );
+}
+
+/* =========================================================
+   CANCEL SURVEY
+   Removes the Schedule appointment through the Schedule page's
+   delete path (Google first), then marks the job Cancelled.
+   The invoice is left alone.
+   ========================================================= */
+
+export async function cancelSurvey(formData: FormData) {
+  const supabase = await createClient();
+  await requireUser(supabase);
+
+  const jobId = text(formData, "job_id");
+  const back = `/surveys/${jobId}`;
+  const record = jobId ? await loadSurveyRecord(supabase, jobId) : null;
+
+  if (!record) {
+    redirect("/surveys?error=This%20survey%20could%20not%20be%20found");
+  }
+
+  if (record.cancelled) {
+    redirect(withQueryParam(back, "notice", "This survey is already cancelled."));
+  }
+
+  const { data: events, error: eventsError } = await supabase
+    .from("schedule_events")
+    .select("id, job_id, contract_id, google_calendar_id, google_event_id, status")
+    .eq("job_id", record.jobId)
+    .eq("event_type", SURVEY_EVENT_TYPE)
+    .neq("status", "Cancelled");
+
+  if (eventsError) {
+    console.error("Survey cancel events load error:", eventsError);
+    redirect(withQueryParam(back, "error", "The Schedule could not be read, so nothing was cancelled."));
+  }
+
+  let removedCount = 0;
+
+  for (const event of events ?? []) {
+    const removed = await removeScheduleEvent(supabase, {
+      id: event.id,
+      job_id: event.job_id,
+      contract_id: event.contract_id,
+      google_calendar_id: event.google_calendar_id ?? null,
+      google_event_id: event.google_event_id ?? null,
+    });
+
+    if (!removed.ok) {
+      redirect(
+        withQueryParam(
+          back,
+          "error",
+          `${
+            removed.reason === "google"
+              ? "The appointment could not be removed from Google Calendar"
+              : "The Schedule appointment could not be removed"
+          }, so the survey was not cancelled.${
+            removedCount > 0 ? " Another appointment for it was already removed." : ""
+          }`
+        )
+      );
+    }
+
+    removedCount += 1;
+  }
+
+  const { error: jobError } = await supabase
+    .from("jobs")
+    .update({ status: "Cancelled" })
+    .eq("id", record.jobId);
+
+  if (jobError) {
+    console.error("Survey cancel job error:", jobError);
+    redirect(
+      withQueryParam(
+        back,
+        "error",
+        removedCount > 0
+          ? "The appointment was removed from the Schedule, but the job could not be marked Cancelled. Please try again."
+          : "The job could not be marked Cancelled."
+      )
+    );
+  }
+
+  refreshSurveyPages(record.jobId, {
+    clientId: record.client?.id,
+    invoiceId: record.invoice?.id,
+  });
+
+  const invoiceNote = record.invoice
+    ? ` Invoice ${record.invoice.invoiceNumber} was left as it is${
+        record.invoice.state === "paid" ? " (paid), so you may want to refund it" : ", so you may want to void it"
+      }.`
+    : "";
+
+  redirect(
+    withQueryParam(
+      back,
+      "notice",
+      `Survey cancelled${removedCount > 0 ? " and removed from the Schedule" : ""}.${invoiceNote}`
+    )
+  );
 }

@@ -3,9 +3,10 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { deleteGoogleCalendarEvent } from "@/lib/google-calendar-sync";
-import { createScheduleEventWithGoogle } from "@/lib/schedule-create";
-import { localGoogleEffect } from "@/lib/google-oauth";
+import {
+  createScheduleEventWithGoogle,
+  removeScheduleEvent,
+} from "@/lib/schedule-create";
 
 
 export async function addScheduleEvent(
@@ -398,51 +399,21 @@ export async function deleteScheduleEvent(
     redirect(withQuery(back, "error=delete"));
   }
 
-  if (row.google_event_id) {
-    const removed =
-      await deleteGoogleCalendarEvent(
-        row.google_calendar_id,
-        row.google_event_id
-      );
+  const removed =
+    await removeScheduleEvent(
+      supabase,
+      row
+    );
 
-    if (removed.status !== "deleted") {
-      redirect(withQuery(back, "error=google-delete"));
-    }
-
-    const effect = localGoogleEffect({
-      job_id: row.job_id,
-      contract_id: row.contract_id,
-    });
-
-    const result =
-      effect === "cancel"
-        ? await supabase
-            .from("schedule_events")
-            .update({ status: "Cancelled" })
-            .eq("id", row.id)
-        : await supabase
-            .from("schedule_events")
-            .delete()
-            .eq("id", row.id);
-
-    if (result.error) {
-      console.error(
-        "Schedule delete could not update the appointment"
-      );
-      redirect(withQuery(back, "error=delete"));
-    }
-  } else {
-    const { error } = await supabase
-      .from("schedule_events")
-      .delete()
-      .eq("id", row.id);
-
-    if (error) {
-      console.error(
-        "Schedule delete could not remove the appointment"
-      );
-      redirect(withQuery(back, "error=delete"));
-    }
+  if (!removed.ok) {
+    redirect(
+      withQuery(
+        back,
+        removed.reason === "google"
+          ? "error=google-delete"
+          : "error=delete"
+      )
+    );
   }
 
   revalidatePath("/schedule");

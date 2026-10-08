@@ -7,11 +7,13 @@
 import type { createClient } from "@/lib/supabase/server";
 import {
   SURVEY_EVENT_TYPE,
+  ISSUED_INVOICE_STATUSES,
   SURVEY_INVOICE_TITLE,
   invoiceOutstanding,
   invoiceTotal,
-  isInvoicePaid,
+  isSurveyInvoice,
   isSurveyJob,
+  surveyInvoiceState,
   type SurveyInvoiceLike,
 } from "@/lib/survey";
 
@@ -49,6 +51,9 @@ export async function loadSurveyInvoicesByJob(
       id,
       job_id,
       title,
+      invoice_type,
+      quote_id,
+      contract_id,
       status,
       amount,
       subtotal,
@@ -107,6 +112,9 @@ export async function loadUnpaidSurveys(
       id,
       invoice_number,
       title,
+      invoice_type,
+      quote_id,
+      contract_id,
       status,
       amount,
       subtotal,
@@ -130,8 +138,9 @@ export async function loadUnpaidSurveys(
     `)
     .ilike("title", `${SURVEY_INVOICE_TITLE}%`)
     .not("job_id", "is", null)
-    .neq("status", "Cancelled")
-    .neq("status", "Paid");
+    .is("quote_id", null)
+    .is("contract_id", null)
+    .in("status", ISSUED_INVOICE_STATUSES);
 
   if (error) {
     console.error("Unpaid surveys load error:", error);
@@ -146,7 +155,10 @@ export async function loadUnpaidSurveys(
     }))
     .filter(
       ({ invoice, job }) =>
-        job && isSurveyJob(job) && !isInvoicePaid(invoice)
+        job &&
+        isSurveyJob(job) &&
+        isSurveyInvoice(invoice) &&
+        surveyInvoiceState(invoice) === "unpaid"
     );
 
   if (rows.length === 0) {
