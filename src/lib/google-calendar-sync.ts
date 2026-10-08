@@ -285,6 +285,55 @@ export async function copyAppointmentToGoogle(
   }
 }
 
+/**
+ * Push an office change to an appointment that is already on Google
+ * Calendar, so the next two-way sync does not pull the old time back.
+ */
+export async function updateGoogleCalendarEvent(
+  calendarId: string | null,
+  eventId: string,
+  appointment: OfficeAppointment
+): Promise<{ status: "skipped" } | { status: "failed" } | { status: "updated" }> {
+  if (!googleCredentialsConfigured()) return { status: "skipped" };
+  const stored = await readGoogleOAuth();
+  if (!stored.ready || !stored.connection?.refreshToken) return { status: "skipped" };
+
+  const access = await accessTokenFor(stored.connection.refreshToken);
+  if (!access.token) return { status: "failed" };
+  const accessToken = access.token;
+
+  const calendar = calendarId?.trim() || writeCalendarId(stored.connection.calendarId);
+
+  try {
+    const response = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendar)}/events/${encodeURIComponent(eventId)}`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        // Send location/description even when blank so old values clear.
+        body: JSON.stringify({
+          ...googleEventBody(appointment),
+          location: appointment.location?.trim() ?? "",
+          description: appointment.notes?.trim() ?? "",
+        }),
+        cache: "no-store",
+        signal: AbortSignal.timeout(8000),
+      }
+    );
+
+    if (response.ok) return { status: "updated" };
+    console.error("Google Calendar update failed", response.status);
+    return { status: "failed" };
+  } catch {
+    console.error("Google Calendar update failed");
+    return { status: "failed" };
+  }
+}
+
 export async function deleteGoogleCalendarEvent(
   calendarId: string | null,
   eventId: string

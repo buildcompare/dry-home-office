@@ -27,6 +27,10 @@ const mainNavItems = [
     href: "/schedule",
   },
   {
+    label: "Surveys",
+    href: "/surveys",
+  },
+  {
     label: "Quotes",
     href: "/quotes",
   },

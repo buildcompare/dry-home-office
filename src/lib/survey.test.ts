@@ -13,9 +13,13 @@ import {
   isSurveyJob,
   isValidDateKey,
   parseSurveyFee,
+  safeSurveysPath,
   searchClients,
   suggestedNameFromQuery,
+  surveyFeeLock,
+  surveyInvoiceState,
   surveyPaymentState,
+  withQueryParam,
   type SurveyClientOption,
 } from "./survey";
 
@@ -147,6 +151,50 @@ assert.equal(
   ]),
   "paid"
 );
+
+// Only real survey invoices count: not deposits, interims or quote/contract invoices.
+assert.equal(isSurveyInvoice({ title: "Damp survey", invoice_type: "Deposit" }), false);
+assert.equal(isSurveyInvoice({ title: "Damp survey", invoice_type: "Interim" }), false);
+assert.equal(isSurveyInvoice({ title: "Damp survey", quote_id: "q1" }), false);
+assert.equal(isSurveyInvoice({ title: "Damp survey", contract_id: "c1" }), false);
+assert.equal(isSurveyInvoice({ title: "Damp survey", invoice_type: "Final", quote_id: null }), true);
+
+// Drafts are not "unpaid" until issued.
+assert.equal(surveyInvoiceState({ title: "Damp survey", status: "Draft", amount: 250 }), "draft");
+assert.equal(surveyInvoiceState({ title: "Damp survey", status: "Viewed", amount: 250 }), "unpaid");
+assert.equal(surveyInvoiceState({ title: "Damp survey", status: "Overdue", amount: 250 }), "unpaid");
+assert.equal(surveyInvoiceState({ title: "Damp survey", status: "Void", amount: 250 }), null);
+assert.equal(surveyPaymentState(surveyJob, [{ title: "Damp survey", status: "Draft", amount: 250 }]), "draft");
+assert.equal(
+  surveyPaymentState(surveyJob, [
+    { title: "Damp survey", status: "Draft", amount: 250 },
+    { title: "Damp survey", status: "Sent", amount: 250 },
+  ]),
+  "unpaid"
+);
+// The JOB-1001 case: deposit drafts on a works job are never survey invoices.
+assert.equal(
+  surveyPaymentState(surveyJob, [{ title: "Damp survey deposit", status: "Draft", amount: 500, invoice_type: "Deposit", quote_id: "q" }]),
+  null
+);
+
+// Redirect targets stay inside /surveys.
+assert.equal(safeSurveysPath("/surveys?view=past", "/surveys"), "/surveys?view=past");
+assert.equal(safeSurveysPath("/surveys/abc-123", "/surveys"), "/surveys/abc-123");
+assert.equal(safeSurveysPath("https://evil.example", "/surveys"), "/surveys");
+assert.equal(safeSurveysPath("//evil.example", "/surveys"), "/surveys");
+assert.equal(safeSurveysPath(null, "/surveys"), "/surveys");
+assert.equal(withQueryParam("/surveys?view=past&notice=old", "notice", "Sent"), "/surveys?view=past&notice=Sent");
+assert.equal(withQueryParam("/surveys/abc", "error", "a b"), "/surveys/abc?error=a+b");
+
+// Fee lock.
+const openInvoice = { status: "Sent", amountPaid: 0, state: "unpaid" as const, items: [{ id: "i" }] };
+assert.equal(surveyFeeLock(openInvoice), null);
+assert.equal(surveyFeeLock({ ...openInvoice, status: "Draft", state: "draft" }), null);
+assert.match(surveyFeeLock({ ...openInvoice, status: "Paid", state: "paid" }) ?? "", /paid/);
+assert.match(surveyFeeLock({ ...openInvoice, status: "Part Paid", amountPaid: 50 }) ?? "", /payment/);
+assert.match(surveyFeeLock({ ...openInvoice, items: [{ id: "a" }, { id: "b" }] }) ?? "", /more than one line/);
+assert.match(surveyFeeLock(null) ?? "", /no survey invoice/);
 
 // Success banner.
 assert.equal(

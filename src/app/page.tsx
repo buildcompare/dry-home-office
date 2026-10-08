@@ -1101,14 +1101,23 @@ export default async function DashboardPage() {
           {unpaidSurveys.length >
             0 && (
             <section className="mt-10 overflow-hidden rounded-2xl bg-white shadow-sm">
-              <div className="border-b border-slate-200 px-6 py-5">
-                <h2 className="text-xl font-semibold text-slate-900">
-                  Unpaid Surveys
-                </h2>
+              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+                <div>
+                  <h2 className="text-xl font-semibold text-slate-900">
+                    Unpaid Surveys
+                  </h2>
 
-                <p className="mt-1 text-sm text-slate-500">
-                  Survey invoices still waiting for payment. Surveys in the next 3 days are highlighted.
-                </p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Issued survey invoices still waiting for payment. Surveys in the next 3 days are highlighted.
+                  </p>
+                </div>
+
+                <Link
+                  href="/surveys"
+                  className="text-sm font-semibold text-slate-700 hover:text-slate-900 hover:underline"
+                >
+                  View all surveys →
+                </Link>
               </div>
 
               <div className="overflow-x-auto">
@@ -1234,10 +1243,10 @@ export default async function DashboardPage() {
 
                             <TableCell right>
                               <Link
-                                href={`/jobs/${survey.jobId}`}
+                                href={`/surveys/${survey.jobId}`}
                                 className="inline-flex whitespace-nowrap rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-700"
                               >
-                                Open Job
+                                Open Survey
                               </Link>
                             </TableCell>
                           </tr>
