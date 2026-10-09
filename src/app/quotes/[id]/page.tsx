@@ -1,4 +1,6 @@
 import Link from "next/link";
+import DeletedBanner from "@/components/DeletedBanner";
+import DangerZone from "@/components/DangerZone";
 import { additionalQuoteTerms } from "@/lib/quote-additional-terms";
 import { notFound } from "next/navigation";
 
@@ -18,6 +20,7 @@ type QuotePageProps = {
     error?: string;
     warning?: string;
     accepted?: string;
+    deleted?: string;
   }>;
 };
 
@@ -333,6 +336,8 @@ export default async function QuotePage({
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
+          <DeletedBanner message={query.deleted} />
+
 
           {/* =================================================
               MESSAGES
@@ -1087,6 +1092,15 @@ export default async function QuotePage({
               />
             </div>
           </section>
+
+          {/* DANGER ZONE – kept apart from the main actions */}
+
+          <DangerZone
+            kind="quote"
+            id={quote.id}
+            label="Delete quote"
+            description="Permanently delete this quote and its line items."
+          />
         </div>
       </main>
     </div>

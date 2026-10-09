@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DeletedBanner from "@/components/DeletedBanner";
 import Sidebar from "@/components/Sidebar";
 import { createClient } from "@/lib/supabase/server";
 import ImportClientsButton from "./import-button";
@@ -9,6 +10,7 @@ type ClientsPageProps = {
     skipped?: string;
     error?: string;
     secondary_email_not_saved?: string;
+    deleted?: string;
   }>;
 };
 
@@ -56,6 +58,8 @@ export default async function ClientsPage({
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
+          <DeletedBanner message={params.deleted} fallback="Client deleted." />
+
           <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="text-sm font-medium text-slate-500">

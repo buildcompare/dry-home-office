@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DangerZone from "@/components/DangerZone";
 import { notFound } from "next/navigation";
 
 import Sidebar from "@/components/Sidebar";
@@ -1002,6 +1003,15 @@ export default async function ClientPage({
               </div>
             )}
           </RecordSection>
+
+          {/* DANGER ZONE – kept apart from the main actions */}
+
+          <DangerZone
+            kind="client"
+            id={client.id}
+            label="Delete client"
+            description="Delete this client. If they have jobs, quotes, invoices or other records you see the full list and type their name to confirm."
+          />
         </div>
       </main>
     </div>
