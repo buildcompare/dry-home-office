@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DeletedBanner from "@/components/DeletedBanner";
 
 import Sidebar from "@/components/Sidebar";
 import SurveyPaymentBadge from "@/components/SurveyPaymentBadge";
@@ -9,6 +10,7 @@ import { isSurveyJob, surveyPaymentState } from "@/lib/survey";
 type JobsPageProps = {
   searchParams: Promise<{
     view?: string;
+    deleted?: string;
   }>;
 };
 
@@ -200,6 +202,8 @@ export default async function JobsPage({
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
+          <DeletedBanner message={query.deleted} />
+
 
           {/* HEADER */}
 

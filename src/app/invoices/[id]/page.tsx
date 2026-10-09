@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DangerZone from "@/components/DangerZone";
 import { notFound } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import EmailInvoiceButton from "@/components/EmailInvoiceButton";
@@ -864,6 +865,15 @@ export default async function InvoicePage({
                 </Link>
               </section>
             )}
+
+          {/* DANGER ZONE – kept apart from the main actions */}
+
+          <DangerZone
+            kind="invoice"
+            id={invoice.id}
+            label="Delete invoice"
+            description="Permanently delete this invoice, its line items and any payment records."
+          />
         </div>
       </main>
     </div>

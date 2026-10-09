@@ -1,8 +1,15 @@
 import Link from "next/link";
+import DeletedBanner from "@/components/DeletedBanner";
 import Sidebar from "@/components/Sidebar";
 import { createClient } from "@/lib/supabase/server";
 
-export default async function QuotesPage() {
+export default async function QuotesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ deleted?: string }>;
+}) {
+  const { deleted } = await searchParams;
+
   const supabase = await createClient();
 
   const { data: quotes, error } = await supabase
@@ -41,6 +48,8 @@ export default async function QuotesPage() {
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
+          <DeletedBanner message={deleted} />
+
           <div className="mb-8 flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-medium text-slate-500">

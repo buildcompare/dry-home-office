@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import Sidebar from "@/components/Sidebar";
+import DeleteRecordButton from "@/components/DeleteRecordButton";
 import { createClient } from "@/lib/supabase/server";
 import { loadClientSecondaryEmail } from "@/lib/client-secondary-email";
 import {
@@ -505,7 +506,7 @@ export default async function EditClientPage({
             ) : (
               <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-5">
                 <p className="font-semibold text-amber-900">
-                  This client cannot be deleted.
+                  This client can’t be deleted on their own.
                 </p>
 
                 <p className="mt-2 text-sm leading-6 text-amber-800">
@@ -562,6 +563,20 @@ export default async function EditClientPage({
                       }
                     />
                   )}
+                </div>
+
+                <div className="mt-5 border-t border-amber-200 pt-4">
+                  <p className="text-sm leading-6 text-amber-800">
+                    Removing test data? You can delete the client together with all of their records. You see the full list and type the client’s name before anything is deleted.
+                  </p>
+
+                  <div className="mt-3">
+                    <DeleteRecordButton
+                      kind="client"
+                      id={client.id}
+                      label="Delete client and all their records"
+                    />
+                  </div>
                 </div>
               </div>
             )}

@@ -1,8 +1,15 @@
 import Link from "next/link";
+import DeletedBanner from "@/components/DeletedBanner";
 import Sidebar from "@/components/Sidebar";
 import { createClient } from "@/lib/supabase/server";
 
-export default async function InvoicesPage() {
+export default async function InvoicesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ deleted?: string }>;
+}) {
+  const { deleted } = await searchParams;
+
   const supabase =
     await createClient();
 
@@ -53,6 +60,8 @@ export default async function InvoicesPage() {
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
+          <DeletedBanner message={deleted} />
+
           <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold text-slate-900">

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DangerZone from "@/components/DangerZone";
 import { notFound } from "next/navigation";
 
 import Sidebar from "@/components/Sidebar";
@@ -863,6 +864,15 @@ export default async function VariationPage({
               </div>
             </section>
           )}
+
+          {/* DANGER ZONE – kept apart from the main actions */}
+
+          <DangerZone
+            kind="variation"
+            id={variation.id}
+            label="Delete variation"
+            description="Permanently delete this variation and its line items."
+          />
         </div>
       </main>
     </div>

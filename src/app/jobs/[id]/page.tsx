@@ -1,4 +1,6 @@
 import Link from "next/link";
+import DeletedBanner from "@/components/DeletedBanner";
+import DangerZone from "@/components/DangerZone";
 import { notFound } from "next/navigation";
 
 import Sidebar from "@/components/Sidebar";
@@ -28,6 +30,7 @@ type JobPageProps = {
   searchParams: Promise<{
     survey_notice?: string;
     survey_warning?: string;
+    deleted?: string;
   }>;
 };
 
@@ -635,6 +638,8 @@ export default async function JobPage({
 
       <main className="flex-1 p-8">
         <div className="mx-auto max-w-7xl">
+
+          <DeletedBanner message={query.deleted} />
 
           {/* BOOK SURVEY RESULT */}
 
@@ -2338,6 +2343,15 @@ export default async function JobPage({
               </div>
             )}
           </RecordSection>
+
+          {/* DANGER ZONE – kept apart from the main actions */}
+
+          <DangerZone
+            kind="job"
+            id={job.id}
+            label="Delete job"
+            description="Delete this job and everything linked to it: quotes, contracts, invoices and payments, guarantees, variations, survey reports and Schedule appointments. You see the full list before anything is deleted."
+          />
         </div>
       </main>
     </div>

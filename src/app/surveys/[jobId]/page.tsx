@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DangerZone from "@/components/DangerZone";
 import { notFound } from "next/navigation";
 
 import Sidebar from "@/components/Sidebar";
@@ -285,6 +286,15 @@ export default async function SurveyPage({ params, searchParams }: SurveyPagePro
               </section>
             </div>
           </div>
+
+          {/* DANGER ZONE – kept apart from the main actions */}
+
+          <DangerZone
+            kind="survey"
+            id={record.jobId}
+            label="Delete survey"
+            description="Delete this survey and everything linked to it: invoice and payments, survey reports (with their PDFs) and the Schedule appointment. You see the full list before anything is deleted."
+          />
         </div>
       </main>
     </div>

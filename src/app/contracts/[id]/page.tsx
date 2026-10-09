@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DangerZone from "@/components/DangerZone";
 import { notFound } from "next/navigation";
 
 import Sidebar from "@/components/Sidebar";
@@ -1041,6 +1042,15 @@ export default async function ContractPage({
               </Link>
             </section>
           )}
+
+          {/* DANGER ZONE – kept apart from the main actions */}
+
+          <DangerZone
+            kind="contract"
+            id={contract.id}
+            label="Delete contract"
+            description="Permanently delete this contract. Links from invoices, guarantees and appointments are cleared."
+          />
         </div>
       </main>
     </div>

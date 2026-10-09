@@ -225,3 +225,58 @@ export async function removeScheduleEvent(
 
   return { ok: true };
 }
+
+/* =========================================================
+   DELETE PERMANENTLY
+   Used when the job/contract the appointment belongs to is being
+   deleted: same Google delete as the Schedule page, then the local
+   row is always deleted (there is nothing left to keep it for).
+   ========================================================= */
+
+export async function deleteScheduleEventPermanently(
+  supabase: SupabaseServerClient,
+  row: {
+    id: string;
+    google_calendar_id: string | null;
+    google_event_id: string | null;
+  }
+): Promise<
+  | { ok: true }
+  | { ok: false; reason: "google" | "db" | "blocked"; message?: string }
+> {
+  if (row.google_event_id) {
+    const removed = await deleteGoogleCalendarEvent(
+      row.google_calendar_id,
+      row.google_event_id
+    );
+
+    if (removed.status !== "deleted") {
+      return { ok: false, reason: "google" };
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("schedule_events")
+    .delete()
+    .eq("id", row.id)
+    .select("id");
+
+  if (error) {
+    console.error("Schedule permanent delete error:", error);
+    return { ok: false, reason: "db", message: error.message };
+  }
+
+  if (!data || data.length === 0) {
+    const { data: still } = await supabase
+      .from("schedule_events")
+      .select("id")
+      .eq("id", row.id)
+      .maybeSingle();
+
+    if (still) {
+      return { ok: false, reason: "blocked" };
+    }
+  }
+
+  return { ok: true };
+}

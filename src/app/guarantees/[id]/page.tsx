@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DangerZone from "@/components/DangerZone";
 import { notFound } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import EmailGuaranteeButton from "@/components/EmailGuaranteeButton";
@@ -489,6 +490,15 @@ export default async function GuaranteePage({
               </div>
             </div>
           </section>
+
+          {/* DANGER ZONE – kept apart from the main actions */}
+
+          <DangerZone
+            kind="guarantee"
+            id={guarantee.id}
+            label="Delete guarantee"
+            description="Permanently delete this guarantee."
+          />
         </div>
       </main>
     </div>
