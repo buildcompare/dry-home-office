@@ -96,7 +96,11 @@ export async function updateSession(
     pathname === "/c" ||
     pathname.startsWith(
       "/c/"
-    );
+    ) ||
+    // Checks its own auth (session or bearer token) and answers with
+    // JSON instead of a login redirect.
+    pathname ===
+      "/api/survey-reports";
 
   if (
     !user &&

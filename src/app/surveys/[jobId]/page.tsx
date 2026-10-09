@@ -18,6 +18,8 @@ import {
   formatSentAt,
   surveyRecipients,
 } from "../survey-ui";
+import SurveyReportsCard from "@/components/survey-reports/SurveyReportsCard";
+import { loadSurveyReports } from "@/lib/survey-reports";
 import SurveyEditForm from "./survey-edit-form";
 import AddToScheduleForm from "./add-to-schedule-form";
 
@@ -38,7 +40,10 @@ export default async function SurveyPage({ params, searchParams }: SurveyPagePro
   const query = await searchParams;
 
   const supabase = await createClient();
-  const record = await loadSurveyRecord(supabase, jobId);
+  const [record, reports] = await Promise.all([
+    loadSurveyRecord(supabase, jobId),
+    loadSurveyReports(supabase, jobId),
+  ]);
 
   if (!record) {
     notFound();
@@ -137,42 +142,58 @@ export default async function SurveyPage({ params, searchParams }: SurveyPagePro
           </div>
 
           <div className="grid gap-6 lg:grid-cols-3">
-            {/* EDIT */}
+            {/* EDIT + REPORTS */}
 
-            <section className="rounded-2xl bg-white p-4 shadow-sm sm:p-6 lg:col-span-2">
-              <h2 className="mb-4 text-lg font-semibold text-slate-900">Survey details</h2>
+            <div className="space-y-6 lg:col-span-2">
+              <section className="rounded-2xl bg-white p-4 shadow-sm sm:p-6">
+                <h2 className="mb-4 text-lg font-semibold text-slate-900">Survey details</h2>
 
-              {record.cancelled ? (
-                <dl className="space-y-3 text-sm">
-                  <Row label="Site">{record.siteText || "—"}</Row>
-                  <Row label="Fee">{invoice ? formatCurrency(invoice.total) : "—"}</Row>
-                  <Row label="Notes">{record.notes || "—"}</Row>
-                </dl>
-              ) : (
-                <SurveyEditForm
-                  values={{
-                    jobId: record.jobId,
-                    surveyDate: record.surveyDate ?? "",
-                    startTime: record.startTime ?? "",
-                    endTime: record.endTime ?? "",
-                    hasEvent: Boolean(record.event),
-                    allDay: record.allDay,
-                    addressLine1: record.site.address_line_1 ?? "",
-                    addressLine2: record.site.address_line_2 ?? "",
-                    town: record.site.town ?? "",
-                    county: record.site.county ?? "",
-                    postcode: record.site.postcode ?? "",
-                    fee: invoice?.items[0]
-                      ? invoice.items[0].unit_price.toFixed(2)
-                      : invoice
-                        ? invoice.total.toFixed(2)
-                        : "",
-                    feeLock: surveyFeeLock(invoice),
-                    notes: record.notes ?? "",
+                {record.cancelled ? (
+                  <dl className="space-y-3 text-sm">
+                    <Row label="Site">{record.siteText || "—"}</Row>
+                    <Row label="Fee">{invoice ? formatCurrency(invoice.total) : "—"}</Row>
+                    <Row label="Notes">{record.notes || "—"}</Row>
+                  </dl>
+                ) : (
+                  <SurveyEditForm
+                    values={{
+                      jobId: record.jobId,
+                      surveyDate: record.surveyDate ?? "",
+                      startTime: record.startTime ?? "",
+                      endTime: record.endTime ?? "",
+                      hasEvent: Boolean(record.event),
+                      allDay: record.allDay,
+                      addressLine1: record.site.address_line_1 ?? "",
+                      addressLine2: record.site.address_line_2 ?? "",
+                      town: record.site.town ?? "",
+                      county: record.site.county ?? "",
+                      postcode: record.site.postcode ?? "",
+                      fee: invoice?.items[0]
+                        ? invoice.items[0].unit_price.toFixed(2)
+                        : invoice
+                          ? invoice.total.toFixed(2)
+                          : "",
+                      feeLock: surveyFeeLock(invoice),
+                      notes: record.notes ?? "",
+                    }}
+                  />
+                )}
+              </section>
+
+              <div id="survey-reports" className="scroll-mt-24">
+                <SurveyReportsCard
+                  jobId={record.jobId}
+                  result={reports}
+                  mode="manage"
+                  customer={{
+                    clientName: record.client?.name ?? null,
+                    primaryEmail: record.client?.email ?? null,
+                    secondaryEmail: record.client?.secondaryEmail ?? null,
+                    siteText: record.siteText || null,
                   }}
                 />
-              )}
-            </section>
+              </div>
+            </div>
 
             <div className="space-y-6">
               {/* CLIENT */}

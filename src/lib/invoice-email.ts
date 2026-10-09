@@ -21,6 +21,11 @@ import {
   loadInvoicePdfSource,
   renderInvoicePdf,
 } from "@/lib/invoice-pdf";
+import {
+  escapeHtml,
+  getEmailSender,
+  renderMessageHtml,
+} from "@/lib/email-layout";
 
 type SupabaseServerClient = Awaited<
   ReturnType<
@@ -529,39 +534,6 @@ function buildComposerEmailHtml({
 `;
 }
 
-function renderMessageHtml(
-  value: string
-) {
-  const escaped =
-    escapeHtml(
-      value
-    );
-
-  return escaped
-    .split(
-      /\n\s*\n/
-    )
-    .map(
-      (paragraph) =>
-        paragraph.trim()
-    )
-    .filter(Boolean)
-    .map(
-      (paragraph) => `
-        <p style="
-          margin:0 0 18px 0;
-          line-height:1.7;
-        ">
-          ${paragraph.replace(
-            /\n/g,
-            "<br>"
-          )}
-        </p>
-      `
-    )
-    .join("");
-}
-
 /* =========================================================
    ATTACHMENTS
    ========================================================= */
@@ -742,34 +714,6 @@ export function isValidEmail(
     value
   );
 }
-
-function escapeHtml(
-  value: string
-) {
-  return value
-    .replaceAll(
-      "&",
-      "&amp;"
-    )
-    .replaceAll(
-      "<",
-      "&lt;"
-    )
-    .replaceAll(
-      ">",
-      "&gt;"
-    )
-    .replaceAll(
-      '"',
-      "&quot;"
-    )
-    .replaceAll(
-      "'",
-      "&#039;"
-    );
-}
-
-
 
 /* =========================================================
    CONTEXT TYPES
@@ -1034,12 +978,10 @@ export async function deliverInvoiceEmail({
      RESEND
      ========================================================= */
 
-  const fromAddress =
-    process.env.RESEND_FROM_EMAIL?.trim() ||
-    "Dry Home Damp Proofing Solutions <quotes@admin.dryhomedampproofing.co.uk>";
-
-  const replyTo =
-    process.env.DRYHOME_REPLY_TO_EMAIL?.trim();
+  const {
+    from: fromAddress,
+    replyTo,
+  } = getEmailSender();
 
   const resend =
     new Resend(

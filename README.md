@@ -34,3 +34,45 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Survey reports
+
+Survey report PDFs live in the private Supabase Storage bucket `survey-reports`, with one row each in `public.survey_reports`. Run `supabase/survey_reports.sql` once in the Supabase SQL Editor to create the bucket, the table and their policies (signed-in users only). Until it has been run, survey pages show "Reports storage not set up yet".
+
+Reports are managed on `/surveys/[jobId]`: upload, View, Download, Delete, and Send to customer. Sending only happens when you press Send in the confirm dialog. PDFs up to 10 MB are attached; bigger ones are sent as a signed link that lasts 14 days.
+
+### Survey report upload API
+
+`POST /api/survey-reports` uploads a report. It **only uploads**: it never emails or deletes anything.
+
+Auth:
+
+- A signed-in office session (browser cookies), or
+- `Authorization: Bearer <token>`, which only works when the Vercel env var `SURVEY_REPORTS_UPLOAD_TOKEN` is set (at least 24 characters, e.g. `openssl rand -hex 32`). The token is compared in constant time. When the env var is not set, bearer requests get `403 Token uploads are disabled`. Token uploads use `SUPABASE_SERVICE_ROLE_KEY` on the server.
+
+Small files (Vercel limits request bodies to about 4.5 MB):
+
+```bash
+curl -X POST https://dry-home-office.vercel.app/api/survey-reports \
+  -H "Authorization: Bearer $SURVEY_REPORTS_UPLOAD_TOKEN" \
+  -F job_number=JOB-1006 \
+  -F title="Damp survey report" \
+  -F file=@report.pdf
+```
+
+Send `job_id` (uuid) or `job_number`, `file` (PDF), and an optional `title` (it defaults to the file name). The response is `201 { report: {...} }`.
+
+Bigger files (up to 25 MB) use two JSON calls with a signed upload URL:
+
+```bash
+# 1. get an upload URL
+curl -X POST .../api/survey-reports -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"create-upload","job_number":"JOB-1006","file_name":"report.pdf"}'
+# 2. PUT the file to the returned signed_url
+curl -X PUT "<signed_url>" -H "Content-Type: application/pdf" --data-binary @report.pdf
+# 3. save it
+curl -X POST .../api/survey-reports -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"complete","job_number":"JOB-1006","path":"<path>","file_name":"report.pdf","title":"Damp survey report"}'
+```

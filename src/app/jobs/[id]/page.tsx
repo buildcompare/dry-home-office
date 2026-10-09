@@ -4,7 +4,9 @@ import { notFound } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import StatusBadge from "@/components/StatusBadge";
 import SurveyPaymentBadge from "@/components/SurveyPaymentBadge";
-import { surveyPaymentState } from "@/lib/survey";
+import { isSurveyJob, surveyPaymentState } from "@/lib/survey";
+import { loadSurveyReports } from "@/lib/survey-reports";
+import SurveyReportsCard from "@/components/survey-reports/SurveyReportsCard";
 import { createClient } from "@/lib/supabase/server";
 import { updateJobStatus } from "@/app/jobs/actions";
 import {
@@ -243,6 +245,15 @@ export default async function JobPage({
       job,
       invoices
     );
+
+  // Survey jobs show their reports (read-only) with a link to manage them.
+  const surveyReports =
+    isSurveyJob(job)
+      ? await loadSurveyReports(
+          supabase,
+          id
+        )
+      : null;
 
   const guarantees =
     guaranteesResult.data ?? [];
@@ -1542,6 +1553,17 @@ export default async function JobPage({
               </p>
             </section>
           </div>
+
+          {/* SURVEY REPORTS */}
+
+          {surveyReports && (
+            <SurveyReportsCard
+              jobId={id}
+              result={surveyReports}
+              mode="readonly"
+              className="mt-8"
+            />
+          )}
 
           {/* SCHEDULE */}
 
