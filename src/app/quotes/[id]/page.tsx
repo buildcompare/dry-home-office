@@ -21,6 +21,8 @@ type QuotePageProps = {
     warning?: string;
     accepted?: string;
     deleted?: string;
+    saved?: string;
+    resend?: string;
   }>;
 };
 
@@ -352,6 +354,16 @@ export default async function QuotePage({
             </div>
           )}
 
+          {query.saved ===
+            "1" && (
+            <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
+              Quote changes saved. Totals have been recalculated and the client&apos;s quote link now shows this version.
+              {query.resend ===
+                "1" &&
+                " Review the email below and press Send to resend it."}
+            </div>
+          )}
+
           {query.accepted ===
             "manual" && (
             <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
@@ -401,6 +413,13 @@ export default async function QuotePage({
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
+                <Link
+                  href={`/quotes/${quote.id}/edit`}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Edit quote
+                </Link>
+
                 <a
                   href={`/quotes/${quote.id}/pdf`}
                   className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
@@ -421,6 +440,10 @@ export default async function QuotePage({
                   }
                   status={
                     quote.status
+                  }
+                  autoOpen={
+                    query.resend ===
+                    "1"
                   }
                 />
 
