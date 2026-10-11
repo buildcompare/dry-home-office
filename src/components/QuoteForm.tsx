@@ -60,17 +60,43 @@ function createItem(
   };
 }
 
-export default function QuoteFormItems() {
+export type QuoteFormInitialItem = QuoteItem;
+
+function startingItems(
+  initialItems: QuoteItem[] | undefined,
+  type: "Labour" | "Materials"
+) {
+  const existing = (initialItems ?? []).filter(
+    (item) => item.item_type === type
+  );
+
+  return existing.length > 0
+    ? existing
+    : [createItem(type)];
+}
+
+/**
+ * Labour, materials and VAT for Create Quote and Edit Quote. On edit,
+ * pass the saved line items (their ids are the quote_items ids, so the
+ * server can tell kept, new and removed lines apart).
+ */
+export default function QuoteFormItems({
+  initialItems,
+  initialVatEnabled = false,
+}: {
+  initialItems?: QuoteItem[];
+  initialVatEnabled?: boolean;
+} = {}) {
   const [labourItems, setLabourItems] = useState<
     QuoteItem[]
-  >([createItem("Labour")]);
+  >(() => startingItems(initialItems, "Labour"));
 
   const [materialItems, setMaterialItems] = useState<
     QuoteItem[]
-  >([createItem("Materials")]);
+  >(() => startingItems(initialItems, "Materials"));
 
   const [vatEnabled, setVatEnabled] =
-    useState(false);
+    useState(initialVatEnabled);
 
   const allItems = useMemo(
     () => [...labourItems, ...materialItems],

@@ -3,6 +3,8 @@
 import {
   ChangeEvent,
   FormEvent,
+  useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -16,6 +18,8 @@ type EmailQuoteButtonProps = {
   recipient: string | null;
   secondaryRecipient?: string | null;
   status: string;
+  /** Open the composer on load (after "Save and resend"). Sending still needs Send. */
+  autoOpen?: boolean;
 };
 
 type ComposerData = {
@@ -35,6 +39,7 @@ export default function EmailQuoteButton({
   recipient,
   secondaryRecipient,
   status,
+  autoOpen = false,
 }: EmailQuoteButtonProps) {
   const [open, setOpen] =
     useState(false);
@@ -100,6 +105,33 @@ export default function EmailQuoteButton({
         secondaryRecipient
       )
     );
+
+  const autoOpened = useRef(false);
+
+  useEffect(() => {
+    if (!autoOpen || autoOpened.current || !recipient) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      autoOpened.current = true;
+
+      // Drop ?resend=1 so a refresh doesn't reopen the composer.
+      const url = new URL(window.location.href);
+      url.searchParams.delete("resend");
+      window.history.replaceState(null, "", url.toString());
+
+      void openComposerRef.current?.();
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [autoOpen, recipient]);
+
+  const openComposerRef = useRef<(() => Promise<void>) | null>(null);
+
+  useEffect(() => {
+    openComposerRef.current = openComposer;
+  });
 
   async function openComposer() {
     if (!recipient) {
