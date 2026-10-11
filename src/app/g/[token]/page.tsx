@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import Image from "next/image";
+import { after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logPublicView } from "@/lib/activity";
 
 type CustomerGuaranteePageProps = {
   params: Promise<{
@@ -85,6 +87,19 @@ export default async function CustomerGuaranteePage({
   /*
    * Record first customer view.
    */
+  /*
+   * Activity feed: log the view after the response is sent (first view,
+   * then at most hourly). Never affects the page.
+   */
+  const firstView = !guarantee.viewed_at;
+  const viewedId = String(guarantee.id);
+
+  after(() =>
+    logPublicView(supabase, "guarantee", viewedId, {
+      firstView,
+    })
+  );
+
   if (!guarantee.viewed_at) {
     await supabase
       .from("guarantees")

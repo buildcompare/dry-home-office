@@ -1,5 +1,7 @@
 "use server";
 
+import { logActivity, lookupRecord } from "@/lib/activity";
+import { isRecordType } from "@/lib/activity-shared";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
@@ -350,12 +352,25 @@ export async function deleteRecord(_previous: DeleteState, formData: FormData): 
       return { error: plan.confirm.mode === "type" ? `Please type ${plan.confirm.text} exactly to confirm.` : "Please tick the box to confirm." };
     }
 
+    // Keep who/what it was so the activity entry survives the delete.
+    const before = isRecordType(kind) ? await lookupRecord(supabase, kind, id) : null;
+
     const result = await plan.run(supabase);
     const extra = result.done.filter((entry) => !entry.startsWith("cleared") && entry !== plan.name && entry !== "the client" && !((kind === "job" || kind === "survey") && entry === "1 job"));
     const message = [
       `Deleted ${plan.name}${extra.length > 0 ? ` (with ${extra.join(", ")})` : ""}.`,
       ...result.warnings,
     ].join(" ");
+
+    await logActivity(supabase, {
+      event_type: "record.deleted",
+      record_type: isRecordType(kind) ? kind : null,
+      record_id: id,
+      record_number: before?.record_number ?? null,
+      client_id: kind === "client" ? null : before?.client_id ?? null,
+      client_name: before?.client_name ?? null,
+      metadata: { label: plan.name, kind, result: message },
+    });
 
     target = plan.redirectTo(message);
   } catch (error) {

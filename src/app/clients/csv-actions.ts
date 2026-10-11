@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { logActivity } from "@/lib/activity";
 import { isValidEmailAddress } from "@/lib/email-recipients";
 import { isMissingSecondaryEmailColumn } from "@/lib/client-secondary-email";
 
@@ -218,6 +219,16 @@ export async function importClients(formData: FormData) {
   }
 
   revalidatePath("/clients");
+
+  if (imported > 0) {
+    await logActivity(supabase, {
+      event_type: "client.imported",
+      record_type: null,
+      record_id: null,
+      metadata: { count: imported, skipped },
+    });
+  }
+
   redirect(
     secondaryEmailsNotSaved > 0
       ? `/clients?imported=${imported}&skipped=${skipped}&secondary_email_not_saved=${secondaryEmailsNotSaved}`

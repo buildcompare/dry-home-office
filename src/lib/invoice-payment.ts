@@ -8,6 +8,7 @@
  */
 
 import type { createClient } from "@/lib/supabase/server";
+import { logRecordActivity } from "@/lib/activity";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -329,6 +330,27 @@ export async function applyInvoicePayment(
       updateError.message ||
         "The invoice payment balance could not be updated."
     );
+  }
+
+  await logRecordActivity(supabase, {
+    event_type: "payment.recorded",
+    record_type: "invoice",
+    record_id: invoiceId,
+    known: { record_number: invoice.invoice_number ?? null, client_id: invoice.client_id ?? null },
+    metadata: {
+      amount: paymentAmount,
+      method: paymentMethod,
+      payment_id: payment.id,
+    },
+  });
+
+  if (isPaid) {
+    await logRecordActivity(supabase, {
+      event_type: "invoice.paid",
+      record_type: "invoice",
+      record_id: invoiceId,
+      known: { record_number: invoice.invoice_number ?? null, client_id: invoice.client_id ?? null },
+    });
   }
 
   return invoice;

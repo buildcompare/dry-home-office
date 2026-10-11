@@ -6,6 +6,7 @@ import {
 import { Resend } from "resend";
 
 import { createClient } from "@/lib/supabase/server";
+import { emailSentMetadata, logRecordActivity } from "@/lib/activity";
 import {
   buildRecipientList,
   formatSentTo,
@@ -623,6 +624,13 @@ export async function POST(
       }
     );
   }
+
+  await logRecordActivity(supabase, {
+    event_type: "email.sent",
+    record_type: "variation",
+    record_id: variation.id,
+    metadata: emailSentMetadata(recipients, sendResult.data?.id, subject),
+  });
 
   const newStatus =
     variation.status ===

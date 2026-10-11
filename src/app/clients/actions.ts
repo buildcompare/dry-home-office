@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { logActivity } from "@/lib/activity";
 import { isValidEmailAddress } from "@/lib/email-recipients";
 import { isMissingSecondaryEmailColumn } from "@/lib/client-secondary-email";
 import { insertClientRow } from "@/lib/client-create";
@@ -212,6 +213,14 @@ export async function addClient(
   revalidateClientPages(
     client.id
   );
+
+  await logActivity(supabase, {
+    event_type: "client.created",
+    record_type: "client",
+    record_id: String(client.id),
+    client_id: String(client.id),
+    client_name: baseRow.display_name || null,
+  });
 
   redirect(
     secondaryEmailNotSaved

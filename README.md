@@ -76,3 +76,37 @@ curl -X POST .../api/survey-reports -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"action":"complete","job_number":"JOB-1006","path":"<path>","file_name":"report.pdf","title":"Damp survey report"}'
 ```
+
+## Activity feed
+
+The Dashboard's **Recent activity** card and `/activity` (filters by type
+and client, 25 per page) show emails sent, customer links viewed, quotes
+accepted/declined, contracts signed, variations accepted/declined,
+payments, surveys booked/edited/cancelled, survey reports uploaded,
+records deleted and clients created/imported.
+
+- Run `supabase/activity_events.sql` once in the Supabase SQL Editor to
+  create `activity_events`. Until then the feed is worked out from
+  existing timestamps (sent_at, viewed_at, accepted_at, signed_at,
+  paid_at, created_at …) and logging is skipped silently. Logged and
+  derived events are merged and de-duplicated, so history from before
+  the table existed still shows.
+- Logging never breaks the main action (`src/lib/activity.ts`).
+- Customer link views are logged on the first view, then at most once an
+  hour per record.
+
+### Email delivered / opened (Resend webhook)
+
+`POST /api/webhooks/resend` verifies the Svix signature with
+`RESEND_WEBHOOK_SECRET` and logs `email.delivered`, `email.opened`,
+`email.clicked`, `email.bounced` and `email.complained`, matched to the
+record through the Resend email id saved on the "email sent" event.
+With the env var unset it returns 503 and does nothing.
+
+Setup: in Resend → Webhooks add
+`https://dry-home-office.vercel.app/api/webhooks/resend` with those five
+events, enable open and click tracking for the sending domain, copy the
+signing secret (`whsec_…`) into Vercel as `RESEND_WEBHOOK_SECRET`, then
+redeploy. Open tracking is approximate: Apple Mail Privacy Protection
+can report opens that did not happen, and image blocking can hide real
+ones.

@@ -2,7 +2,9 @@ import Image from "next/image";
 import { additionalQuoteTerms } from "@/lib/quote-additional-terms";
 import StandardTermsText from "@/components/StandardTermsText";
 import { notFound } from "next/navigation";
+import { after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logPublicView } from "@/lib/activity";
 
 type CustomerQuotePageProps = {
   params: Promise<{
@@ -91,6 +93,19 @@ export default async function CustomerQuotePage({
    * Record the first time the customer
    * views this quotation.
    */
+  /*
+   * Activity feed: log the view after the response is sent (first view,
+   * then at most hourly). Never affects the page.
+   */
+  const firstView = !quote.viewed_at;
+  const viewedId = String(quote.id);
+
+  after(() =>
+    logPublicView(supabase, "quote", viewedId, {
+      firstView,
+    })
+  );
+
   if (!quote.viewed_at) {
     await supabase
       .from("quotes")

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logRecordActivity } from "@/lib/activity";
 
 export const runtime = "nodejs";
 
@@ -140,6 +141,13 @@ export async function POST(
       "Your agreement could not be recorded. Please try again."
     );
   }
+
+  await logRecordActivity(supabase, {
+    event_type: "contract.signed",
+    record_type: "contract",
+    record_id: String(contract.id),
+    metadata: { signed_name: signedName },
+  });
 
   return redirectToContract(
     token,

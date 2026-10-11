@@ -1,6 +1,8 @@
 import Image from "next/image";
 import { notFound } from "next/navigation";
+import { after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logPublicView } from "@/lib/activity";
 import { invoicePaymentDetails } from "@/lib/company-payment-details";
 
 type CustomerInvoicePageProps = {
@@ -130,6 +132,19 @@ export default async function CustomerInvoicePage({
       .filter(Boolean)
       .join(" ") ||
     "Customer";
+
+  /*
+   * Activity feed: log the view after the response is sent (first view,
+   * then at most hourly). Never affects the page.
+   */
+  const firstView = !invoice.viewed_at;
+  const viewedId = String(invoice.id);
+
+  after(() =>
+    logPublicView(supabase, "invoice", viewedId, {
+      firstView,
+    })
+  );
 
   if (
     !invoice.viewed_at
