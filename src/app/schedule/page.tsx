@@ -9,6 +9,7 @@ import {
 } from "@/lib/survey";
 import { loadGoogleScheduleEvents } from "@/lib/calendar-feeds";
 import { syncGoogleCalendarMonth } from "@/lib/google-calendar-sync";
+import GoogleSyncBanner from "@/components/GoogleSyncBanner";
 import {
   googleDisplayLabel,
   hideIcalDuplicate,
@@ -19,6 +20,7 @@ type SchedulePageProps = {
     month?: string;
     error?: string;
     notice?: string;
+    google?: string;
   }>;
 };
 
@@ -241,17 +243,19 @@ export default async function SchedulePage({
                 </p>
               ) : null}
 
-              {googleSync.warning ? (
-                <p className="mt-2 text-sm text-amber-700">
-                  Google Calendar could not be synced
-                  {googleSync.status !== null ? ` (${googleSync.status})` : ""}. The secret iCal feed is still shown when it is set.
-                  {googleSync.reason ? ` ${googleSync.reason}` : ""}
-                </p>
-              ) : null}
+              <GoogleSyncBanner
+                sync={googleSync}
+                returnTo={`/schedule?month=${currentMonth}`}
+                justConnected={
+                  params.google ===
+                  "connected"
+                }
+              />
 
               {params.notice === "google" ? (
                 <p className="mt-2 text-sm text-amber-700">
-                  The appointment was saved here, but it could not be added to Google Calendar.
+                  The appointment was saved here, but it couldn&apos;t be added to Google Calendar yet. It will be
+                  added automatically on the next successful Google sync.
                 </p>
               ) : null}
 

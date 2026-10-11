@@ -559,3 +559,53 @@ function partsInZone(instant: Date, timeZone: string) {
 function iso(year: number, month: number, day: number) {
   return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
+
+/* =========================================================
+   RECONNECT DETECTION
+   ========================================================= */
+
+/**
+ * True when Google refused the stored refresh token itself, so the only
+ * fix is to reconnect: invalid_grant (expired – e.g. 7 days in Testing
+ * mode – or revoked) or 401. Other failures (network, 5xx,
+ * invalid_client misconfiguration) are not treated as needing reconnect.
+ */
+export function tokenErrorNeedsReconnect(status: number | null, body: unknown) {
+  if (status === 401) return true;
+  if (status !== 400) return false;
+  const error =
+    body && typeof body === "object" && "error" in body
+      ? String((body as { error?: unknown }).error ?? "")
+      : "";
+  return error === "invalid_grant" || error === "";
+}
+
+/** Short technical detail for the "details" toggle, never the token. */
+export function tokenErrorDetail(status: number | null, body: unknown) {
+  const error =
+    body && typeof body === "object" && "error" in body
+      ? String((body as { error?: unknown }).error ?? "").slice(0, 60)
+      : "";
+  const parts = ["token refresh failed"];
+  if (status !== null) parts.push(`(${status}${error ? ` ${error}` : ""})`);
+  return parts.join(" ");
+}
+
+const RETURN_PATHS = ["/schedule", "/settings/calendar"];
+
+/** Only allow returning to the Schedule or Calendar settings after OAuth. */
+export function safeGoogleReturnPath(value: string | null | undefined) {
+  const path = (value ?? "").trim();
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return null;
+  const base = path.split(/[?#]/, 1)[0];
+  if (!RETURN_PATHS.includes(base)) return null;
+  if (path.length > 200 || /[\s<>"']/.test(path)) return null;
+  return path;
+}
+
+/** Add google=connected to a return path. */
+export function withGoogleConnected(path: string) {
+  const url = new URL(path, "https://x.invalid");
+  url.searchParams.set("google", "connected");
+  return `${url.pathname}${url.search}`;
+}

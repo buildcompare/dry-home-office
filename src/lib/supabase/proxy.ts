@@ -111,6 +111,9 @@ export async function updateSession(
     pathname.startsWith(
       "/v/"
     ) ||
+    // Privacy Policy and Terms of Use (needed for Google OAuth publishing).
+    pathname === "/privacy" ||
+    pathname === "/terms" ||
     // Checks its own auth (session or bearer token) and answers with
     // JSON instead of a login redirect.
     pathname ===
