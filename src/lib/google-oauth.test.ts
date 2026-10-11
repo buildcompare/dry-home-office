@@ -15,6 +15,10 @@ import {
   mapGoogleApiEvent,
   planGoogleSync,
   refreshTokenFromTokenResponse,
+  safeGoogleReturnPath,
+  tokenErrorDetail,
+  tokenErrorNeedsReconnect,
+  withGoogleConnected,
   writeCalendarId,
 } from "./google-oauth";
 
@@ -332,3 +336,22 @@ assert.deepEqual(eventsFromListResponse({ items: [{ id: "a" }], nextPageToken: "
 });
 
 console.log("ok");
+
+/* ---------- reconnect detection ---------- */
+
+assert.equal(authUrl.includes("prompt=consent"), true);
+assert.equal(tokenErrorNeedsReconnect(400, { error: "invalid_grant", error_description: "Token has been expired or revoked." }), true);
+assert.equal(tokenErrorNeedsReconnect(401, { error: "unauthorized_client" }), true);
+assert.equal(tokenErrorNeedsReconnect(400, null), true);
+assert.equal(tokenErrorNeedsReconnect(400, { error: "invalid_client" }), false);
+assert.equal(tokenErrorNeedsReconnect(500, null), false);
+assert.equal(tokenErrorNeedsReconnect(null, null), false);
+assert.equal(tokenErrorDetail(400, { error: "invalid_grant" }), "token refresh failed (400 invalid_grant)");
+assert.equal(tokenErrorDetail(null, null), "token refresh failed");
+assert.equal(safeGoogleReturnPath("/schedule?month=2026-10"), "/schedule?month=2026-10");
+assert.equal(safeGoogleReturnPath("/settings/calendar"), "/settings/calendar");
+assert.equal(safeGoogleReturnPath("//evil.example/schedule"), null);
+assert.equal(safeGoogleReturnPath("https://evil.example"), null);
+assert.equal(safeGoogleReturnPath("/invoices"), null);
+assert.equal(withGoogleConnected("/schedule?month=2026-10"), "/schedule?month=2026-10&google=connected");
+console.log("google reconnect tests passed");

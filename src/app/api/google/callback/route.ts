@@ -2,13 +2,18 @@ import { timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { googleCredentialsConfigured } from "@/lib/google-oauth";
+import {
+  googleCredentialsConfigured,
+  safeGoogleReturnPath,
+  withGoogleConnected,
+} from "@/lib/google-oauth";
 import { exchangeGoogleCode, saveGoogleRefreshToken } from "@/lib/google-calendar-sync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const STATE_COOKIE = "dho_google_oauth_state";
+const RETURN_COOKIE = "dho_google_oauth_return";
 
 export async function GET(request: Request) {
   const supabase = await createClient();
@@ -54,7 +59,19 @@ export async function GET(request: Request) {
   const saved = await saveGoogleRefreshToken(refreshToken);
   if (!saved) return fail("setup");
 
-  const response = NextResponse.redirect(new URL("/settings/calendar?connected=1", request.url));
+  const returnTo = safeGoogleReturnPath(cookieStore.get(RETURN_COOKIE)?.value);
+  const response = NextResponse.redirect(
+    new URL(returnTo ? withGoogleConnected(returnTo) : "/settings/calendar?connected=1", request.url)
+  );
+  response.cookies.set({
+    name: RETURN_COOKIE,
+    value: "",
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/api/google",
+    maxAge: 0,
+  });
   response.cookies.set({
     name: STATE_COOKIE,
     value: "",

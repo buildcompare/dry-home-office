@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import Sidebar from "@/components/Sidebar";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { scheduleColumnsReady } from "@/lib/google-calendar-sync";
+import { googleConnectionHealth, scheduleColumnsReady } from "@/lib/google-calendar-sync";
 import { saveCalendarFeeds } from "./actions";
 
 type CalendarSettingsPageProps = {
@@ -10,6 +10,7 @@ type CalendarSettingsPageProps = {
     saved?: string;
     error?: string;
     connected?: string;
+    google?: string;
   }>;
 };
 
@@ -96,6 +97,10 @@ export default async function CalendarSettingsPage({
     googleStorageReady = false;
   }
 
+  const googleHealth = googleConnected
+    ? await googleConnectionHealth()
+    : "not-connected";
+
   return (
     <div className="flex min-h-screen bg-slate-100">
       <Sidebar />
@@ -118,7 +123,7 @@ export default async function CalendarSettingsPage({
               numbering settings row.
             </p>
 
-            {params.connected ? (
+            {params.connected || params.google === "connected" ? (
               <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
                 Google Calendar connected.
               </p>
@@ -143,12 +148,37 @@ export default async function CalendarSettingsPage({
               </p>
             ) : null}
 
-            {googleConnected ? (
-              <p className="mt-4 text-sm text-slate-600">
-                Google Calendar is connected. New appointments are created on the
-                primary calendar unless a calendar id is stored. Family is only
-                included when a family calendar id is stored.
-              </p>
+            {googleConnected && googleHealth === "reconnect" ? (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <p className="font-semibold">
+                  Google Calendar needs reconnecting. Your Google sign-in has expired.
+                </p>
+                <a
+                  href="/api/google/start?return=%2Fsettings%2Fcalendar"
+                  className="mt-3 inline-block rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700"
+                >
+                  Reconnect Google
+                </a>
+              </div>
+            ) : googleConnected ? (
+              <div className="mt-4">
+                <p className="text-sm text-slate-600">
+                  Google Calendar is connected. New appointments are created on the
+                  primary calendar unless a calendar id is stored. Family is only
+                  included when a family calendar id is stored.
+                </p>
+                {googleHealth === "error" ? (
+                  <p className="mt-2 text-sm text-amber-700">
+                    Google couldn&apos;t be reached just now. If this keeps happening, reconnect.
+                  </p>
+                ) : null}
+                <a
+                  href="/api/google/start?return=%2Fsettings%2Fcalendar"
+                  className="mt-3 inline-block rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Reconnect Google
+                </a>
+              </div>
             ) : googleClientConfigured ? (
               <a
                 href="/api/google/start"
