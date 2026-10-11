@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { logRecordActivity } from "@/lib/activity";
 import { allocateDocumentNumber } from "@/lib/numbering";
 import { describeRecipients, isValidEmailAddress } from "@/lib/email-recipients";
 import { loadClientSecondaryEmail } from "@/lib/client-secondary-email";
@@ -378,6 +379,14 @@ export async function bookSurvey(
     );
 
     revalidatePath("/clients");
+
+    await logRecordActivity(supabase, {
+      event_type: "client.created",
+      record_type: "client",
+      record_id: String(inserted.clientId),
+      known: { client_id: String(inserted.clientId), client_name: newClient.display_name },
+      metadata: { source: "Book Survey" },
+    });
   }
 
   const site: AddressParts = differentAddress
@@ -625,6 +634,13 @@ export async function bookSurvey(
 
   revalidatePath(`/invoices/${invoice.id}`);
   revalidatePath("/surveys");
+
+  await logRecordActivity(supabase, {
+    event_type: "survey.booked",
+    record_type: "survey",
+    record_id: String(job.id),
+    metadata: { when, invoice_number: invoice.invoiceNumber, site: siteText },
+  });
 
   const notice = buildSurveyBookedNotice({
     when,
@@ -893,6 +909,12 @@ export async function updateSurvey(
   refreshSurveyPages(record.jobId, {
     clientId: record.client?.id,
     invoiceId: invoice?.id,
+  });
+
+  await logRecordActivity(supabase, {
+    event_type: "survey.updated",
+    record_type: "survey",
+    record_id: String(record.jobId),
   });
 
   const params = new URLSearchParams();
@@ -1186,6 +1208,12 @@ export async function cancelSurvey(formData: FormData) {
   refreshSurveyPages(record.jobId, {
     clientId: record.client?.id,
     invoiceId: record.invoice?.id,
+  });
+
+  await logRecordActivity(supabase, {
+    event_type: "survey.cancelled",
+    record_type: "survey",
+    record_id: String(record.jobId),
   });
 
   const invoiceNote = record.invoice

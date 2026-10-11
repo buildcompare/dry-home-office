@@ -97,10 +97,27 @@ export async function updateSession(
     pathname.startsWith(
       "/c/"
     ) ||
+    // Customer invoice, guarantee and variation links are emailed to
+    // clients and use their own token, so they must not need a login.
+    pathname === "/i" ||
+    pathname.startsWith(
+      "/i/"
+    ) ||
+    pathname === "/g" ||
+    pathname.startsWith(
+      "/g/"
+    ) ||
+    pathname === "/v" ||
+    pathname.startsWith(
+      "/v/"
+    ) ||
     // Checks its own auth (session or bearer token) and answers with
     // JSON instead of a login redirect.
     pathname ===
-      "/api/survey-reports";
+      "/api/survey-reports" ||
+    // Resend webhook: verified by its Svix signature, not a session.
+    pathname ===
+      "/api/webhooks/resend";
 
   if (
     !user &&

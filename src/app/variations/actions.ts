@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { logRecordActivity } from "@/lib/activity";
 
 type RawVariationItem = {
   description?: string;
@@ -633,6 +634,13 @@ export async function manuallyAcceptVariation(
       `/quotes/${variation.quote_id}`
     );
   }
+
+  await logRecordActivity(supabase, {
+    event_type: "variation.accepted",
+    record_type: "variation",
+    record_id: String(variationId),
+    metadata: { manual: true, accepted_by: acceptedBy || null },
+  });
 
   redirect(
     `/variations/${variationId}?accepted=manual`

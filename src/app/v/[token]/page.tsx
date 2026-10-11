@@ -1,7 +1,9 @@
 import Image from "next/image";
 import { notFound } from "next/navigation";
 
+import { after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logPublicView } from "@/lib/activity";
 
 type CustomerVariationPageProps = {
   params: Promise<{
@@ -139,6 +141,19 @@ export default async function CustomerVariationPage({
   /* =========================================================
      RECORD VIEW
      ========================================================= */
+
+  /*
+   * Activity feed: log the view after the response is sent (first view,
+   * then at most hourly). Never affects the page.
+   */
+  const firstView = !variation.viewed_at;
+  const viewedId = String(variation.id);
+
+  after(() =>
+    logPublicView(supabase, "variation", viewedId, {
+      firstView,
+    })
+  );
 
   if (
     !variation.viewed_at

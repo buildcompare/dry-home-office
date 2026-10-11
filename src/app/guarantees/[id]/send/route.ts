@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { Resend } from "resend";
 
 import { createClient } from "@/lib/supabase/server";
+import { emailSentMetadata, logRecordActivity } from "@/lib/activity";
 import {
   buildRecipientList,
   formatSentTo,
@@ -689,6 +690,7 @@ export async function POST(
     );
 
   const {
+    data: sendData,
     error: sendError,
   } =
     await resend.emails.send({
@@ -741,6 +743,13 @@ export async function POST(
       500
     );
   }
+
+  await logRecordActivity(supabase, {
+    event_type: "email.sent",
+    record_type: "guarantee",
+    record_id: guarantee.id,
+    metadata: emailSentMetadata(recipients, sendData?.id, subject),
+  });
 
   /* =========================================================
      UPDATE GUARANTEE

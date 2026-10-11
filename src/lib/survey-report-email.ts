@@ -5,6 +5,7 @@
  */
 
 import { Resend } from "resend";
+import { emailSentMetadata, logSurveyReportActivity } from "@/lib/activity";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { formatSentTo, toResendRecipients } from "@/lib/email-recipients";
@@ -121,6 +122,13 @@ export async function deliverSurveyReportEmail({
     console.error("Resend survey report error:", result.error);
     return { ok: false, error: "The report email could not be sent." };
   }
+
+  await logSurveyReportActivity(
+    supabase,
+    "email.sent",
+    report,
+    emailSentMetadata(recipients, result.data?.id, subject)
+  );
 
   const sentAt = new Date().toISOString();
 

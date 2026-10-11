@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logRecordActivity } from "@/lib/activity";
 
 export const runtime =
   "nodejs";
@@ -130,6 +131,12 @@ export async function POST(
       }
     );
   }
+
+  await logRecordActivity(supabase, {
+    event_type: "variation.declined",
+    record_type: "variation",
+    record_id: String(variation.id),
+  });
 
   return relativeRedirect(
     `/v/${token}?declined=1`

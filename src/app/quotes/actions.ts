@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { logRecordActivity } from "@/lib/activity";
 import { allocateDocumentNumber } from "@/lib/numbering";
 import {
   calculateQuoteTotals,
@@ -348,6 +349,13 @@ export async function manuallyAcceptQuote(
   revalidatePath(
     `/clients/${quote.client_id}`
   );
+
+  await logRecordActivity(supabase, {
+    event_type: "quote.accepted",
+    record_type: "quote",
+    record_id: String(quoteId),
+    metadata: { manual: true },
+  });
 
   redirect(
     `/quotes/${quoteId}?accepted=manual`

@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logRecordActivity } from "@/lib/activity";
 
 export const runtime =
   "nodejs";
@@ -138,6 +139,12 @@ export async function POST(
    * Scheduled or In Progress, so moving the job back to
    * Accepted would be incorrect.
    */
+
+  await logRecordActivity(supabase, {
+    event_type: "variation.accepted",
+    record_type: "variation",
+    record_id: String(variation.id),
+  });
 
   return relativeRedirect(
     `/v/${token}?accepted=1`

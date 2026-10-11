@@ -7,6 +7,7 @@
  * the pages show "Reports storage not set up yet".
  */
 
+import { logSurveyReportActivity } from "@/lib/activity";
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -297,7 +298,16 @@ async function insertReportRow(
     return { ok: false, error: "The report could not be saved.", status: 500 };
   }
 
-  return { ok: true, report: data as SurveyReportRow };
+  const report = data as SurveyReportRow;
+
+  await logSurveyReportActivity(supabase, "survey_report.uploaded", {
+    id: String(report.id),
+    job_id: jobId,
+    title: cleanTitle,
+    file_name: cleanName,
+  });
+
+  return { ok: true, report };
 }
 
 export async function signedReportUrl(

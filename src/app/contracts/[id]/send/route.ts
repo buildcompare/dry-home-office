@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { Resend } from "resend";
 
 import { createClient } from "@/lib/supabase/server";
+import { emailSentMetadata, logRecordActivity } from "@/lib/activity";
 import {
   buildRecipientList,
   formatSentTo,
@@ -682,6 +683,13 @@ export async function POST(
       "The contract email could not be sent."
     );
   }
+
+  await logRecordActivity(supabase, {
+    event_type: "email.sent",
+    record_type: "contract",
+    record_id: id,
+    metadata: emailSentMetadata(recipients, result.data?.id, subject),
+  });
 
   /* =========================================================
      UPDATE CONTRACT STATUS

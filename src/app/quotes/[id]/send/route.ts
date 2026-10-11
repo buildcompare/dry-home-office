@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import { renderToBuffer } from "@react-pdf/renderer";
 
 import { createClient } from "@/lib/supabase/server";
+import { emailSentMetadata, logRecordActivity } from "@/lib/activity";
 import {
   buildRecipientList,
   formatSentTo,
@@ -964,6 +965,13 @@ export async function POST(
     "Quote email sent:",
     emailData?.id
   );
+
+  await logRecordActivity(supabase, {
+    event_type: "email.sent",
+    record_type: "quote",
+    record_id: id,
+    metadata: emailSentMetadata(recipients, emailData?.id, subject),
+  });
 
   /* =========================================================
      UPDATE QUOTE

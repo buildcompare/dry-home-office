@@ -4,6 +4,8 @@ import Sidebar from "@/components/Sidebar";
 import StatusBadge from "@/components/StatusBadge";
 import { createClient } from "@/lib/supabase/server";
 import { loadUnpaidSurveys } from "@/lib/survey-payments";
+import { loadActivityFeed } from "@/lib/activity";
+import RecentActivityCard from "@/components/activity/RecentActivityCard";
 import { formatSurveyWhen, isSurveyDueSoon } from "@/lib/survey";
 import {
   money,
@@ -263,10 +265,22 @@ export default async function DashboardPage() {
    * UNPAID SURVEYS (panel at the bottom, only when there are any)
    */
 
-  const unpaidSurveys =
-    await loadUnpaidSurveys(
-      supabase
-    );
+  const [unpaidSurveys, activity] =
+    await Promise.all([
+      loadUnpaidSurveys(
+        supabase
+      ),
+      loadActivityFeed(supabase, {
+        limit: 15,
+      }).catch((error) => {
+        console.error("Recent activity error:", error);
+        return {
+          items: [],
+          total: 0,
+          logAvailable: false,
+        };
+      }),
+    ]);
 
   /* =========================================================
      NORMALISE DATA
@@ -653,6 +667,7 @@ export default async function DashboardPage() {
                 monthLabel
               }
               href="/invoices"
+              borderClass={LOGO_BORDER.red}
             />
 
             <DashboardCard
@@ -664,6 +679,7 @@ export default async function DashboardPage() {
                 monthLabel
               }
               href="/quotes"
+              borderClass={LOGO_BORDER.gold}
             />
 
             <DashboardCard
@@ -673,6 +689,7 @@ export default async function DashboardPage() {
               )}
               description="Currently in progress"
               href="/jobs?view=active"
+              borderClass={LOGO_BORDER.charcoal}
             />
 
             <DashboardCard
@@ -687,6 +704,7 @@ export default async function DashboardPage() {
                   : "appointments"
               }
               href="/schedule"
+              borderClass={LOGO_BORDER.gold}
             />
 
             <DashboardCard
@@ -705,6 +723,7 @@ export default async function DashboardPage() {
                 overdueInvoices.length >
                 0
               }
+              borderClass={LOGO_BORDER.red}
             />
           </div>
 
@@ -1094,6 +1113,17 @@ export default async function DashboardPage() {
           </section>
 
           {/* =================================================
+              RECENT ACTIVITY
+              ================================================= */}
+
+          <RecentActivityCard
+            items={activity.items}
+            logAvailable={
+              activity.logAvailable
+            }
+          />
+
+          {/* =================================================
               UNPAID SURVEYS
               Only shown when a survey invoice is still unpaid.
               ================================================= */}
@@ -1268,23 +1298,36 @@ export default async function DashboardPage() {
    DASHBOARD CARD
    ========================================================= */
 
+/*
+ * Outline colours sampled from public/dryhome-logo-light.png: the
+ * logo has three – red, gold and the charcoal of the DRYHOME text –
+ * so red and gold repeat across the five circles.
+ */
+const LOGO_BORDER = {
+  red: "border-[#be1e2d]",
+  gold: "border-[#f29e23]",
+  charcoal: "border-[#252525]",
+} as const;
+
 function DashboardCard({
   title,
   value,
   description,
   href,
   danger = false,
+  borderClass = LOGO_BORDER.red,
 }: {
   title: string;
   value: string;
   description: string;
   href: string;
   danger?: boolean;
+  borderClass?: string;
 }) {
   return (
     <Link
       href={href}
-      className="mx-auto flex aspect-square w-full max-w-full min-w-0 flex-col items-center justify-center overflow-hidden rounded-full border-2 border-[#be1e2d] bg-white px-4 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:px-5"
+      className={`mx-auto flex aspect-square w-full max-w-full min-w-0 flex-col items-center justify-center overflow-hidden rounded-full border-[6px] ${borderClass} bg-white px-4 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:px-5`}
     >
       <p className="text-xs font-medium leading-tight text-slate-500">
         {title}

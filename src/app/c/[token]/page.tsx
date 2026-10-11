@@ -2,7 +2,9 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import StandardTermsText from "@/components/StandardTermsText";
 import { contractSpecialTerms } from "@/lib/contract-special-terms";
+import { after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logPublicView } from "@/lib/activity";
 
 type CustomerContractPageProps = {
   params: Promise<{
@@ -107,6 +109,19 @@ export default async function CustomerContractPage({
       .filter(Boolean)
       .join(" ") ||
     "Customer";
+
+  /*
+   * Activity feed: log the view after the response is sent (first view,
+   * then at most hourly). Never affects the page.
+   */
+  const firstView = !contract.viewed_at;
+  const viewedId = String(contract.id);
+
+  after(() =>
+    logPublicView(supabase, "contract", viewedId, {
+      firstView,
+    })
+  );
 
   if (
     !contract.viewed_at

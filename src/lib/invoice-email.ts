@@ -10,6 +10,7 @@
 import { Resend } from "resend";
 
 import type { createClient } from "@/lib/supabase/server";
+import { emailSentMetadata, logRecordActivity } from "@/lib/activity";
 import {
   buildRecipientList,
   formatSentTo,
@@ -1040,6 +1041,13 @@ export async function deliverInvoiceEmail({
       status: 500,
     };
   }
+
+  await logRecordActivity(supabase, {
+    event_type: "email.sent",
+    record_type: "invoice",
+    record_id: id,
+    metadata: emailSentMetadata(recipients, result.data?.id, subject),
+  });
 
   /* =========================================================
      UPDATE STATUS
