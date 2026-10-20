@@ -1,5 +1,7 @@
 "use server";
 
+import { requireOfficeOwner } from "@/lib/staff-auth";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -16,6 +18,8 @@ const allowedTemplateKeys = new Set([
 export async function updateEmailTemplate(
   formData: FormData
 ) {
+  await requireOfficeOwner();
+
   const templateKey = String(
     formData.get("template_key") ?? ""
   ).trim();

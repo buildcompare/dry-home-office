@@ -1,5 +1,7 @@
 "use server";
 
+import { requireOfficeOwner } from "@/lib/staff-auth";
+
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
@@ -49,6 +51,8 @@ export async function recordSurveyReportUpload(input: {
   fileName: string;
   title: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireOfficeOwner();
+
   const supabase = await createClient();
 
   if (!(await signedIn(supabase))) {
@@ -86,6 +90,8 @@ export async function recordSurveyReportUpload(input: {
    ========================================================= */
 
 export async function deleteSurveyReport(formData: FormData) {
+  await requireOfficeOwner();
+
   const supabase = await createClient();
 
   if (!(await signedIn(supabase))) {
@@ -142,6 +148,8 @@ export async function sendSurveyReport(input: {
   subject: string;
   body: string;
 }): Promise<{ ok: true; message: string; warning?: string } | { ok: false; error: string }> {
+  await requireOfficeOwner();
+
   const supabase = await createClient();
 
   if (!(await signedIn(supabase))) {

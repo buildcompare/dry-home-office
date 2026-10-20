@@ -3,6 +3,7 @@ import {
   NextResponse,
   type NextRequest,
 } from "next/server";
+import { isEmployeePath, STAFF_HOME } from "@/lib/staff";
 
 export async function updateSession(
   request: NextRequest
@@ -135,6 +136,53 @@ export async function updateSession(
     return NextResponse.redirect(
       url
     );
+  }
+
+  // Staff portal: employees (and deactivated staff logins) may only use
+  // the /staff portal. Before supabase/staff_portal.sql is run the RPC
+  // doesn't exist and everyone keeps owner access, as before.
+  const customerLinkRoute =
+    isPublicRoute &&
+    pathname !== "/api/survey-reports";
+
+  if (
+    user &&
+    !customerLinkRoute &&
+    !isEmployeePath(pathname)
+  ) {
+    let role = "owner";
+
+    try {
+      const { data: roleData, error } =
+        await supabase.rpc(
+          "current_staff_role"
+        );
+
+      if (!error && typeof roleData === "string") {
+        role = roleData;
+      }
+    } catch {
+      role = "owner";
+    }
+
+    if (role !== "owner") {
+      const blocked = pathname.startsWith("/api/")
+        ? NextResponse.json(
+            { error: "Not available to staff accounts." },
+            { status: 403 }
+          )
+        : NextResponse.redirect(
+            new URL(STAFF_HOME, request.url)
+          );
+
+      supabaseResponse.cookies
+        .getAll()
+        .forEach((cookie) =>
+          blocked.cookies.set(cookie)
+        );
+
+      return blocked;
+    }
   }
 
   return supabaseResponse;

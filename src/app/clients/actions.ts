@@ -1,5 +1,7 @@
 "use server";
 
+import { requireOfficeOwner } from "@/lib/staff-auth";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -35,6 +37,8 @@ function readSecondaryEmail(
 export async function addClient(
   formData: FormData
 ) {
+  await requireOfficeOwner();
+
   const supabase =
     await createClient();
 
@@ -236,6 +240,8 @@ export async function addClient(
 export async function updateClient(
   formData: FormData
 ) {
+  await requireOfficeOwner();
+
   const supabase =
     await createClient();
 
@@ -473,6 +479,8 @@ export async function updateClient(
 export async function deleteClient(
   formData: FormData
 ) {
+  await requireOfficeOwner();
+
   const supabase =
     await createClient();
 

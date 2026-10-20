@@ -1,5 +1,7 @@
 "use server";
 
+import { requireOfficeOwner } from "@/lib/staff-auth";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -81,6 +83,8 @@ function remember(
 }
 
 export async function importClients(formData: FormData) {
+  await requireOfficeOwner();
+
   const file = formData.get("file");
 
   if (!(file instanceof File) || file.size === 0) {

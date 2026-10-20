@@ -1,5 +1,7 @@
 "use server";
 
+import { requireOfficeOwner } from "@/lib/staff-auth";
+
 import {
   revalidatePath,
 } from "next/cache";
@@ -16,6 +18,8 @@ import {
 export async function createGuarantee(
   formData: FormData
 ) {
+  await requireOfficeOwner();
+
   const supabase =
     await createClient();
 

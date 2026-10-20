@@ -1,5 +1,7 @@
 "use server";
 
+import { requireOfficeOwner } from "@/lib/staff-auth";
+
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
@@ -9,6 +11,8 @@ function revalidate() {
 }
 
 export async function addTodo(formData: FormData) {
+  await requireOfficeOwner();
+
   const title = String(formData.get("title") ?? "").trim();
   if (!title) return;
 
@@ -23,6 +27,8 @@ export async function addTodo(formData: FormData) {
 }
 
 export async function toggleTodo(formData: FormData) {
+  await requireOfficeOwner();
+
   const id = String(formData.get("id") ?? "");
   const done = String(formData.get("done") ?? "") === "true";
   if (!id) return;
@@ -44,6 +50,8 @@ export async function toggleTodo(formData: FormData) {
 }
 
 export async function deleteTodo(formData: FormData) {
+  await requireOfficeOwner();
+
   const id = String(formData.get("id") ?? "");
   if (!id) return;
 

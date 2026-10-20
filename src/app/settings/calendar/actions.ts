@@ -1,5 +1,7 @@
 "use server";
 
+import { requireOfficeOwner } from "@/lib/staff-auth";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -7,6 +9,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isAllowedCalendarUrl } from "@/lib/google-calendar";
 
 export async function saveCalendarFeeds(formData: FormData) {
+  await requireOfficeOwner();
+
   const supabase = await createClient();
   const {
     data: { user },

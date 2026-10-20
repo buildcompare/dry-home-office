@@ -1,5 +1,7 @@
 "use server";
 
+import { requireOfficeOwner } from "@/lib/staff-auth";
+
 import { createClient } from "@/lib/supabase/server";
 import { calculateInvoiceTotals, insertInvoiceWithItems } from "@/lib/invoice-create";
 import { applyInvoicePayment } from "@/lib/invoice-payment";
@@ -74,6 +76,8 @@ function invoiceRowTotal(invoice: {
 export async function addInvoice(
   formData: FormData
 ) {
+  await requireOfficeOwner();
+
   const supabase =
     await createClient();
 
@@ -915,6 +919,8 @@ export async function addInvoice(
 export async function recordInvoicePayment(
   formData: FormData
 ) {
+  await requireOfficeOwner();
+
   const supabase =
     await createClient();
 
