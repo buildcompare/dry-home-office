@@ -20,6 +20,7 @@ export function Flash({ error, saved }: { error?: string; saved?: string }) {
     const text: Record<string, string> = {
       entry: "Saved.",
       removed: "Entry removed.",
+      cleared: "Day cleared.",
       submitted: "Week submitted for approval.",
       requested: "Holiday request sent.",
       cancelled: "Request cancelled.",

@@ -206,3 +206,87 @@ export async function cancelHolidayRequest(formData: FormData) {
   revalidatePath(path);
   back(path, { saved: "cancelled" });
 }
+
+/* ---------- one-row-per-day editor (timesheet page) ---------- */
+
+/** Save start/finish/break for one day. Job and notes on an existing row are left untouched. */
+export async function saveTimesheetDay(formData: FormData) {
+  const workDate = text(formData, "work_date");
+  const path = "/staff/timesheet";
+  const weekStart = isDateKey(workDate) ? weekStartOf(workDate) : "";
+  const keep: Record<string, string> = weekStart ? { week: weekStart } : {};
+  const { supabase, staff } = await employeeOrBack(path);
+
+  const checked = validateTimesheetEntry(
+    {
+      work_date: workDate,
+      start_time: text(formData, "start_time"),
+      finish_time: text(formData, "finish_time"),
+      break_minutes: text(formData, "break_minutes"),
+      notes: "",
+    },
+    weekStart
+  );
+  if (!checked.ok) back(path, { ...keep, day: workDate, error: checked.error });
+
+  const status = await weekStatus(supabase, staff.id, weekStart);
+  if (!weekIsEditable(status)) back(path, { ...keep, error: "This week has been submitted and can't be changed." });
+  if (!status) {
+    const { error } = await supabase
+      .from("timesheet_weeks")
+      .insert({ staff_id: staff.id, week_start: weekStart, status: "draft" });
+    if (error && error.code !== "23505") back(path, { ...keep, error: "The timesheet couldn't be saved." });
+  }
+
+  const { data: existing } = await supabase
+    .from("timesheet_entries")
+    .select("id")
+    .eq("staff_id", staff.id)
+    .eq("work_date", workDate)
+    .order("start_time");
+
+  const times = {
+    start_time: checked.entry.start_time,
+    finish_time: checked.entry.finish_time,
+    break_minutes: checked.entry.break_minutes,
+  };
+  const rows = existing ?? [];
+  const { error } = rows.length
+    ? await supabase.from("timesheet_entries").update(times).eq("id", rows[0].id).eq("staff_id", staff.id)
+    : await supabase.from("timesheet_entries").insert({ staff_id: staff.id, week_start: weekStart, work_date: workDate, ...times });
+  if (error) back(path, { ...keep, day: workDate, error: "The day couldn't be saved." });
+
+  // The day editor holds one time range per day; merge any older extra rows.
+  if (rows.length > 1) {
+    await supabase
+      .from("timesheet_entries")
+      .delete()
+      .eq("staff_id", staff.id)
+      .in("id", rows.slice(1).map((row) => row.id));
+  }
+
+  revalidatePath(path);
+  back(path, { ...keep, saved: "entry" });
+}
+
+export async function clearTimesheetDay(formData: FormData) {
+  const workDate = text(formData, "work_date");
+  const path = "/staff/timesheet";
+  if (!isDateKey(workDate)) back(path, { error: "Unknown day." });
+  const weekStart = weekStartOf(workDate);
+  const keep = { week: weekStart };
+  const { supabase, staff } = await employeeOrBack(path);
+
+  const status = await weekStatus(supabase, staff.id, weekStart);
+  if (!weekIsEditable(status)) back(path, { ...keep, error: "This week has been submitted and can't be changed." });
+
+  const { error } = await supabase
+    .from("timesheet_entries")
+    .delete()
+    .eq("staff_id", staff.id)
+    .eq("work_date", workDate);
+  if (error) back(path, { ...keep, error: "The day couldn't be cleared." });
+
+  revalidatePath(path);
+  back(path, { ...keep, saved: "cleared" });
+}
