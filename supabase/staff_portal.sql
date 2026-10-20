@@ -302,7 +302,9 @@ begin
       and c.relkind in ('r', 'p')
       and c.relname not in (
         'staff_members', 'timesheet_weeks', 'timesheet_entries',
-        'holiday_requests', 'schedule_events'
+        'holiday_requests', 'schedule_events',
+        -- later staff tables with their own per-user / per-employee rules
+        'lieu_taken', 'mailbox_connections'
       )
   loop
     if not exists (
