@@ -1,5 +1,7 @@
 "use server";
 
+import { requireOfficeOwner } from "@/lib/staff-auth";
+
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -12,6 +14,8 @@ import {
 export async function addScheduleEvent(
   formData: FormData
 ) {
+  await requireOfficeOwner();
+
   const supabase =
     await createClient();
 
@@ -303,6 +307,8 @@ export async function addScheduleEvent(
 export async function deleteScheduleEvent(
   formData: FormData
 ) {
+  await requireOfficeOwner();
+
   const supabase =
     await createClient();
 

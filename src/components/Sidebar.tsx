@@ -87,6 +87,27 @@ export default function Sidebar() {
     setMenuOpen(false);
   }, [pathname]);
 
+  const [staffPending, setStaffPending] =
+    useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/team/pending-count", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body) => {
+        if (!cancelled && body && typeof body.count === "number") {
+          setStaffPending(body.count);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
+
+  const staffActive =
+    pathname.startsWith("/team");
+
   async function signOut() {
     const supabase =
       createClient();
@@ -186,9 +207,32 @@ export default function Sidebar() {
         </div>
         <SidebarTodos />
 
-        {/* SETTINGS */}
+        {/* STAFF */}
 
         <div className="mt-8 border-t border-slate-800 pt-6">
+          <Link
+            href="/team"
+            className={`flex items-center gap-3 rounded-lg px-4 py-3 text-xs font-semibold transition ${
+              staffActive
+                ? "bg-white text-slate-950"
+                : "text-slate-300 hover:bg-slate-800 hover:text-white"
+            }`}
+          >
+            <span className="flex-1">Staff</span>
+            {staffPending > 0 && (
+              <span
+                className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white"
+                aria-label={`${staffPending} waiting for approval`}
+              >
+                {staffPending}
+              </span>
+            )}
+          </Link>
+        </div>
+
+        {/* SETTINGS */}
+
+        <div className="mt-2">
           <button
             type="button"
             onClick={() => setSettingsOpen((open) => !open)}

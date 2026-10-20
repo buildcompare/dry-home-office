@@ -1,5 +1,7 @@
 "use server";
 
+import { requireOfficeOwner } from "@/lib/staff-auth";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -16,6 +18,8 @@ import {
 export async function addQuote(
   formData: FormData
 ) {
+  await requireOfficeOwner();
+
   const supabase = await createClient();
 
   const fields = readQuoteFields(formData);
@@ -226,6 +230,8 @@ export async function addQuote(
 export async function manuallyAcceptQuote(
   formData: FormData
 ) {
+  await requireOfficeOwner();
+
   const supabase =
     await createClient();
 
@@ -402,6 +408,8 @@ const QUOTE_EDIT_COLUMNS = `
 export async function updateQuote(
   formData: FormData
 ) {
+  await requireOfficeOwner();
+
   const supabase = await createClient();
 
   const quoteId = String(

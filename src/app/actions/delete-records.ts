@@ -1,5 +1,7 @@
 "use server";
 
+import { requireOfficeOwner } from "@/lib/staff-auth";
+
 import { logActivity, lookupRecord } from "@/lib/activity";
 import { isRecordType } from "@/lib/activity-shared";
 import { redirect } from "next/navigation";
@@ -301,6 +303,8 @@ async function signedInClient() {
    ========================================================= */
 
 export async function previewDelete(kind: string, id: string): Promise<DeletePreview> {
+  await requireOfficeOwner();
+
   if (!isDeleteKind(kind) || !id) return { ok: false, error: "Unknown record." };
 
   const supabase = await signedInClient();
@@ -324,6 +328,8 @@ export async function previewDelete(kind: string, id: string): Promise<DeletePre
    ========================================================= */
 
 export async function deleteRecord(_previous: DeleteState, formData: FormData): Promise<DeleteState> {
+  await requireOfficeOwner();
+
   const kind = String(formData.get("kind") ?? "");
   const id = String(formData.get("id") ?? "");
 

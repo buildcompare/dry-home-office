@@ -1,5 +1,7 @@
 "use server";
 
+import { requireOfficeOwner } from "@/lib/staff-auth";
+
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
@@ -29,6 +31,8 @@ function isNotNullColumn(
 export async function addJob(
   formData: FormData
 ) {
+  await requireOfficeOwner();
+
   const supabase =
     await createClient();
 
@@ -297,6 +301,8 @@ export async function addJob(
 export async function updateJobStatus(
   formData: FormData
 ) {
+  await requireOfficeOwner();
+
   const supabase =
     await createClient();
 

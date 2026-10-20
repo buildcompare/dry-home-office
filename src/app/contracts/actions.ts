@@ -1,5 +1,7 @@
 "use server";
 
+import { requireOfficeOwner } from "@/lib/staff-auth";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -9,6 +11,8 @@ import { contractSpecialTerms } from "@/lib/contract-special-terms";
 export async function addContract(
   formData: FormData
 ) {
+  await requireOfficeOwner();
+
   const supabase = await createClient();
 
   const quoteId =

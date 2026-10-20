@@ -1,5 +1,7 @@
 "use server";
 
+import { requireOfficeOwner } from "@/lib/staff-auth";
+
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
@@ -201,6 +203,8 @@ export async function bookSurvey(
   _previous: BookSurveyState,
   formData: FormData
 ): Promise<BookSurveyState> {
+  await requireOfficeOwner();
+
   const supabase = await createClient();
 
   const {
@@ -717,6 +721,8 @@ export async function updateSurvey(
   _previous: UpdateSurveyState,
   formData: FormData
 ): Promise<UpdateSurveyState> {
+  await requireOfficeOwner();
+
   const supabase = await createClient();
   await requireUser(supabase);
 
@@ -928,6 +934,8 @@ export async function updateSurvey(
    ========================================================= */
 
 export async function addSurveyToSchedule(formData: FormData) {
+  await requireOfficeOwner();
+
   const supabase = await createClient();
   await requireUser(supabase);
 
@@ -1017,6 +1025,8 @@ export async function addSurveyToSchedule(formData: FormData) {
    ========================================================= */
 
 export async function resendSurveyInvoice(formData: FormData) {
+  await requireOfficeOwner();
+
   const supabase = await createClient();
   await requireUser(supabase);
 
@@ -1069,6 +1079,8 @@ export async function resendSurveyInvoice(formData: FormData) {
    ========================================================= */
 
 export async function markSurveyPaid(formData: FormData) {
+  await requireOfficeOwner();
+
   const supabase = await createClient();
   await requireUser(supabase);
 
@@ -1130,6 +1142,8 @@ export async function markSurveyPaid(formData: FormData) {
    ========================================================= */
 
 export async function cancelSurvey(formData: FormData) {
+  await requireOfficeOwner();
+
   const supabase = await createClient();
   await requireUser(supabase);
 
