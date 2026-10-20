@@ -230,6 +230,21 @@ export default function Sidebar() {
           </Link>
         </div>
 
+        {/* EMAIL (James's own mailbox) */}
+
+        <div className="mt-2">
+          <Link
+            href="/email"
+            className={`flex items-center gap-3 rounded-lg px-4 py-3 text-xs font-semibold transition ${
+              pathname.startsWith("/email")
+                ? "bg-white text-slate-950"
+                : "text-slate-300 hover:bg-slate-800 hover:text-white"
+            }`}
+          >
+            <span className="flex-1">Email</span>
+          </Link>
+        </div>
+
         {/* SETTINGS */}
 
         <div className="mt-2">
