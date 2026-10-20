@@ -12,6 +12,7 @@ import {
   deleteScheduleEventPermanently,
 } from "@/lib/schedule-create";
 import { holidayTitle, isDateKey, isPlausibleEmail, normaliseEmail } from "@/lib/staff";
+import { parseHoursToMinutes } from "@/lib/staff-dashboard";
 
 const PATH = "/team";
 
@@ -297,4 +298,54 @@ export async function deleteHolidayRequest(formData: FormData) {
   const { error } = await supabase.from("holiday_requests").delete().eq("id", request.id);
   if (error) back({ error: "The request couldn't be deleted." });
   done("Holiday request deleted.");
+}
+
+/* ---------------- dashboards: contracted hours and lieu ---------------- */
+
+function backTo(staffId: string, params: Record<string, string>): never {
+  const safe = /^[0-9a-f-]{36}$/i.test(staffId) ? staffId : "";
+  redirect(`${PATH}/${safe}?${new URLSearchParams(params).toString()}`);
+}
+
+export async function setContractedHours(formData: FormData) {
+  const { supabase } = await requireOwnerForTeam();
+  const staffId = text(formData, "staff_id");
+  const hours = Number(text(formData, "contracted_weekly_hours"));
+  if (!Number.isFinite(hours) || hours < 0 || hours > 168) backTo(staffId, { error: "Enter contracted hours between 0 and 168." });
+  const { data, error } = await supabase
+    .from("staff_members")
+    .update({ contracted_weekly_hours: Math.round(hours * 100) / 100 })
+    .eq("id", staffId)
+    .select("id");
+  if (error || !data?.length) backTo(staffId, { error: "Contracted hours couldn't be saved. Has supabase/staff_dashboards.sql been run?" });
+  revalidatePath(PATH);
+  backTo(staffId, { notice: "Contracted hours saved." });
+}
+
+export async function addLieuTaken(formData: FormData) {
+  const { supabase, userId } = await requireOwnerForTeam();
+  const staffId = text(formData, "staff_id");
+  const takenDate = text(formData, "taken_date");
+  const minutes = parseHoursToMinutes(text(formData, "hours"));
+  if (!isDateKey(takenDate)) backTo(staffId, { error: "Please choose the date." });
+  if (!minutes) backTo(staffId, { error: "Enter the hours taken, e.g. 4 or 7.5." });
+  const { error } = await supabase.from("lieu_taken").insert({
+    staff_id: staffId,
+    taken_date: takenDate,
+    minutes,
+    note: text(formData, "note").slice(0, 500) || null,
+    created_by: userId,
+  });
+  if (error) backTo(staffId, { error: "Lieu time couldn't be recorded. Has supabase/staff_dashboards.sql been run?" });
+  revalidatePath(PATH);
+  backTo(staffId, { notice: "Lieu time recorded." });
+}
+
+export async function deleteLieuTaken(formData: FormData) {
+  const { supabase } = await requireOwnerForTeam();
+  const staffId = text(formData, "staff_id");
+  const { error } = await supabase.from("lieu_taken").delete().eq("id", text(formData, "lieu_id")).eq("staff_id", staffId);
+  if (error) backTo(staffId, { error: "That entry couldn't be deleted." });
+  revalidatePath(PATH);
+  backTo(staffId, { notice: "Lieu entry deleted." });
 }
