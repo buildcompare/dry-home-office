@@ -35,7 +35,8 @@ export type ActivityEventType =
   | "record.created"
   | "record.deleted"
   | "client.created"
-  | "client.imported";
+  | "client.imported"
+  | "staff.signed_up";
 
 export type ActivityItem = {
   id: string;
@@ -101,6 +102,7 @@ export const ACTIVITY_CATEGORIES = [
     types: ["survey.booked", "survey.updated", "survey.cancelled", "survey_report.uploaded"],
   },
   { key: "clients", label: "Clients", types: ["client.created", "client.imported"] },
+  { key: "staff", label: "Staff", types: ["staff.signed_up"] },
   { key: "created", label: "Records created", types: ["record.created"] },
   { key: "deleted", label: "Deleted", types: ["record.deleted"] },
 ] as const;
@@ -145,6 +147,8 @@ export function activityTone(eventType: string): ActivityTone {
     case "client.created":
     case "client.imported":
       return "violet";
+    case "staff.signed_up":
+      return "emerald";
     default:
       return "slate";
   }
@@ -265,6 +269,8 @@ export function buildActivitySummary(event: {
         ? `${count} client${count === 1 ? "" : "s"} imported`
         : "Clients imported";
     }
+    case "staff.signed_up":
+      return `${typeof meta.name === "string" && meta.name ? meta.name : "An employee"} signed up to the staff portal`;
     default:
       return `${record} ${event.event_type}`;
   }

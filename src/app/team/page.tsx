@@ -6,6 +6,8 @@ import { formatDays, formatSignedMinutes } from "@/lib/staff-dashboard";
 import { INVITE_LINK_COOKIE } from "@/lib/staff";
 import { getLondonDateKey } from "@/lib/dates";
 import { requireOwnerForTeam } from "@/lib/staff-auth";
+import { formatUkDate, formatUkDateTime, signupStatus, type SignupStatus } from "@/lib/staff-signup";
+import { loadAuthUsers } from "@/lib/staff-signup-server";
 import {
   decimalHours,
   entryMinutes,
@@ -23,10 +25,11 @@ import {
   reviewHolidayRequest,
   reviewTimesheetWeek,
   setStaffActive,
+  resendStaffInvite,
 } from "@/app/team/actions";
 import { StatusPill } from "@/app/staff/StaffNotice";
 
-type StaffRow = { id: string; name: string; email: string; role: string; active: boolean; user_id: string | null };
+type StaffRow = { id: string; name: string; email: string; role: string; active: boolean; user_id: string | null; invited_at?: string | null };
 type WeekRow = { id: string; staff_id: string; week_start: string; status: string; submitted_at: string | null; review_note: string | null };
 type EntryRow = {
   id: string;
@@ -94,7 +97,7 @@ export default async function TeamPage({
 
   const { data: staffData, error: staffError } = await supabase
     .from("staff_members")
-    .select("id, name, email, role, active, user_id")
+    .select("id, name, email, role, active, user_id, invited_at")
     .order("active", { ascending: false })
     .order("name");
 
@@ -152,6 +155,21 @@ export default async function TeamPage({
     employees.filter((member) => member.active).map(async (member) => ({ member, ...(await loadStaffDashboard(supabase, member.id)) }))
   );
 
+  // Has each employee actually signed up? (needs the service role; falls
+  // back to the simple Active / Invited label when it isn't available)
+  const authUsers = await loadAuthUsers(employees.flatMap((member) => (member.user_id ? [member.user_id] : [])));
+  const signup = new Map<string, SignupStatus>(
+    employees.map((member) => [
+      member.id,
+      authUsers
+        ? signupStatus(member.user_id ? authUsers.get(member.user_id) : null, member.invited_at ?? null)
+        : member.user_id
+          ? { state: "unknown" as const }
+          : { state: "invited" as const, invitedAt: member.invited_at ?? null },
+    ])
+  );
+  const invitesPending = employees.filter((member) => member.active && signup.get(member.id)?.state === "invited").length;
+
   const pendingHolidays = holidays.filter((request) => request.status === "pending");
   const otherHolidays = holidays.filter((request) => request.status !== "pending");
 
@@ -187,7 +205,14 @@ export default async function TeamPage({
 
       {/* STAFF */}
       <section>
-        <h2 className="mb-3 text-xl font-semibold text-slate-900">Employees</h2>
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <h2 className="text-xl font-semibold text-slate-900">Employees</h2>
+          {invitesPending > 0 && (
+            <span className="rounded-full bg-[#f29e23]/15 px-2.5 py-1 text-xs font-semibold text-[#8a5400] ring-1 ring-[#f29e23]/40">
+              {invitesPending} invite{invitesPending === 1 ? "" : "s"} not yet accepted
+            </span>
+          )}
+        </div>
         {summaries.length > 0 && (
           <div className="mb-3 overflow-x-auto rounded-xl bg-white shadow-sm">
             <table className="w-full min-w-[760px] text-left text-sm">
@@ -258,10 +283,18 @@ export default async function TeamPage({
                 <li key={member.id} className={`${card} flex flex-wrap items-center justify-between gap-2`}>
                   <div className="text-sm">
                     <Link href={`/team/${member.id}`} className="font-semibold text-slate-900 hover:text-[#be1e2d] hover:underline">{member.name}</Link>
-                    <p className="text-slate-500">
-                      {member.email} · {member.active ? (member.user_id ? "Active" : "Invited") : "Deactivated"}
-                    </p>
+                    <p className="text-slate-500">{member.email}</p>
+                    <SignupLine status={signup.get(member.id)} active={member.active} />
                   </div>
+                  <div className="flex flex-wrap items-center gap-1">
+                  {member.active && signup.get(member.id)?.state === "invited" && (
+                    <form action={resendStaffInvite}>
+                      <input type="hidden" name="staff_id" value={member.id} />
+                      <button className="rounded-lg border border-[#f29e23] px-3 py-2 text-sm font-medium text-[#8a5400] hover:bg-[#f29e23]/10">
+                        Resend invite
+                      </button>
+                    </form>
+                  )}
                   <form action={setStaffActive}>
                     <input type="hidden" name="staff_id" value={member.id} />
                     <input type="hidden" name="active" value={member.active ? "false" : "true"} />
@@ -269,6 +302,7 @@ export default async function TeamPage({
                       {member.active ? "Deactivate" : "Reactivate"}
                     </button>
                   </form>
+                  </div>
                 </li>
               ))}
           </ul>
@@ -395,5 +429,29 @@ function WeekCard({
         <ReviewForm action={reviewTimesheetWeek} hidden={{ staff_id: week.staff_id, week_start: week.week_start }} approveLabel="Approve" />
       )}
     </div>
+  );
+}
+
+function SignupLine({ status, active }: { status: SignupStatus | undefined; active: boolean }) {
+  if (!active) return <p className="mt-1 text-xs font-medium text-slate-500">Deactivated</p>;
+  if (!status || status.state === "unknown") return <p className="mt-1 text-xs font-medium text-emerald-700">Active</p>;
+  if (status.state === "invited") {
+    return (
+      <p className="mt-1">
+        <span className="inline-flex rounded-full bg-[#f29e23]/15 px-2.5 py-0.5 text-xs font-semibold text-[#8a5400] ring-1 ring-[#f29e23]/40">
+          Invite sent{status.invitedAt ? ` ${formatUkDate(status.invitedAt)}` : ""}
+        </span>
+      </p>
+    );
+  }
+  return (
+    <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600">
+      <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-0.5 font-semibold text-emerald-800 ring-1 ring-emerald-200">
+        Signed up{status.signedUpAt ? ` ${formatUkDate(status.signedUpAt)}` : ""}
+      </span>
+      <span className="self-center">
+        Last signed in {status.lastSignInAt ? `${formatUkDateTime(status.lastSignInAt)} (UK time)` : "–"}
+      </span>
+    </p>
   );
 }
