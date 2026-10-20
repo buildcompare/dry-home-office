@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
+import { markPasswordSet } from "./actions";
 
 type Stage = "checking" | "ready" | "invalid" | "saving" | "done";
 
@@ -41,7 +42,7 @@ export default function SetPasswordPage() {
         } else if (tokenHash) {
           await supabase.auth.verifyOtp({
             token_hash: tokenHash,
-            type: type === "recovery" ? "recovery" : "invite",
+            type: type === "recovery" ? "recovery" : type === "email" || type === "magiclink" ? "email" : "invite",
           });
         }
 
@@ -68,6 +69,9 @@ export default function SetPasswordPage() {
       setStage("ready");
       return;
     }
+    // First time only: marks the invite as accepted and logs it for the
+    // office. Never blocks the sign-in if it fails.
+    await markPasswordSet().catch(() => undefined);
     setStage("done");
     router.replace("/");
     router.refresh();

@@ -13,6 +13,7 @@ import {
 } from "@/lib/schedule-create";
 import { holidayTitle, isDateKey, isPlausibleEmail, normaliseEmail } from "@/lib/staff";
 import { parseHoursToMinutes } from "@/lib/staff-dashboard";
+import { signupStatus } from "@/lib/staff-signup";
 
 const PATH = "/team";
 
@@ -74,32 +75,7 @@ export async function inviteStaffMember(formData: FormData) {
   // comes from DryHome rather than "Supabase Auth". (redirect() must not
   // run inside try/catch, so the outcome is worked out first.)
   const origin = await siteOrigin();
-  let link: string | null = null;
-  let outcome: "sent" | "exists" | "link-failed" | "email-failed" = "link-failed";
-
-  try {
-    const admin = createAdminClient();
-    const { data: generated, error: linkError } = await admin.auth.admin.generateLink({
-      type: "invite",
-      email,
-      options: { redirectTo: `${origin}/auth/set-password`, data: { name } },
-    });
-
-    if (linkError) {
-      outcome = /already|registered|exists/i.test(linkError.message ?? "") ? "exists" : "link-failed";
-    } else {
-      if (generated?.user?.id) {
-        await admin.from("staff_members").update({ user_id: generated.user.id }).eq("id", created.id).is("user_id", null);
-      }
-      link = staffInviteLink(origin, generated?.properties);
-      if (link) {
-        const sent = await sendStaffInviteEmail({ to: email, name, link, origin });
-        outcome = sent.ok ? "sent" : "email-failed";
-      }
-    }
-  } catch {
-    outcome = link ? "email-failed" : "link-failed";
-  }
+  const { outcome, link } = await issueInvite({ email, name, origin, staffId: created.id, allowExisting: false });
 
   if (outcome === "exists") {
     done(`${name} added. They already have a login, so no invite was sent – they can sign in with their existing password and will see the staff portal.`);
@@ -109,18 +85,118 @@ export async function inviteStaffMember(formData: FormData) {
   }
   if (outcome === "email-failed" && link) {
     // Shown once on the Staff page so the owner can copy it to the employee.
-    const jar = await cookies();
-    jar.set(INVITE_LINK_COOKIE, JSON.stringify({ email, link }), {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      path: PATH,
-      maxAge: 600,
-    });
+    await rememberInviteLink(email, link);
     done(`${name} added, but the invite email couldn't be sent. Copy the invite link below and send it to them yourself.`);
   }
 
   done(`Invite sent to ${email}. They'll choose a password from the email link.`);
+}
+
+type InviteOutcome = "sent" | "exists" | "link-failed" | "email-failed";
+
+/**
+ * Creates an invite link (marking the login as invite_pending until the
+ * password is set) and emails it via Resend. allowExisting: for "Resend
+ * invite", an existing not-yet-signed-up login gets a one-time sign-in
+ * link to the same set-password page instead.
+ */
+async function issueInvite({
+  email,
+  name,
+  origin,
+  staffId,
+  allowExisting,
+}: {
+  email: string;
+  name: string;
+  origin: string;
+  staffId: string;
+  allowExisting: boolean;
+}): Promise<{ outcome: InviteOutcome; link: string | null }> {
+  let link: string | null = null;
+  try {
+    const admin = createAdminClient();
+    const redirectTo = `${origin}/auth/set-password`;
+    const invited = await admin.auth.admin.generateLink({
+      type: "invite",
+      email,
+      options: { redirectTo, data: { name, invite_pending: true } },
+    });
+
+    let userId = invited.data?.user?.id ?? null;
+    if (invited.error) {
+      const exists = /already|registered|exists/i.test(invited.error.message ?? "");
+      if (!exists) return { outcome: "link-failed", link: null };
+      if (!allowExisting) return { outcome: "exists", link: null };
+      const magic = await admin.auth.admin.generateLink({ type: "magiclink", email, options: { redirectTo } });
+      if (magic.error) return { outcome: "link-failed", link: null };
+      userId = magic.data?.user?.id ?? null;
+      link = staffInviteLink(origin, magic.data?.properties, "email");
+      if (userId) {
+        const meta = (magic.data?.user?.user_metadata ?? {}) as Record<string, unknown>;
+        await admin.auth.admin.updateUserById(userId, { user_metadata: { ...meta, name, invite_pending: true } });
+      }
+    } else {
+      link = staffInviteLink(origin, invited.data?.properties);
+    }
+
+    if (userId) {
+      await admin.from("staff_members").update({ user_id: userId }).eq("id", staffId).is("user_id", null);
+    }
+    if (!link) return { outcome: "link-failed", link: null };
+    const sent = await sendStaffInviteEmail({ to: email, name, link, origin });
+    return { outcome: sent.ok ? "sent" : "email-failed", link };
+  } catch {
+    return { outcome: link ? "email-failed" : "link-failed", link };
+  }
+}
+
+async function rememberInviteLink(email: string, link: string) {
+  const jar = await cookies();
+  jar.set(INVITE_LINK_COOKIE, JSON.stringify({ email, link }), {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: PATH,
+    maxAge: 600,
+  });
+}
+
+export async function resendStaffInvite(formData: FormData) {
+  const { supabase } = await requireOwnerForTeam();
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) back({ error: "Invites need SUPABASE_SERVICE_ROLE_KEY to be set." });
+
+  const { data: member } = await supabase
+    .from("staff_members")
+    .select("id, name, email, user_id, active")
+    .eq("id", text(formData, "staff_id"))
+    .eq("role", "employee")
+    .maybeSingle();
+  if (!member) back({ error: "That employee no longer exists." });
+  if (!member.active) back({ error: "Reactivate the employee before resending their invite." });
+
+  // Don't re-invite someone who has already signed up.
+  let alreadySignedUp = false;
+  if (member.user_id) {
+    try {
+      const { data } = await createAdminClient().auth.admin.getUserById(member.user_id);
+      alreadySignedUp = signupStatus(data?.user ?? null, null).state === "signed_up";
+    } catch {
+      alreadySignedUp = false;
+    }
+  }
+  if (alreadySignedUp) back({ error: `${member.name} has already signed up.` });
+
+  const origin = await siteOrigin();
+  const { outcome, link } = await issueInvite({ email: member.email, name: member.name, origin, staffId: member.id, allowExisting: true });
+  await supabase.from("staff_members").update({ invited_at: new Date().toISOString() }).eq("id", member.id);
+
+  if (outcome === "email-failed" && link) {
+    await rememberInviteLink(member.email, link);
+    done(`The invite email to ${member.email} couldn't be sent. Copy the link below and send it yourself.`);
+  }
+  if (outcome !== "sent") back({ error: "A new invite link couldn't be created. Please try again." });
+  done(`Invite sent again to ${member.email}.`);
 }
 
 export async function setStaffActive(formData: FormData) {

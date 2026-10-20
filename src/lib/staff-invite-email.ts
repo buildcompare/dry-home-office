@@ -11,10 +11,11 @@ export const STAFF_INVITE_SUBJECT = "You're invited to DryHome Office";
 /** Link to /auth/set-password carrying the invite token hash (verified there with verifyOtp). */
 export function staffInviteLink(
   origin: string,
-  properties: { hashed_token?: string | null; action_link?: string | null } | null | undefined
+  properties: { hashed_token?: string | null; action_link?: string | null } | null | undefined,
+  type: "invite" | "email" = "invite"
 ) {
   if (properties?.hashed_token) {
-    const params = new URLSearchParams({ token_hash: properties.hashed_token, type: "invite" });
+    const params = new URLSearchParams({ token_hash: properties.hashed_token, type });
     return `${origin}/auth/set-password?${params.toString()}`;
   }
   return properties?.action_link || null;
