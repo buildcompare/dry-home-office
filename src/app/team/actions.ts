@@ -349,3 +349,20 @@ export async function deleteLieuTaken(formData: FormData) {
   revalidatePath(PATH);
   backTo(staffId, { notice: "Lieu entry deleted." });
 }
+
+export async function setHolidayAllowance(formData: FormData) {
+  const { supabase } = await requireOwnerForTeam();
+  const staffId = text(formData, "staff_id");
+  const days = Number(text(formData, "holiday_allowance_days"));
+  if (!Number.isFinite(days) || days < 0 || days > 366 || Math.round(days * 2) !== days * 2) {
+    backTo(staffId, { error: "Enter an allowance in whole or half days (0–366)." });
+  }
+  const { data, error } = await supabase
+    .from("staff_members")
+    .update({ holiday_allowance_days: days })
+    .eq("id", staffId)
+    .select("id");
+  if (error || !data?.length) backTo(staffId, { error: "The allowance couldn't be saved. Has supabase/staff_holiday_allowance.sql been run?" });
+  revalidatePath(PATH);
+  backTo(staffId, { notice: "Holiday allowance saved." });
+}

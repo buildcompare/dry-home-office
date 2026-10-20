@@ -13,14 +13,48 @@ function Stat({ label, value, sub, accent }: { label: string; value: string; sub
   );
 }
 
+export function HolidayBalance({ holiday }: { holiday: StaffDashboard["holiday"] }) {
+  const pct = (days: number) => (holiday.allowance > 0 ? Math.max(0, Math.min(100, (days / holiday.allowance) * 100)) : 0);
+  const over = holiday.available < 0;
+  return (
+    <div>
+      <div className="grid grid-cols-3 gap-3">
+        <Stat label="Taken / booked" value={formatDays(holiday.taken)} sub={`${holiday.approved.count} approved`} accent="border-[#252525]" />
+        <Stat label="Pending" value={formatDays(holiday.pendingDays)} sub={`${holiday.pending.count} awaiting approval`} accent="border-[#f29e23]" />
+        <Stat
+          label="Available"
+          value={formatDays(holiday.available)}
+          sub={over ? "Over allowance" : `of ${formatDays(holiday.allowance)}`}
+          accent="border-[#be1e2d]"
+        />
+      </div>
+      <div
+        className="mt-3 flex h-3 overflow-hidden rounded-full bg-slate-200"
+        role="img"
+        aria-label={`${holiday.taken} taken, ${holiday.pendingDays} pending of ${holiday.allowance} days`}
+      >
+        <div className="bg-[#252525]" style={{ width: `${pct(holiday.taken)}%` }} />
+        <div className="bg-[#f29e23]" style={{ width: `${Math.min(pct(holiday.pendingDays), 100 - pct(holiday.taken))}%` }} />
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-x-4 text-xs text-slate-500">
+        <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-[#252525]" />Taken / booked</span>
+        <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-[#f29e23]" />Pending</span>
+        <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-slate-300" />Available</span>
+      </div>
+    </div>
+  );
+}
+
 export default function StaffDashboardView({
   dashboard,
   contractedHours,
   setUpNote,
+  bankHolidays,
 }: {
   dashboard: StaffDashboard;
   contractedHours: number;
   setUpNote?: string | null;
+  bankHolidays?: ReadonlySet<string>;
 }) {
   const { hours, lieu, holiday } = dashboard;
   const pending = (minutes: number) => (minutes > 0 ? `+ ${formatMinutes(minutes)} awaiting approval` : "All approved");
@@ -52,11 +86,11 @@ export default function StaffDashboardView({
 
       <section>
         <h2 className="mb-3 text-lg font-semibold text-[#252525]">Holiday {holiday.year}</h2>
-        <div className="grid grid-cols-3 gap-3">
-          <Stat label="Requested" value={formatDays(holiday.pending.days)} sub={`${holiday.pending.count} pending`} accent="border-[#f29e23]" />
-          <Stat label="Accepted" value={formatDays(holiday.approved.days)} sub={`${holiday.approved.count} approved`} accent="border-[#252525]" />
-          <Stat label="Rejected" value={formatDays(holiday.rejected.days)} sub={`${holiday.rejected.count} rejected`} accent="border-[#be1e2d]" />
-        </div>
+        <HolidayBalance holiday={holiday} />
+        <p className="mt-2 text-xs text-slate-500">
+          {holiday.allowance} days a year, not including bank holidays. Weekdays only; bank holidays aren&apos;t counted.
+          {holiday.rejected.count > 0 && ` ${holiday.rejected.count} rejected (${formatDays(holiday.rejected.days)}).`}
+        </p>
 
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <div className={card}>
@@ -68,7 +102,7 @@ export default function StaffDashboardView({
                 {holiday.upcoming.map((h) => (
                   <li key={h.id} className="flex items-center justify-between gap-2 py-2">
                     <span className="text-[#252525]">{formatHolidayRange(h)}</span>
-                    <span className="whitespace-nowrap text-slate-500">{formatDays(holidayDays(h))}</span>
+                    <span className="whitespace-nowrap text-slate-500">{formatDays(holidayDays(h, { bankHolidays }))}</span>
                   </li>
                 ))}
               </ul>
@@ -84,7 +118,7 @@ export default function StaffDashboardView({
                   <li key={h.id} className="flex items-center justify-between gap-2 py-2">
                     <span className="text-[#252525]">
                       {formatHolidayRange(h)}
-                      <span className="block text-xs text-slate-500">{formatDays(holidayDays(h))}</span>
+                      <span className="block text-xs text-slate-500">{formatDays(holidayDays(h, { bankHolidays }))}</span>
                     </span>
                     <BrandStatusPill status={h.status} />
                   </li>

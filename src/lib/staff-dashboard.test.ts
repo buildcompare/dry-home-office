@@ -30,7 +30,8 @@ assert.equal(d.hours.month.approved, 45 * 60 + 8 * 60); // Oct: 45h + 1 Oct 8h
 assert.equal(d.hours.year.approved, 45 * 60 + 32 * 60);
 assert.equal(d.lieu.accrued, 300);
 assert.equal(d.lieu.balance, 210);
-assert.deepEqual(d.holiday.approved, { count: 1, days: 5 });
+assert.deepEqual(d.holiday.approved, { count: 1, days: 4 }); // 25 Dec is a bank holiday
+assert.equal(d.holiday.available, 28 - 4 - 0.5);
 assert.deepEqual(d.holiday.pending, { count: 1, days: 0.5 });
 assert.deepEqual(d.holiday.rejected, { count: 1, days: 1 });
 assert.equal(d.holiday.upcoming.length, 1);
@@ -38,4 +39,10 @@ assert.equal(formatSignedMinutes(-90), "−1h 30m");
 assert.equal(parseHoursToMinutes("7.5"), 450);
 assert.equal(parseHoursToMinutes("1:15"), 75);
 assert.equal(parseHoursToMinutes("0"), null);
+import { holidayDays } from "./staff";
+// Spanning years: 29 Dec 2026 – 5 Jan 2027 → 2026: 29,30,31 = 3; 2027: 4,5 = 2 (1 Jan bank holiday)
+const span = { start_date: "2026-12-29", end_date: "2027-01-05", half_day: false };
+assert.equal(holidayDays(span, { from: "2026-01-01", to: "2026-12-31" }), 3);
+assert.equal(holidayDays(span, { from: "2027-01-01", to: "2027-12-31" }), 2);
+assert.equal(holidayDays({ start_date: "2026-05-25", end_date: "2026-05-25", half_day: true }), 0);
 console.log("dashboard tests passed");

@@ -1,3 +1,4 @@
+import { BUNDLED_BANK_HOLIDAY_SET } from "@/lib/bank-holidays";
 /*
  * Staff portal: pure helpers (timesheets, holiday, roles). Safe for
  * client and server.
@@ -162,18 +163,28 @@ export function weekIsEditable(status: TimesheetStatus | null | undefined) {
 
 /* ---------- holiday ---------- */
 
-/** Weekdays in the range (Mon–Fri), or 0.5 for a single half day. */
-export function holidayDays(request: { start_date: string; end_date: string; half_day: boolean }) {
+/**
+ * Holiday days in a request: weekdays only, excluding England & Wales bank
+ * holidays, half day = 0.5. Optionally only the part between from–to
+ * (inclusive), so requests spanning two holiday years split correctly.
+ */
+export function holidayDays(
+  request: { start_date: string; end_date: string; half_day: boolean },
+  options: { bankHolidays?: ReadonlySet<string>; from?: string; to?: string } = {}
+) {
   if (!isDateKey(request.start_date) || !isDateKey(request.end_date)) return 0;
   if (request.end_date < request.start_date) return 0;
-  if (request.half_day) return 0.5;
+  const bank = options.bankHolidays ?? BUNDLED_BANK_HOLIDAY_SET;
+  const from = options.from && options.from > request.start_date ? options.from : request.start_date;
+  const to = options.to && options.to < request.end_date ? options.to : request.end_date;
   let days = 0;
-  for (let key = request.start_date; key <= request.end_date; key = shiftDate(key, 1)) {
+  let guard = 0;
+  for (let key = from; key <= to; key = shiftDate(key, 1)) {
     const day = toUtc(key).getUTCDay();
-    if (day !== 0 && day !== 6) days += 1;
-    if (days > 400) break;
+    if (day !== 0 && day !== 6 && !bank.has(key)) days += 1;
+    if (++guard > 800) break;
   }
-  return days;
+  return request.half_day ? Math.min(days, 1) * 0.5 : days;
 }
 
 export function validateHolidayRequest(input: {

@@ -19,6 +19,7 @@ export default async function StaffDashboardPage() {
       <StaffDashboardView
         dashboard={loaded.dashboard}
         contractedHours={loaded.contractedHours}
+        bankHolidays={loaded.bankHolidays}
         setUpNote={loaded.dashboardsSetUp ? null : "Hours in lieu aren't set up yet, so the balance may be incomplete."}
       />
     </div>

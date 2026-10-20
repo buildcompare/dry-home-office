@@ -2,6 +2,8 @@
    allowed to use (employee session or owner session; RLS applies). */
 import type { createClient } from "@/lib/supabase/server";
 import { getLondonDateKey } from "@/lib/dates";
+import { DEFAULT_HOLIDAY_ALLOWANCE_DAYS } from "@/lib/bank-holidays";
+import { getBankHolidaySet } from "@/lib/bank-holidays-server";
 import {
   computeStaffDashboard,
   DEFAULT_CONTRACTED_HOURS,
@@ -20,6 +22,10 @@ export type LoadedDashboard = {
   lieuRows: DashLieu[];
   /** false until supabase/staff_dashboards.sql has been run */
   dashboardsSetUp: boolean;
+  allowanceDays: number;
+  /** false until supabase/staff_holiday_allowance.sql has been run */
+  allowanceSetUp: boolean;
+  bankHolidays: Set<string>;
 };
 
 export async function loadContractedHours(supabase: Client, staffId: string) {
@@ -33,9 +39,22 @@ export async function loadContractedHours(supabase: Client, staffId: string) {
   return { hours: Number.isFinite(hours) ? hours : DEFAULT_CONTRACTED_HOURS, setUp: true };
 }
 
+export async function loadHolidayAllowance(supabase: Client, staffId: string) {
+  const { data, error } = await supabase
+    .from("staff_members")
+    .select("holiday_allowance_days")
+    .eq("id", staffId)
+    .maybeSingle();
+  if (error) return { days: DEFAULT_HOLIDAY_ALLOWANCE_DAYS, setUp: false };
+  const days = Number(data?.holiday_allowance_days);
+  return { days: Number.isFinite(days) ? days : DEFAULT_HOLIDAY_ALLOWANCE_DAYS, setUp: true };
+}
+
 export async function loadStaffDashboard(supabase: Client, staffId: string): Promise<LoadedDashboard> {
-  const [contracted, weeks, entries, holidays, lieu] = await Promise.all([
+  const [contracted, allowance, bankHolidays, weeks, entries, holidays, lieu] = await Promise.all([
     loadContractedHours(supabase, staffId),
+    loadHolidayAllowance(supabase, staffId),
+    getBankHolidaySet(),
     supabase.from("timesheet_weeks").select("week_start, status").eq("staff_id", staffId).in("status", ["approved", "submitted"]),
     supabase
       .from("timesheet_entries")
@@ -63,7 +82,13 @@ export async function loadStaffDashboard(supabase: Client, staffId: string): Pro
     })),
     holidays: (holidays.data ?? []) as DashHoliday[],
     lieu: lieuRows,
+    allowanceDays: allowance.days,
+    bankHolidays,
   });
 
-  return { dashboard, contractedHours: contracted.hours, lieuRows, dashboardsSetUp: contracted.setUp && !lieu.error };
+  return { dashboard, contractedHours: contracted.hours, lieuRows, dashboardsSetUp: contracted.setUp && !lieu.error,
+    allowanceDays: allowance.days,
+    allowanceSetUp: allowance.setUp,
+    bankHolidays,
+  };
 }

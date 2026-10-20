@@ -1,5 +1,12 @@
 /* Pure dashboard maths for one employee (no I/O). */
 import { entryMinutes, holidayDays, weekStartOf } from "@/lib/staff";
+import {
+  BUNDLED_BANK_HOLIDAY_SET,
+  DEFAULT_HOLIDAY_ALLOWANCE_DAYS,
+  holidayYearLabel,
+  holidayYearOf,
+  holidayYearRange,
+} from "@/lib/bank-holidays";
 
 export const DEFAULT_CONTRACTED_HOURS = 40;
 
@@ -28,6 +35,11 @@ export type StaffDashboard = {
     pending: { count: number; days: number };
     approved: { count: number; days: number };
     rejected: { count: number; days: number };
+    allowance: number;
+    /** approved days in this holiday year (past and future) */
+    taken: number;
+    pendingDays: number;
+    available: number;
     upcoming: DashHoliday[];
     recent: DashHoliday[];
   };
@@ -40,6 +52,8 @@ export function computeStaffDashboard(input: {
   entries: DashEntry[];
   holidays: DashHoliday[];
   lieu: DashLieu[];
+  allowanceDays?: number | null;
+  bankHolidays?: ReadonlySet<string>;
 }): StaffDashboard {
   const { today } = input;
   const thisWeek = weekStartOf(today);
@@ -67,10 +81,22 @@ export function computeStaffDashboard(input: {
   for (const total of approvedWeekTotals.values()) accrued += Math.max(0, total - contractedMinutes);
   const taken = input.lieu.reduce((sum, row) => sum + (row.minutes > 0 ? row.minutes : 0), 0);
 
+  const bankHolidays = input.bankHolidays ?? BUNDLED_BANK_HOLIDAY_SET;
+  const holidayYear = holidayYearOf(today);
+  const range = holidayYearRange(holidayYear);
   const tally = (status: string) => {
-    const rows = input.holidays.filter((h) => h.status === status && h.start_date.startsWith(year));
-    return { count: rows.length, days: rows.reduce((sum, h) => sum + holidayDays(h), 0) };
+    const rows = input.holidays.filter(
+      (h) => h.status === status && h.start_date <= range.end && h.end_date >= range.start
+    );
+    return {
+      count: rows.length,
+      days: rows.reduce((sum, h) => sum + holidayDays(h, { bankHolidays, from: range.start, to: range.end }), 0),
+    };
   };
+  const allowanceRaw = Number(input.allowanceDays);
+  const allowance = Number.isFinite(allowanceRaw) && allowanceRaw >= 0 ? allowanceRaw : DEFAULT_HOLIDAY_ALLOWANCE_DAYS;
+  const approvedTally = tally("approved");
+  const pendingTally = tally("pending");
 
   const upcoming = input.holidays
     .filter((h) => h.status === "approved" && h.end_date >= today)
@@ -83,7 +109,18 @@ export function computeStaffDashboard(input: {
   return {
     hours,
     lieu: { accrued, taken, balance: accrued - taken, contractedMinutes },
-    holiday: { year, pending: tally("pending"), approved: tally("approved"), rejected: tally("rejected"), upcoming, recent },
+    holiday: {
+      year: holidayYearLabel(holidayYear),
+      pending: pendingTally,
+      approved: approvedTally,
+      rejected: tally("rejected"),
+      allowance,
+      taken: approvedTally.days,
+      pendingDays: pendingTally.days,
+      available: allowance - approvedTally.days - pendingTally.days,
+      upcoming,
+      recent,
+    },
   };
 }
 
