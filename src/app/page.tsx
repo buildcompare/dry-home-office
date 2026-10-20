@@ -1,3 +1,4 @@
+import InstallHint from "@/components/pwa/InstallHint";
 import Link from "next/link";
 
 import Sidebar from "@/components/Sidebar";
@@ -609,6 +610,8 @@ export default async function DashboardPage() {
           {/* =================================================
               HEADER
               ================================================= */}
+
+          <InstallHint />
 
           <div className="mb-8">
             <p className="text-sm font-medium text-slate-500">

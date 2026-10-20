@@ -3,6 +3,7 @@ import { loadStaffDashboard } from "@/lib/staff-dashboard-data";
 import StaffDashboardView from "@/components/staff/StaffDashboardView";
 import { StaffUnavailable } from "@/app/staff/StaffNotice";
 import { eyebrow, h1 } from "@/app/staff/brand";
+import InstallHint from "@/components/pwa/InstallHint";
 
 export default async function StaffDashboardPage() {
   const session = await requireEmployee();
@@ -14,6 +15,7 @@ export default async function StaffDashboardPage() {
     <div>
       <p className={eyebrow}>Dashboard</p>
       <h1 className={`${h1} mb-6`}>Hello, {staff.name.split(/\s+/)[0] || "there"}</h1>
+      <InstallHint />
       <StaffDashboardView
         dashboard={loaded.dashboard}
         contractedHours={loaded.contractedHours}
