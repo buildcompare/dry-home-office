@@ -190,14 +190,16 @@ export default async function TeamPage({
         <h2 className="mb-3 text-xl font-semibold text-slate-900">Employees</h2>
         {summaries.length > 0 && (
           <div className="mb-3 overflow-x-auto rounded-xl bg-white shadow-sm">
-            <table className="w-full min-w-[640px] text-left text-sm">
+            <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="bg-[#252525] text-xs uppercase tracking-wider text-slate-200">
                 <tr>
                   <th className="px-4 py-3">Employee</th>
                   <th className="px-4 py-3">This week</th>
                   <th className="px-4 py-3">This month</th>
                   <th className="px-4 py-3">Lieu balance</th>
-                  <th className="px-4 py-3">Holiday (pending / approved / rejected)</th>
+                  <th className="px-4 py-3">Holiday taken / booked</th>
+                  <th className="px-4 py-3">Pending</th>
+                  <th className="px-4 py-3">Available</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -216,7 +218,18 @@ export default async function TeamPage({
                     </td>
                     <td className="px-4 py-3 font-semibold">{formatSignedMinutes(dashboard.lieu.balance)}</td>
                     <td className="px-4 py-3">
-                      {formatDays(dashboard.holiday.pending.days)} / {formatDays(dashboard.holiday.approved.days)} / {formatDays(dashboard.holiday.rejected.days)}
+                      {formatDays(dashboard.holiday.taken)}
+                      <span className="mt-1 block h-1.5 w-24 overflow-hidden rounded-full bg-slate-200">
+                        <span
+                          className="block h-full bg-[#252525]"
+                          style={{ width: `${dashboard.holiday.allowance > 0 ? Math.min(100, (dashboard.holiday.taken / dashboard.holiday.allowance) * 100) : 0}%` }}
+                        />
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">{formatDays(dashboard.holiday.pendingDays)}</td>
+                    <td className={`px-4 py-3 font-semibold ${dashboard.holiday.available < 0 ? "text-[#be1e2d]" : "text-[#252525]"}`}>
+                      {formatDays(dashboard.holiday.available)}
+                      <span className="block text-xs font-normal text-slate-500">of {formatDays(dashboard.holiday.allowance)}</span>
                     </td>
                   </tr>
                 ))}

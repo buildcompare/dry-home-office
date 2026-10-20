@@ -6,7 +6,7 @@ import { requireOwnerForTeam } from "@/lib/staff-auth";
 import { loadStaffDashboard } from "@/lib/staff-dashboard-data";
 import { formatLongDay, formatMinutes } from "@/lib/staff";
 import { getLondonDateKey } from "@/lib/dates";
-import { addLieuTaken, deleteLieuTaken, setContractedHours } from "@/app/team/actions";
+import { addLieuTaken, deleteLieuTaken, setContractedHours, setHolidayAllowance } from "@/app/team/actions";
 import { btnDanger, btnDark, btnPrimary, card, eyebrow, h1, input } from "@/app/staff/brand";
 
 export default async function TeamMemberPage({
@@ -48,6 +48,7 @@ export default async function TeamMemberPage({
           <StaffDashboardView
             dashboard={loaded.dashboard}
             contractedHours={loaded.contractedHours}
+        bankHolidays={loaded.bankHolidays}
             setUpNote={loaded.dashboardsSetUp ? null : "Run supabase/staff_dashboards.sql to enable contracted hours and lieu time (40h is assumed until then)."}
           />
 
@@ -63,6 +64,21 @@ export default async function TeamMemberPage({
                 <button className={btnDark} disabled={!loaded.dashboardsSetUp}>Save</button>
               </form>
               <p className="mt-2 text-xs text-slate-500">Hours over this in an approved week are earned as hours in lieu.</p>
+
+              <h2 className="mb-3 mt-6 text-lg font-semibold text-[#252525]">Holiday allowance</h2>
+              <form action={setHolidayAllowance} className="flex flex-wrap items-end gap-3">
+                <input type="hidden" name="staff_id" value={member.id} />
+                <label className="block text-sm font-medium text-slate-700">
+                  Days per year
+                  <input name="holiday_allowance_days" type="number" min={0} max={366} step={0.5} inputMode="decimal" defaultValue={loaded.allowanceDays} className={`${input} w-32`} disabled={!loaded.allowanceSetUp} />
+                </label>
+                <button className={btnDark} disabled={!loaded.allowanceSetUp}>Save</button>
+              </form>
+              <p className="mt-2 text-xs text-slate-500">
+                {loaded.allowanceSetUp
+                  ? "Not including bank holidays. Holiday year runs January to December."
+                  : "Run supabase/staff_holiday_allowance.sql to edit this (28 days is assumed until then)."}
+              </p>
             </section>
 
             <section className={card}>
