@@ -2,7 +2,8 @@ import { getLondonDateKey } from "@/lib/dates";
 import { requireEmployee } from "@/lib/staff-auth";
 import { formatHolidayRange, holidayDays } from "@/lib/staff";
 import { cancelHolidayRequest, requestHoliday } from "@/app/staff/actions";
-import { Flash, StaffUnavailable, StatusPill } from "@/app/staff/StaffNotice";
+import { Flash, StaffUnavailable, BrandStatusPill } from "@/app/staff/StaffNotice";
+import { btnDanger, btnPrimary, eyebrow, h1, input } from "@/app/staff/brand";
 
 type HolidayRow = {
   id: string;
@@ -16,7 +17,6 @@ type HolidayRow = {
   created_at: string;
 };
 
-const input = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm";
 
 export default async function HolidayPage({
   searchParams,
@@ -44,41 +44,42 @@ export default async function HolidayPage({
 
   return (
     <div>
-      <h1 className="mb-1 text-2xl font-bold text-slate-900">Holiday</h1>
+      <p className={eyebrow}>Time off</p>
+          <h1 className={`${h1} mb-1`}>Holiday</h1>
       <p className="mb-4 text-sm text-slate-600">
         Approved this year: <strong>{approvedThisYear}</strong> {approvedThisYear === 1 ? "day" : "days"}
       </p>
 
       <Flash error={params.error} saved={params.saved} />
 
-      <section className="mb-6 rounded-xl bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-lg font-semibold text-slate-900">Request holiday</h2>
+      <section className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
+        <h2 className="mb-3 text-lg font-semibold text-[#252525]">Request holiday</h2>
         <form action={requestHoliday} className="grid gap-3 sm:grid-cols-2">
-          <label className="text-sm font-medium text-slate-700">
+          <label className="block text-sm font-medium text-slate-700">
             First day
             <input type="date" name="start_date" required min={today} className={input} />
           </label>
-          <label className="text-sm font-medium text-slate-700">
+          <label className="block text-sm font-medium text-slate-700">
             Last day
             <input type="date" name="end_date" min={today} className={input} />
           </label>
           <div className="flex flex-wrap items-center gap-4 text-sm text-slate-700 sm:col-span-2">
             <label className="flex items-center gap-2">
-              <input type="checkbox" name="half_day" /> Half day only (uses the first day)
+              <input type="checkbox" className="h-4 w-4 accent-[#be1e2d]" name="half_day" /> Half day only (uses the first day)
             </label>
             <label className="flex items-center gap-2">
-              <input type="radio" name="half_day_part" value="am" defaultChecked /> Morning
+              <input type="radio" className="h-4 w-4 accent-[#be1e2d]" name="half_day_part" value="am" defaultChecked /> Morning
             </label>
             <label className="flex items-center gap-2">
-              <input type="radio" name="half_day_part" value="pm" /> Afternoon
+              <input type="radio" className="h-4 w-4 accent-[#be1e2d]" name="half_day_part" value="pm" /> Afternoon
             </label>
           </div>
-          <label className="text-sm font-medium text-slate-700 sm:col-span-2">
+          <label className="block text-sm font-medium text-slate-700 sm:col-span-2">
             Reason (optional)
             <textarea name="reason" rows={2} className={input} />
           </label>
           <div className="sm:col-span-2">
-            <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+            <button className={btnPrimary}>
               Send request
             </button>
           </div>
@@ -86,15 +87,15 @@ export default async function HolidayPage({
       </section>
 
       <section>
-        <h2 className="mb-2 text-lg font-semibold text-slate-900">Your requests</h2>
+        <h2 className="mb-2 text-lg font-semibold text-[#252525]">Your requests</h2>
         {requests.length === 0 ? (
           <p className="text-sm text-slate-600">No holiday requested yet.</p>
         ) : (
           <ul className="space-y-2">
             {requests.map((request) => (
-              <li key={request.id} className="flex flex-wrap items-start justify-between gap-2 rounded-xl bg-white p-4 shadow-sm">
+              <li key={request.id} className="flex flex-wrap items-start justify-between gap-2 rounded-2xl bg-white p-5 shadow-sm">
                 <div className="text-sm text-slate-700">
-                  <p className="font-semibold text-slate-900">{formatHolidayRange(request)}</p>
+                  <p className="font-semibold text-[#252525]">{formatHolidayRange(request)}</p>
                   <p>
                     {holidayDays(request)} {holidayDays(request) === 1 ? "day" : "days"}
                     {request.reason ? ` · ${request.reason}` : ""}
@@ -102,11 +103,11 @@ export default async function HolidayPage({
                   {request.review_note && <p className="text-slate-500">Office note: {request.review_note}</p>}
                 </div>
                 <div className="flex items-center gap-2">
-                  <StatusPill status={request.status} />
+                  <BrandStatusPill status={request.status} />
                   {request.status === "pending" && (
                     <form action={cancelHolidayRequest}>
                       <input type="hidden" name="request_id" value={request.id} />
-                      <button className="rounded-lg px-3 py-1 text-sm font-medium text-red-700 hover:bg-red-50">Cancel</button>
+                      <button className={btnDanger}>Cancel</button>
                     </form>
                   )}
                 </div>

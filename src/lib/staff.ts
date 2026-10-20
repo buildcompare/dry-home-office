@@ -255,3 +255,6 @@ export const STATUS_STYLES: Record<string, string> = {
 export function statusLabel(status: string) {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
+
+/** Short-lived cookie holding an invite link when the invite email fails. */
+export const INVITE_LINK_COOKIE = "staff_invite_link";

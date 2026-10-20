@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { login } from "./actions";
 
 type LoginPageProps = {
@@ -12,14 +13,21 @@ export default async function LoginPage({
   const params = await searchParams;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-lg">
-        <div className="mb-8 text-center">
-          <div className="mb-2 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-            DryHome
-          </div>
+    <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">
+      <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-lg">
+        <div className="h-1.5 bg-[#be1e2d]" />
+        <div className="p-8">
+        <div className="mb-8 flex flex-col items-center text-center">
+          <Image
+            src="/dryhome-logo-light.png"
+            alt="Dry Home Damp Proofing Solutions"
+            width={160}
+            height={160}
+            priority
+            className="h-28 w-28 object-contain"
+          />
 
-          <h1 className="text-3xl font-bold text-slate-900">
+          <h1 className="mt-2 text-3xl font-bold text-[#252525]">
             DryHome Office
           </h1>
 
@@ -29,7 +37,7 @@ export default async function LoginPage({
         </div>
 
         {params.error && (
-          <div className="mb-5 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mb-5 rounded-lg border-l-4 border-[#be1e2d] bg-[#be1e2d]/5 px-4 py-3 text-sm font-medium text-[#be1e2d]">
             {params.error}
           </div>
         )}
@@ -50,7 +58,7 @@ export default async function LoginPage({
               type="email"
               required
               autoComplete="email"
-              className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-slate-900"
+              className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-[#252525] focus:ring-2 focus:ring-[#f29e23]/40"
               placeholder="you@example.com"
             />
           </div>
@@ -70,14 +78,14 @@ export default async function LoginPage({
               type="password"
               required
               autoComplete="current-password"
-              className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-slate-900"
+              className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-[#252525] focus:ring-2 focus:ring-[#f29e23]/40"
               placeholder="Your password"
             />
           </div>
 
           <button
             type="submit"
-            className="w-full rounded-lg bg-slate-900 px-4 py-3 font-semibold text-white transition hover:bg-slate-700"
+            className="w-full rounded-xl bg-[#be1e2d] px-4 py-3 font-semibold text-white shadow-sm transition hover:bg-[#a31926]"
           >
             Sign in
           </button>
@@ -86,6 +94,7 @@ export default async function LoginPage({
         <p className="mt-8 text-center text-xs text-slate-400">
           DryHome Damp Proofing Solutions
         </p>
+        </div>
       </div>
     </main>
   );
