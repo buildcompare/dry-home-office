@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#252525">
+<title>Offline – DryHome Office</title>
+<style>
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#252525;padding:16px;box-sizing:border-box}
+  .card{max-width:420px;width:100%;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08);text-align:center}
+  .top{background:#252525;border-bottom:4px solid #f29e23;padding:20px}
+  .top img{width:140px;height:auto}
+  .body{padding:24px}
+  h1{font-size:22px;margin:0 0 8px}
+  p{color:#64748b;font-size:14px;line-height:1.6;margin:0 0 20px}
+  button{background:#be1e2d;color:#fff;border:0;border-radius:12px;padding:12px 24px;font-weight:700;font-size:15px}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="top"><img src="/icons/icon-192.png" alt="DryHome" width="96" height="96" style="width:96px;border-radius:16px"></div>
+    <div class="body">
+      <h1>You're offline</h1>
+      <p>DryHome Office needs an internet connection. Check your signal or Wi-Fi and try again.</p>
+      <button onclick="location.reload()">Try again</button>
+    </div>
+  </div>
+</body>
+</html>

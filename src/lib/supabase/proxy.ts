@@ -119,6 +119,12 @@ export async function updateSession(
     // JSON instead of a login redirect.
     pathname ===
       "/api/survey-reports" ||
+    // Installable app files (no user data).
+    pathname === "/manifest.webmanifest" ||
+    pathname === "/sw.js" ||
+    pathname === "/offline.html" ||
+    pathname.startsWith("/icons/") ||
+    pathname === "/apple-touch-icon.png" ||
     // Resend webhook: verified by its Svix signature, not a session.
     pathname ===
       "/api/webhooks/resend";
