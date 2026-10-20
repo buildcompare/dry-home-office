@@ -10,7 +10,7 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
     <div className="min-h-screen bg-slate-100">
       <header className="sticky top-0 z-20 border-b-4 border-[#f29e23] bg-[#252525] text-white shadow">
         <div className="relative mx-auto flex max-w-4xl items-center justify-center px-4 pb-2 pt-4">
-          <Link href="/staff/timesheet" className="flex flex-col items-center">
+          <Link href="/staff" className="flex flex-col items-center">
             {/* Same crop as the office sidebar: the PNG mark sits in y 152–348 of 500. */}
             <div className="h-[calc(9rem*197/500)] w-36 overflow-hidden">
               <Image

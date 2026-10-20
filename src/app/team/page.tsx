@@ -1,5 +1,8 @@
 import { cookies } from "next/headers";
+import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
+import { loadStaffDashboard } from "@/lib/staff-dashboard-data";
+import { formatDays, formatSignedMinutes } from "@/lib/staff-dashboard";
 import { INVITE_LINK_COOKIE } from "@/lib/staff";
 import { getLondonDateKey } from "@/lib/dates";
 import { requireOwnerForTeam } from "@/lib/staff-auth";
@@ -144,6 +147,11 @@ export default async function TeamPage({
   const entriesFor = (week: WeekRow) =>
     entries.filter((entry) => entry.staff_id === week.staff_id && entry.week_start === week.week_start);
 
+  const employees = staff.filter((member) => member.role === "employee");
+  const summaries = await Promise.all(
+    employees.filter((member) => member.active).map(async (member) => ({ member, ...(await loadStaffDashboard(supabase, member.id)) }))
+  );
+
   const pendingHolidays = holidays.filter((request) => request.status === "pending");
   const otherHolidays = holidays.filter((request) => request.status !== "pending");
 
@@ -180,6 +188,42 @@ export default async function TeamPage({
       {/* STAFF */}
       <section>
         <h2 className="mb-3 text-xl font-semibold text-slate-900">Employees</h2>
+        {summaries.length > 0 && (
+          <div className="mb-3 overflow-x-auto rounded-xl bg-white shadow-sm">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="bg-[#252525] text-xs uppercase tracking-wider text-slate-200">
+                <tr>
+                  <th className="px-4 py-3">Employee</th>
+                  <th className="px-4 py-3">This week</th>
+                  <th className="px-4 py-3">This month</th>
+                  <th className="px-4 py-3">Lieu balance</th>
+                  <th className="px-4 py-3">Holiday (pending / approved / rejected)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {summaries.map(({ member, dashboard }) => (
+                  <tr key={member.id}>
+                    <td className="px-4 py-3">
+                      <Link href={`/team/${member.id}`} className="font-semibold text-[#be1e2d] hover:underline">{member.name}</Link>
+                    </td>
+                    <td className="px-4 py-3">
+                      {formatMinutes(dashboard.hours.week.approved)}
+                      {dashboard.hours.week.pending > 0 && <span className="block text-xs text-slate-500">+{formatMinutes(dashboard.hours.week.pending)} pending</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {formatMinutes(dashboard.hours.month.approved)}
+                      {dashboard.hours.month.pending > 0 && <span className="block text-xs text-slate-500">+{formatMinutes(dashboard.hours.month.pending)} pending</span>}
+                    </td>
+                    <td className="px-4 py-3 font-semibold">{formatSignedMinutes(dashboard.lieu.balance)}</td>
+                    <td className="px-4 py-3">
+                      {formatDays(dashboard.holiday.pending.days)} / {formatDays(dashboard.holiday.approved.days)} / {formatDays(dashboard.holiday.rejected.days)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         <div className={`${card} mb-3`}>
           <h3 className="mb-2 font-semibold text-slate-900">Invite an employee</h3>
           <form action={inviteStaffMember} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
@@ -200,7 +244,7 @@ export default async function TeamPage({
               .map((member) => (
                 <li key={member.id} className={`${card} flex flex-wrap items-center justify-between gap-2`}>
                   <div className="text-sm">
-                    <p className="font-semibold text-slate-900">{member.name}</p>
+                    <Link href={`/team/${member.id}`} className="font-semibold text-slate-900 hover:text-[#be1e2d] hover:underline">{member.name}</Link>
                     <p className="text-slate-500">
                       {member.email} · {member.active ? (member.user_id ? "Active" : "Invited") : "Deactivated"}
                     </p>
