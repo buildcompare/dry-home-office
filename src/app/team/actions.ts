@@ -1,6 +1,8 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { sendStaffInviteEmail, staffInviteLink } from "@/lib/staff-invite-email";
+import { INVITE_LINK_COOKIE } from "@/lib/staff";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -67,27 +69,54 @@ export async function inviteStaffMember(formData: FormData) {
     done(`${name} added. No invite email was sent – create their login in Supabase (Authentication → Users → Add user) with ${email}.`);
   }
 
+  // Generate the invite link ourselves and email it through Resend, so it
+  // comes from DryHome rather than "Supabase Auth". (redirect() must not
+  // run inside try/catch, so the outcome is worked out first.)
+  const origin = await siteOrigin();
+  let link: string | null = null;
+  let outcome: "sent" | "exists" | "link-failed" | "email-failed" = "link-failed";
+
   try {
     const admin = createAdminClient();
-    const { data: invited, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${await siteOrigin()}/auth/set-password`,
-      data: { name },
+    const { data: generated, error: linkError } = await admin.auth.admin.generateLink({
+      type: "invite",
+      email,
+      options: { redirectTo: `${origin}/auth/set-password`, data: { name } },
     });
 
-    if (inviteError) {
-      const already = /already|registered|exists/i.test(inviteError.message ?? "");
-      done(
-        already
-          ? `${name} added. They already have a login, so no invite was sent – they can sign in with their existing password and will see the staff portal.`
-          : `${name} added, but the invite email failed. Create their login in Supabase (Authentication → Users) with ${email}.`
-      );
-    }
-
-    if (invited?.user?.id) {
-      await admin.from("staff_members").update({ user_id: invited.user.id }).eq("id", created.id).is("user_id", null);
+    if (linkError) {
+      outcome = /already|registered|exists/i.test(linkError.message ?? "") ? "exists" : "link-failed";
+    } else {
+      if (generated?.user?.id) {
+        await admin.from("staff_members").update({ user_id: generated.user.id }).eq("id", created.id).is("user_id", null);
+      }
+      link = staffInviteLink(origin, generated?.properties);
+      if (link) {
+        const sent = await sendStaffInviteEmail({ to: email, name, link, origin });
+        outcome = sent.ok ? "sent" : "email-failed";
+      }
     }
   } catch {
-    done(`${name} added, but the invite email couldn't be sent. Create their login in Supabase (Authentication → Users) with ${email}.`);
+    outcome = link ? "email-failed" : "link-failed";
+  }
+
+  if (outcome === "exists") {
+    done(`${name} added. They already have a login, so no invite was sent – they can sign in with their existing password and will see the staff portal.`);
+  }
+  if (outcome === "link-failed") {
+    done(`${name} added, but an invite link couldn't be created. Create their login in Supabase (Authentication → Users) with ${email}.`);
+  }
+  if (outcome === "email-failed" && link) {
+    // Shown once on the Staff page so the owner can copy it to the employee.
+    const jar = await cookies();
+    jar.set(INVITE_LINK_COOKIE, JSON.stringify({ email, link }), {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: PATH,
+      maxAge: 600,
+    });
+    done(`${name} added, but the invite email couldn't be sent. Copy the invite link below and send it to them yourself.`);
   }
 
   done(`Invite sent to ${email}. They'll choose a password from the email link.`);

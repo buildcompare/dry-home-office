@@ -1,4 +1,6 @@
+import { cookies } from "next/headers";
 import Sidebar from "@/components/Sidebar";
+import { INVITE_LINK_COOKIE } from "@/lib/staff";
 import { getLondonDateKey } from "@/lib/dates";
 import { requireOwnerForTeam } from "@/lib/staff-auth";
 import {
@@ -57,6 +59,15 @@ export default async function TeamPage({
   const params = await searchParams;
   const { supabase, setUp } = await requireOwnerForTeam();
 
+  let inviteLink: { email: string; link: string } | null = null;
+  try {
+    const raw = (await cookies()).get(INVITE_LINK_COOKIE)?.value;
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (parsed && typeof parsed.link === "string" && typeof parsed.email === "string") inviteLink = parsed;
+  } catch {
+    inviteLink = null;
+  }
+
   const shell = (content: React.ReactNode) => (
     <div className="flex min-h-screen bg-slate-100">
       <Sidebar />
@@ -66,6 +77,12 @@ export default async function TeamPage({
           <p className="mb-6 text-sm text-slate-600">Employees, timesheets and holiday.</p>
           {params.error && <p className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{params.error}</p>}
           {params.notice && <p className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{params.notice}</p>}
+          {inviteLink && (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="mb-2 font-semibold">Invite link for {inviteLink.email} (copy and send it to them; it works once, for 24 hours):</p>
+              <textarea readOnly rows={3} spellCheck={false} className="w-full rounded-lg border border-amber-300 bg-white p-2 font-mono text-xs text-slate-800" defaultValue={inviteLink.link} />
+            </div>
+          )}
           {content}
         </div>
       </main>

@@ -17,7 +17,8 @@ import {
   type TimesheetStatus,
 } from "@/lib/staff";
 import { deleteTimesheetEntry, saveTimesheetEntry, submitTimesheetWeek } from "@/app/staff/actions";
-import { Flash, StaffUnavailable, StatusPill } from "@/app/staff/StaffNotice";
+import { Flash, StaffUnavailable, BrandStatusPill } from "@/app/staff/StaffNotice";
+import { btnDanger, btnDark, btnGhost, btnLink, btnPrimary, eyebrow, h1, input } from "@/app/staff/brand";
 
 type Entry = {
   id: string;
@@ -48,7 +49,6 @@ async function jobOptions() {
   }
 }
 
-const input = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm";
 
 export default async function TimesheetPage({
   searchParams,
@@ -95,17 +95,18 @@ export default async function TimesheetPage({
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Timesheet</h1>
+          <p className={eyebrow}>Your hours</p>
+          <h1 className={h1}>Timesheet</h1>
           <p className="text-sm text-slate-600">Week of {formatWeekRange(weekStart)}</p>
         </div>
         <div className="flex gap-2 text-sm">
-          <Link className="rounded-lg bg-white px-3 py-2 font-medium shadow-sm" href={`/staff/timesheet?week=${shiftDate(weekStart, -7)}`}>
+          <Link className={btnGhost} href={`/staff/timesheet?week=${shiftDate(weekStart, -7)}`}>
             ← Previous
           </Link>
-          <Link className="rounded-lg bg-white px-3 py-2 font-medium shadow-sm" href="/staff/timesheet">
+          <Link className={btnGhost} href="/staff/timesheet">
             This week
           </Link>
-          <Link className="rounded-lg bg-white px-3 py-2 font-medium shadow-sm" href={`/staff/timesheet?week=${shiftDate(weekStart, 7)}`}>
+          <Link className={btnGhost} href={`/staff/timesheet?week=${shiftDate(weekStart, 7)}`}>
             Next →
           </Link>
         </div>
@@ -113,9 +114,9 @@ export default async function TimesheetPage({
 
       <Flash error={params.error} saved={params.saved} />
 
-      <section className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white p-4 shadow-sm">
+      <section className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-5 shadow-sm">
         <div className="flex items-center gap-3">
-          <StatusPill status={status ?? "draft"} />
+          <BrandStatusPill status={status ?? "draft"} />
           <p className="text-sm text-slate-700">
             Total <strong>{formatMinutes(total)}</strong> ({decimalHours(total)} hours)
           </p>
@@ -123,14 +124,14 @@ export default async function TimesheetPage({
         {editable && entries.length > 0 && (
           <form action={submitTimesheetWeek}>
             <input type="hidden" name="week_start" value={weekStart} />
-            <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+            <button className={btnPrimary}>
               Submit week
             </button>
           </form>
         )}
       </section>
       {status === "rejected" && week?.review_note && (
-        <p className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+        <p className="mb-4 rounded-xl border-l-4 border-[#be1e2d] bg-white p-3 text-sm text-[#be1e2d] shadow-sm">
           Returned by the office: {week.review_note}
         </p>
       )}
@@ -139,9 +140,9 @@ export default async function TimesheetPage({
         {days.map((day) => {
           const dayEntries = entries.filter((entry) => entry.work_date === day);
           return (
-            <div key={day} className="rounded-xl bg-white p-4 shadow-sm">
+            <div key={day} className="rounded-2xl bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between">
-                <p className={`font-semibold ${day === today ? "text-blue-700" : "text-slate-900"}`}>{formatDayLabel(day)}</p>
+                <p className={`font-semibold ${day === today ? "text-[#be1e2d]" : "text-slate-900"}`}>{formatDayLabel(day)}</p>
                 <p className="text-sm text-slate-600">{formatMinutes(totalMinutes(dayEntries))}</p>
               </div>
               {dayEntries.map((entry) => (
@@ -156,13 +157,13 @@ export default async function TimesheetPage({
                   </div>
                   {editable && (
                     <div className="flex gap-2">
-                      <Link className="rounded-lg px-3 py-1 font-medium text-blue-700 hover:bg-blue-50" href={`/staff/timesheet?week=${weekStart}&edit=${entry.id}#entry-form`}>
+                      <Link className={btnLink} href={`/staff/timesheet?week=${weekStart}&edit=${entry.id}#entry-form`}>
                         Edit
                       </Link>
                       <form action={deleteTimesheetEntry}>
                         <input type="hidden" name="week_start" value={weekStart} />
                         <input type="hidden" name="entry_id" value={entry.id} />
-                        <button className="rounded-lg px-3 py-1 font-medium text-red-700 hover:bg-red-50">Remove</button>
+                        <button className={btnDanger}>Remove</button>
                       </form>
                     </div>
                   )}
@@ -174,12 +175,12 @@ export default async function TimesheetPage({
       </section>
 
       {editable ? (
-        <section id="entry-form" className="rounded-xl bg-white p-4 shadow-sm">
-          <h2 className="mb-3 text-lg font-semibold text-slate-900">{editing ? "Edit entry" : "Add a day"}</h2>
+        <section id="entry-form" className="rounded-2xl bg-white p-5 shadow-sm">
+          <h2 className="mb-3 text-lg font-semibold text-[#252525]">{editing ? "Edit entry" : "Add a day"}</h2>
           <form action={saveTimesheetEntry} className="grid gap-3 sm:grid-cols-2" key={editing?.id ?? "new"}>
             <input type="hidden" name="week_start" value={weekStart} />
             {editing && <input type="hidden" name="entry_id" value={editing.id} />}
-            <label className="text-sm font-medium text-slate-700">
+            <label className="block text-sm font-medium text-slate-700">
               Date
               <select name="work_date" className={input} defaultValue={editing?.work_date ?? (days.includes(today) ? today : days[0])}>
                 {days.map((day) => (
@@ -187,7 +188,7 @@ export default async function TimesheetPage({
                 ))}
               </select>
             </label>
-            <label className="text-sm font-medium text-slate-700">
+            <label className="block text-sm font-medium text-slate-700">
               Job (optional)
               <select name="job_id" className={input} defaultValue={editing?.job_id ?? ""}>
                 <option value="">No job</option>
@@ -196,28 +197,28 @@ export default async function TimesheetPage({
                 ))}
               </select>
             </label>
-            <label className="text-sm font-medium text-slate-700">
+            <label className="block text-sm font-medium text-slate-700">
               Start
               <input type="time" name="start_time" required className={input} defaultValue={editing?.start_time ?? "08:00"} />
             </label>
-            <label className="text-sm font-medium text-slate-700">
+            <label className="block text-sm font-medium text-slate-700">
               Finish
               <input type="time" name="finish_time" required className={input} defaultValue={editing?.finish_time ?? "16:30"} />
             </label>
-            <label className="text-sm font-medium text-slate-700">
+            <label className="block text-sm font-medium text-slate-700">
               Break (minutes)
               <input type="number" name="break_minutes" min={0} max={720} step={1} inputMode="numeric" className={input} defaultValue={editing?.break_minutes ?? 30} />
             </label>
-            <label className="text-sm font-medium text-slate-700 sm:col-span-2">
+            <label className="block text-sm font-medium text-slate-700 sm:col-span-2">
               Notes
               <textarea name="notes" rows={2} className={input} defaultValue={editing?.notes ?? ""} />
             </label>
             <div className="flex gap-2 sm:col-span-2">
-              <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
+              <button className={btnDark}>
                 {editing ? "Save changes" : "Add entry"}
               </button>
               {editing && (
-                <Link className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600" href={`/staff/timesheet?week=${weekStart}`}>
+                <Link className={btnLink} href={`/staff/timesheet?week=${weekStart}`}>
                   Cancel
                 </Link>
               )}

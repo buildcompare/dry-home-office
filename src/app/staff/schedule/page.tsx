@@ -3,6 +3,7 @@ import { getLondonDateKey } from "@/lib/dates";
 import { requireEmployee } from "@/lib/staff-auth";
 import { formatDayLabel, shiftDate } from "@/lib/staff";
 import { StaffUnavailable } from "@/app/staff/StaffNotice";
+import { btnGhost, eyebrow, h1 } from "@/app/staff/brand";
 
 type ScheduleRow = {
   id: string;
@@ -59,25 +60,26 @@ export default async function StaffSchedulePage({
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Schedule</h1>
+          <p className={eyebrow}>Office calendar</p>
+          <h1 className={h1}>Schedule</h1>
           <p className="text-sm text-slate-600">{label} · view only</p>
         </div>
         <div className="flex gap-2 text-sm">
-          <Link className="rounded-lg bg-white px-3 py-2 font-medium shadow-sm" href={`/staff/schedule?month=${nextMonth(start, -1)}`}>← Previous</Link>
-          <Link className="rounded-lg bg-white px-3 py-2 font-medium shadow-sm" href="/staff/schedule">This month</Link>
-          <Link className="rounded-lg bg-white px-3 py-2 font-medium shadow-sm" href={`/staff/schedule?month=${nextMonth(start, 1)}`}>Next →</Link>
+          <Link className={btnGhost} href={`/staff/schedule?month=${nextMonth(start, -1)}`}>← Previous</Link>
+          <Link className={btnGhost} href="/staff/schedule">This month</Link>
+          <Link className={btnGhost} href={`/staff/schedule?month=${nextMonth(start, 1)}`}>Next →</Link>
         </div>
       </div>
 
-      {error && <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">The schedule couldn&apos;t be loaded.</p>}
+      {error && <p className="mb-4 rounded-xl border-l-4 border-[#be1e2d] bg-white p-3 text-sm text-[#be1e2d] shadow-sm">The schedule couldn&apos;t be loaded.</p>}
 
       <ul className="space-y-2">
         {days.map((day) => {
           const items = events.filter((event) => event.start_date <= day && (event.end_date ?? event.start_date) >= day);
           if (items.length === 0 && day !== today) return null;
           return (
-            <li key={day} className={`rounded-xl bg-white p-4 shadow-sm ${day === today ? "ring-2 ring-blue-500" : ""}`}>
-              <p className="mb-1 font-semibold text-slate-900">{formatDayLabel(day)}</p>
+            <li key={day} className={`rounded-2xl bg-white p-5 shadow-sm ${day === today ? "ring-2 ring-[#f29e23]" : ""}`}>
+              <p className="mb-1 font-semibold text-[#252525]">{formatDayLabel(day)}</p>
               {items.length === 0 ? (
                 <p className="text-sm text-slate-500">Nothing booked.</p>
               ) : (
