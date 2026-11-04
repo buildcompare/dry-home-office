@@ -15,6 +15,10 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+      // Navigation preload: the page request starts while the worker is
+      // still waking up, instead of after it.
+      .then(() => (self.registration.navigationPreload ? self.registration.navigationPreload.enable() : undefined))
+      .catch(() => undefined)
       .then(() => self.clients.claim())
   );
 });
@@ -35,7 +39,11 @@ self.addEventListener("fetch", (event) => {
 
   if (request.mode === "navigate") {
     // Pages are always fetched live (never stored); offline page on failure.
-    event.respondWith(fetch(request).catch(() => caches.match(OFFLINE_URL)));
+    event.respondWith(
+      Promise.resolve(event.preloadResponse)
+        .then((preloaded) => preloaded || fetch(request))
+        .catch(() => caches.match(OFFLINE_URL))
+    );
     return;
   }
 

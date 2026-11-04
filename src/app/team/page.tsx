@@ -151,13 +151,16 @@ export default async function TeamPage({
     entries.filter((entry) => entry.staff_id === week.staff_id && entry.week_start === week.week_start);
 
   const employees = staff.filter((member) => member.role === "employee");
-  const summaries = await Promise.all(
-    employees.filter((member) => member.active).map(async (member) => ({ member, ...(await loadStaffDashboard(supabase, member.id)) }))
-  );
+  // Dashboards and sign-up status are fetched in parallel.
+  const [summaries, authUsers] = await Promise.all([
+    Promise.all(
+      employees.filter((member) => member.active).map(async (member) => ({ member, ...(await loadStaffDashboard(supabase, member.id)) }))
+    ),
+    loadAuthUsers(employees.flatMap((member) => (member.user_id ? [member.user_id] : []))),
+  ]);
 
   // Has each employee actually signed up? (needs the service role; falls
   // back to the simple Active / Invited label when it isn't available)
-  const authUsers = await loadAuthUsers(employees.flatMap((member) => (member.user_id ? [member.user_id] : [])));
   const signup = new Map<string, SignupStatus>(
     employees.map((member) => [
       member.id,

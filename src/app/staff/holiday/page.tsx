@@ -32,15 +32,18 @@ export default async function HolidayPage({
   if (session.status !== "ok") return <StaffUnavailable status={session.status} />;
   const { supabase, staff } = session;
 
-  const { data } = await supabase
-    .from("holiday_requests")
-    .select("id, start_date, end_date, half_day, half_day_part, reason, status, review_note, created_at")
-    .eq("staff_id", staff.id)
-    .order("start_date", { ascending: false })
-    .limit(100);
+  // Requests and balances load together rather than one after the other.
+  const [{ data }, loaded] = await Promise.all([
+    supabase
+      .from("holiday_requests")
+      .select("id, start_date, end_date, half_day, half_day_part, reason, status, review_note, created_at")
+      .eq("staff_id", staff.id)
+      .order("start_date", { ascending: false })
+      .limit(100),
+    loadStaffDashboard(supabase, staff.id),
+  ]);
   const requests = (data ?? []) as HolidayRow[];
 
-  const loaded = await loadStaffDashboard(supabase, staff.id);
   const bank = loaded.bankHolidays;
   const today = getLondonDateKey();
 

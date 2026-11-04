@@ -6,6 +6,7 @@
  * treated as an owner, exactly like before.
  */
 
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -29,6 +30,27 @@ export type StaffContext = {
   /** false when staff_portal.sql hasn't been run yet */
   setUp: boolean;
 };
+
+/*
+ * Speed: the signed-in user and their role are looked up once per request
+ * (React cache) and in parallel, instead of one Supabase round trip after
+ * another on every page and server action.
+ */
+const sessionClient = cache(() => createClient());
+const sessionUser = cache(async () => {
+  const supabase = await sessionClient();
+  const { data } = await supabase.auth.getUser();
+  return data.user;
+});
+const sessionRole = cache(async () => currentStaffRole(await sessionClient()));
+const sessionStaffId = cache(async () => {
+  try {
+    const { data } = await (await sessionClient()).rpc("current_staff_member_id");
+    return typeof data === "string" ? data : null;
+  } catch {
+    return null;
+  }
+});
 
 export async function currentStaffRole(
   supabase: Pick<SupabaseServerClient, "rpc">
@@ -57,21 +79,17 @@ export async function getStaffContext(supabase?: SupabaseServerClient): Promise<
  * be called from any page, so this check is needed on top of the proxy.
  */
 export async function requireOfficeOwner() {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) return; // the action's own sign-in check handles this
-  const { role } = await currentStaffRole(supabase);
+  const [user, { role }] = await Promise.all([sessionUser(), sessionRole()]);
+  if (!user) return; // the action's own sign-in check handles this
   if (role !== "owner") redirect(STAFF_HOME);
 }
 
 /** Owner pages/actions for the Staff area. Returns the session client. */
 export async function requireOwnerForTeam() {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) redirect("/login");
-  const { role, setUp } = await currentStaffRole(supabase);
+  const [supabase, user, { role, setUp }] = await Promise.all([sessionClient(), sessionUser(), sessionRole()]);
+  if (!user) redirect("/login");
   if (role !== "owner") redirect(STAFF_HOME);
-  return { supabase, userId: data.user.id, email: data.user.email ?? null, setUp };
+  return { supabase, userId: user.id, email: user.email ?? null, setUp };
 }
 
 export type EmployeeSession =
@@ -83,18 +101,19 @@ export type EmployeeSession =
  * Links the login to the staff row on first sign-in (rows created by
  * invite are matched by email until then).
  */
-export async function requireEmployee(): Promise<EmployeeSession> {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) redirect("/login");
+export const requireEmployee = cache(async (): Promise<EmployeeSession> => {
+  // User check, role and staff id don't depend on each other: one round trip.
+  const [supabase, user, { role, setUp }, staffId] = await Promise.all([
+    sessionClient(),
+    sessionUser(),
+    sessionRole(),
+    sessionStaffId(),
+  ]);
+  if (!user) redirect("/login");
 
-  const { role, setUp } = await currentStaffRole(supabase);
   if (!setUp) return { status: "not-set-up" };
   if (role === "owner") redirect(TEAM_HOME);
   if (role === "inactive") return { status: "inactive" };
-
-  const { data: idData } = await supabase.rpc("current_staff_member_id");
-  const staffId = typeof idData === "string" ? idData : null;
   if (!staffId) return { status: "missing" };
 
   const { data: row } = await supabase
@@ -110,12 +129,12 @@ export async function requireEmployee(): Promise<EmployeeSession> {
   if (!staff.user_id) {
     try {
       const admin = createAdminClient();
-      await admin.from("staff_members").update({ user_id: data.user.id }).eq("id", staff.id).is("user_id", null);
-      staff.user_id = data.user.id;
+      await admin.from("staff_members").update({ user_id: user.id }).eq("id", staff.id).is("user_id", null);
+      staff.user_id = user.id;
     } catch {
       // Linking is a convenience: matching by email still works.
     }
   }
 
   return { status: "ok", supabase, staff };
-}
+});
