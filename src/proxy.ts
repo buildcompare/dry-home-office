@@ -8,6 +8,9 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!api/calendar|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // Static files (images, icons, the app manifest, service worker and
+    // offline page) skip the session/role check entirely: they were public
+    // already, and the check costs Supabase round trips on every request.
+    "/((?!api/calendar|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|offline.html|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?|txt|xml)$).*)",
   ],
 };
